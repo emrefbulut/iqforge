@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem C:\\\\Users\\\\Emre\\\\Desktop\\\\project -Force | Select-Object Name; \\(Get-Command uv -EA SilentlyContinue\\).Source; \\(Get-Command git -EA SilentlyContinue\\).Source; \\(Get-Command python -EA SilentlyContinue\\).Source)",
+      "PowerShell(python --version; pip --version; \\(Get-Command uvx -EA SilentlyContinue\\).Source; Test-Path \"$env:USERPROFILE\\\\.local\\\\bin\\\\uv.exe\")"
+    ]
+  }
+}
