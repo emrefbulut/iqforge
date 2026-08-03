@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from sigkit.io import SUPPORTED_DATATYPES, Annotation, Recording, SigkitError, load
+from helpers import write_record
+from sigkit.io import Annotation, Recording, SigkitError, load
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 EXAMPLES = sorted(EXAMPLES_DIR.glob("*.sigmf-meta"))
@@ -19,41 +19,6 @@ def _burst(rec: Recording) -> Annotation:
     bursts = [a for a in rec.annotations if a.label != "ref_tone"]
     assert len(bursts) == 1, f"{rec.meta_path.name}: tam olarak bir burst bekleniyordu"
     return bursts[0]
-
-
-def write_record(
-    tmp_path: Path,
-    samples: np.ndarray,
-    datatype: str = "cf32_le",
-    *,
-    name: str = "rec",
-    sample_rate: float | None = 1_000_000.0,
-    center_freq: float | None = 100_000_000.0,
-    annotations: list[dict] | None = None,
-) -> Path:
-    """Testler için elle bir SigMF kayıt çifti yazar ve meta yolunu döndürür."""
-    np_dtype, full_scale = SUPPORTED_DATATYPES.get(datatype, ("<f4", 1.0))
-    interleaved = np.empty(samples.size * 2, dtype=np.float64)
-    interleaved[0::2] = samples.real
-    interleaved[1::2] = samples.imag
-    (interleaved * full_scale).astype(np_dtype).tofile(tmp_path / f"{name}.sigmf-data")
-
-    global_info: dict = {"core:datatype": datatype, "core:version": "1.0.0"}
-    if sample_rate is not None:
-        global_info["core:sample_rate"] = sample_rate
-
-    capture: dict = {"core:sample_start": 0}
-    if center_freq is not None:
-        capture["core:frequency"] = center_freq
-
-    meta = {
-        "global": global_info,
-        "captures": [capture],
-        "annotations": annotations or [],
-    }
-    meta_path = tmp_path / f"{name}.sigmf-meta"
-    meta_path.write_text(json.dumps(meta), encoding="utf-8")
-    return meta_path
 
 
 @pytest.fixture

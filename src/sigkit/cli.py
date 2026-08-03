@@ -2,16 +2,44 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
+import numpy as np
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
 
 from sigkit import __version__
 from sigkit.display import render_inspect
-from sigkit.io import Recording, SigkitError, load
+from sigkit.io import META_EXT, Recording, SigkitError, load
+from sigkit.labeling import (
+    LABEL_SOURCES,
+    LabelingStats,
+    dominant_label,
+    label_from_annotations,
+    label_from_csv,
+    label_from_dirname,
+    load_label_csv,
+    resolve_exclude_labels,
+)
+from sigkit.splitting import SPLIT_NAMES, SplitPlan, parse_ratios, stratified_record_split
+from sigkit.storage import (
+    ShardWriter,
+    dataset_size_bytes,
+    read_manifest,
+    write_manifest,
+)
+from sigkit.windowing import (
+    REPRESENTATIONS,
+    iter_window_batches,
+    normalize_windows,
+    to_representation,
+    validate_window_params,
+    window_starts,
+)
 
 app = typer.Typer(
     add_completion=False,
@@ -126,6 +154,369 @@ def inspect(
         raise typer.Exit(code=1) from exc
 
     console.print(panel)
+
+
+@dataclass
+class _RecordWork:
+    """Tek bir kaydın build sırasında taşınan durumu.
+
+    Attributes:
+        record_id: Kaydın veri seti içindeki benzersiz kimliği (göreli yol).
+        recording: Açılmış kayıt.
+        indices: Etiket alan pencerelerin indisleri.
+        labels: `indices` ile aynı sırada etiketler.
+        dominant: Kaydın baskın etiketi; katmanlı bölme bunu kullanır.
+    """
+
+    record_id: str
+    recording: Recording
+    indices: np.ndarray
+    labels: list[str]
+    dominant: str
+
+
+def _collect_inputs(path: Path) -> tuple[list[Path], Path]:
+    """Girdi yolundan `.sigmf-meta` dosyalarını toplar.
+
+    Returns:
+        `(meta_yolları, kök_klasör)` — kök, kayıt kimliklerinin göreli
+        hesaplanacağı klasördür.
+
+    Raises:
+        SigkitError: Yol yoksa veya hiç kayıt bulunamazsa.
+    """
+    if not path.exists():
+        raise SigkitError(f"Girdi bulunamadı: {path}")
+    if path.is_dir():
+        metas = sorted(path.rglob(f"*{META_EXT}"))
+        if not metas:
+            raise SigkitError(
+                f"'{path}' içinde (alt klasörler dahil) hiç '*{META_EXT}' dosyası yok."
+            )
+        return metas, path
+    return [path], path.parent
+
+
+def _label_one(
+    rec: Recording,
+    starts: np.ndarray,
+    *,
+    source: str,
+    window: int,
+    exclude: frozenset[str],
+    keep_unlabeled: bool,
+    csv_table: dict[str, str] | None,
+) -> tuple[list[str | None], LabelingStats]:
+    """Seçilen kaynağa göre bir kaydın pencerelerini etiketler."""
+    if source == "annotations":
+        return label_from_annotations(rec, starts, window, exclude, keep_unlabeled)
+    if source == "dirname":
+        return label_from_dirname(rec, starts, exclude)
+    if source == "csv":
+        assert csv_table is not None  # CLI tarafında doğrulanıyor
+        return label_from_csv(rec, starts, csv_table, exclude)
+    raise SigkitError(
+        f"Bilinmeyen etiket kaynağı '{source}'. Desteklenenler: {', '.join(LABEL_SOURCES)}."
+    )
+
+
+def _render_split_records(plan: SplitPlan, work: dict[str, _RecordWork]) -> Table:
+    """Hangi kaydın hangi split'e düştüğünü isim isim tablolar."""
+    table = Table(title="Kayıt bazında bölme (SPEC §5.6)", title_style="bold", show_lines=False)
+    table.add_column("Split", style="cyan", no_wrap=True)
+    table.add_column("Kayıt", style="white")
+    table.add_column("Etiket", style="green")
+    table.add_column("Pencere", justify="right")
+
+    for split in SPLIT_NAMES:
+        records = plan.records_in(split)
+        if not records:
+            table.add_row(split, "[dim]— boş —[/]", "", "0")
+            continue
+        for i, record_id in enumerate(records):
+            item = work[record_id]
+            table.add_row(
+                split if i == 0 else "",
+                record_id,
+                item.dominant,
+                str(len(item.labels)),
+            )
+    return table
+
+
+@app.command()
+def build(  # noqa: PLR0913 — CLI seçenekleri SPEC §4'te tanımlı
+    input_path: Annotated[Path, typer.Argument(help="Tek .sigmf-meta dosyası veya klasör")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Çıktı klasörü")],
+    window: Annotated[int, typer.Option("--window", help="Pencere uzunluğu (örnek)")] = 1024,
+    stride: Annotated[int, typer.Option("--stride", help="Pencereler arası adım")] = 512,
+    labels: Annotated[
+        str, typer.Option("--labels", help=f"Etiket kaynağı: {', '.join(LABEL_SOURCES)}")
+    ] = "annotations",
+    label_file: Annotated[
+        Path | None, typer.Option("--label-file", help="--labels csv için CSV yolu")
+    ] = None,
+    exclude_label: Annotated[
+        list[str] | None,
+        typer.Option("--exclude-label", help="Etiketlemede yok sayılacak etiket (yinelenebilir)"),
+    ] = None,
+    keep_unlabeled: Annotated[
+        bool, typer.Option("--keep-unlabeled", help="Eşleşmeyen pencereleri atma, 'unlabeled' yap")
+    ] = False,
+    split: Annotated[
+        str, typer.Option("--split", help="train,val,test oranları")
+    ] = "0.7,0.15,0.15",
+    seed: Annotated[int, typer.Option("--seed", help="Deterministik bölme tohumu")] = 42,
+    representation: Annotated[
+        str, typer.Option("--repr", help=f"Temsil: {', '.join(REPRESENTATIONS)}")
+    ] = "iq2ch",
+    normalize: Annotated[
+        bool, typer.Option("--normalize/--no-normalize", help="Pencere başına birim güç")
+    ] = True,
+) -> None:
+    """Kayıtları pencereleyip etiketli, bölünmüş bir veri seti olarak diske yazar."""
+    try:
+        _run_build(
+            input_path=input_path,
+            output=output,
+            window=window,
+            stride=stride,
+            source=labels,
+            label_file=label_file,
+            exclude_label=exclude_label,
+            keep_unlabeled=keep_unlabeled,
+            split=split,
+            seed=seed,
+            representation=representation,
+            normalize=normalize,
+        )
+    except SigkitError as exc:
+        err_console.print(f"[bold red]Hata:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+
+def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
+    *,
+    input_path: Path,
+    output: Path,
+    window: int,
+    stride: int,
+    source: str,
+    label_file: Path | None,
+    exclude_label: list[str] | None,
+    keep_unlabeled: bool,
+    split: str,
+    seed: int,
+    representation: str,
+    normalize: bool,
+) -> None:
+    """`build` komutunun boru hattı. Hatalar `SigkitError` olarak yükselir."""
+    validate_window_params(window, stride)
+    if source not in LABEL_SOURCES:
+        raise SigkitError(
+            f"Bilinmeyen etiket kaynağı '{source}'. Desteklenenler: {', '.join(LABEL_SOURCES)}."
+        )
+    if representation not in REPRESENTATIONS:
+        raise SigkitError(
+            f"Bilinmeyen temsil '{representation}'. Desteklenenler: {', '.join(REPRESENTATIONS)}."
+        )
+    if source == "csv" and label_file is None:
+        raise SigkitError("--labels csv seçildi ama --label-file verilmedi.")
+
+    ratios = parse_ratios(split)
+    exclude = resolve_exclude_labels(exclude_label)
+    csv_table = load_label_csv(label_file) if source == "csv" else None
+
+    metas, root = _collect_inputs(input_path)
+    console.print(f"[dim]{len(metas)} kayıt bulundu:[/] {input_path}")
+
+    work: dict[str, _RecordWork] = {}
+    totals = LabelingStats()
+    skipped: list[str] = []
+
+    for meta in metas:
+        rec = load(meta)
+        starts = window_starts(rec.num_samples, window, stride)
+        if starts.size == 0:
+            skipped.append(f"{meta.name}: {rec.num_samples} örnek, {window} pencereye yetmiyor")
+            continue
+
+        window_labels, stats = _label_one(
+            rec,
+            starts,
+            source=source,
+            window=window,
+            exclude=exclude,
+            keep_unlabeled=keep_unlabeled,
+            csv_table=csv_table,
+        )
+        totals.merge(stats)
+
+        kept = [i for i, label in enumerate(window_labels) if label is not None]
+        if not kept:
+            skipped.append(f"{meta.name}: etiket alan pencere yok")
+            continue
+
+        record_id = meta.relative_to(root).as_posix() if meta != root else meta.name
+        kept_labels = [window_labels[i] for i in kept]
+        assert all(label is not None for label in kept_labels)
+        work[record_id] = _RecordWork(
+            record_id=record_id,
+            recording=rec,
+            indices=np.asarray(kept, dtype=np.int64),
+            labels=kept_labels,  # type: ignore[arg-type]
+            dominant=dominant_label(window_labels),  # type: ignore[arg-type]
+        )
+
+    for note in skipped:
+        console.print(f"[yellow]atlandı[/] {note}")
+    if not work:
+        excluded = ", ".join(sorted(exclude)) or "(yok)"
+        raise SigkitError(
+            "Hiçbir kayıttan etiketli pencere çıkmadı. "
+            f"Etiket kaynağı '{source}', dışlanan etiketler: {excluded}."
+        )
+
+    plan = stratified_record_split({k: v.dominant for k, v in work.items()}, ratios, seed)
+
+    all_labels = sorted({label for item in work.values() for label in item.labels})
+    label_map = {label: i for i, label in enumerate(all_labels)}
+
+    output.mkdir(parents=True, exist_ok=True)
+    writers = {name: ShardWriter(output, name) for name in SPLIT_NAMES}
+
+    total_windows = sum(len(item.labels) for item in work.values())
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        task = progress.add_task("pencereler yazılıyor", total=total_windows)
+        for record_id in sorted(work):
+            item = work[record_id]
+            writer = writers[plan.assignment[record_id]]
+            position = {int(idx): n for n, idx in enumerate(item.indices)}
+            for chunk, batch in iter_window_batches(
+                item.recording, window, stride, indices=item.indices
+            ):
+                if normalize:
+                    batch = normalize_windows(batch)
+                encoded = to_representation(batch, representation)
+                writer.add(encoded, [label_map[item.labels[position[int(i)]]] for i in chunk])
+                progress.advance(task, chunk.size)
+
+    splits_meta: dict[str, dict[str, Any]] = {}
+    for name in SPLIT_NAMES:
+        writer = writers[name]
+        writer.flush()
+        splits_meta[name] = {
+            "shards": writer.shards,
+            "labels": writer.labels,
+            "count": writer.count,
+            "records": [
+                {
+                    "id": record_id,
+                    "label": work[record_id].dominant,
+                    "windows": len(work[record_id].labels),
+                }
+                for record_id in plan.records_in(name)
+            ],
+        }
+
+    write_manifest(
+        output,
+        version=__version__,
+        config={
+            "window": window,
+            "stride": stride,
+            "repr": representation,
+            "normalize": normalize,
+            "seed": seed,
+            "labels": source,
+            "split": list(ratios),
+            "exclude_labels": sorted(exclude),
+            "keep_unlabeled": keep_unlabeled,
+        },
+        label_map=label_map,
+        source_files=[work[r].recording.meta_path.as_posix() for r in sorted(work)],
+        splits=splits_meta,
+    )
+
+    console.print(_render_split_records(plan, work))
+    console.print(
+        f"[dim]pencere:[/] {totals.total} toplam, {totals.labeled} etiketli, "
+        f"{totals.unmatched} eşleşmeyen, {totals.ambiguous} belirsiz (çakışan annotation)"
+    )
+    if totals.excluded_labels:
+        console.print(f"[dim]dışlanan etiketler:[/] {', '.join(sorted(totals.excluded_labels))}")
+    console.print(f"[green]yazıldı:[/] {output} ({dataset_size_bytes(output) / 1e6:.2f} MB)")
+
+
+@app.command()
+def stats(
+    dataset_dir: Annotated[Path, typer.Argument(help="sigkit build ile üretilmiş klasör")],
+) -> None:
+    """Kurulmuş veri setinin özetini yazdırır."""
+    try:
+        manifest = read_manifest(dataset_dir)
+    except SigkitError as exc:
+        err_console.print(f"[bold red]Hata:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    label_map: dict[str, int] = manifest["label_map"]
+    config = manifest["config"]
+
+    overview = Table(title=str(dataset_dir), title_style="bold", show_header=False)
+    overview.add_column("Alan", style="cyan", no_wrap=True)
+    overview.add_column("Değer")
+    overview.add_row("sigkit sürümü", manifest["sigkit_version"])
+    overview.add_row("oluşturma", manifest["created"])
+    overview.add_row("kaynak kayıt", str(len(manifest["source_files"])))
+    overview.add_row("pencere / adım", f"{config['window']} / {config['stride']}")
+    overview.add_row("temsil", f"{config['repr']} (normalize={config['normalize']})")
+    overview.add_row("etiket kaynağı", str(config.get("labels", "—")))
+    overview.add_row("dışlanan etiket", ", ".join(config.get("exclude_labels", [])) or "—")
+    overview.add_row("split / seed", f"{config.get('split', '—')} / {config['seed']}")
+    overview.add_row("disk", f"{dataset_size_bytes(dataset_dir) / 1e6:.2f} MB")
+    console.print(overview)
+
+    distribution = Table(title="Sınıf dağılımı", title_style="bold")
+    distribution.add_column("Split", style="cyan")
+    distribution.add_column("Kayıt", justify="right")
+    distribution.add_column("Pencere", justify="right")
+    for label in label_map:
+        distribution.add_column(label, justify="right", style="green")
+    distribution.add_column("Shard", justify="right")
+
+    for name in SPLIT_NAMES:
+        entry = manifest["splits"][name]
+        counts = np.bincount(entry["labels"], minlength=len(label_map)) if entry["labels"] else []
+        distribution.add_row(
+            name,
+            str(len(entry.get("records", []))),  # noqa: PD011
+            str(entry["count"]),
+            *[str(counts[label_map[label]]) if len(counts) else "0" for label in label_map],
+            str(len(entry["shards"])),
+        )
+    console.print(distribution)
+
+    records = Table(title="Split başına kayıt dosyaları", title_style="bold")
+    records.add_column("Split", style="cyan", no_wrap=True)
+    records.add_column("Kayıt", style="white")
+    records.add_column("Etiket", style="green")
+    records.add_column("Pencere", justify="right")
+    for name in SPLIT_NAMES:
+        listed = manifest["splits"][name].get("records", [])
+        if not listed:
+            records.add_row(name, "[dim]— boş —[/]", "", "0")
+            continue
+        for i, entry in enumerate(listed):
+            records.add_row(
+                name if i == 0 else "", entry["id"], entry["label"], str(entry["windows"])
+            )
+    console.print(records)
 
 
 @app.command()

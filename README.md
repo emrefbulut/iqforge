@@ -3,7 +3,8 @@
 SDR ile yakalanmış ham RF kayıtlarını (SigMF) makine öğrenmesinde kullanılabilir
 etiketli veri setlerine çeviren komut satırı aracı.
 
-> Geliştirme aşamasında — Faz 2 (`info` + terminal spektrogramı) tamamlandı.
+> Geliştirme aşamasında — Faz 3 (`info`, `inspect`, `build`, `stats`) tamamlandı.
+> `SigkitDataset` ve `train` Faz 4'te gelecek.
 > Ayrıntılı README Faz 5'te yazılacak; yol haritası için [SPEC.md](SPEC.md).
 
 ## Hızlı deneme
@@ -12,6 +13,8 @@ etiketli veri setlerine çeviren komut satırı aracı.
 uv sync --group dev
 uv run sigkit info examples/bpsk_01.sigmf-meta
 uv run sigkit inspect examples/bpsk_01.sigmf-meta
+uv run sigkit build examples/ -o /tmp/ds
+uv run sigkit stats /tmp/ds
 ```
 
 `inspect` spektrogramı Unicode yarım blok karakteriyle çizer ve tüm bilgiyi
@@ -39,6 +42,22 @@ başına dört kayıt, 0.7/0.15/0.15 bölmesinin üç split'i de doldurmasına y
 (86.4 kHz), burst süresi (40960 örnek), ortalama güç ve taşıyıcı ofset havuzu
 (−280/−180/+180/+280 kHz — her sınıf dördünü de birer kez kullanır, yani
 taşıyıcı frekansı sınıf hakkında bilgi taşımaz).
+
+## Kayıt bazında bölme
+
+`build`, pencereleri **kayıt bazında** böler: bir kaydın tüm pencereleri aynı
+split'e gider. Pencere bazlı bölme komşu pencereleri hem eğitime hem teste
+düşürür ve test doğruluğunu yapay olarak şişirir.
+
+Bu kural uygulanamıyorsa `build` **hata verir**, sessizce pencere bazlı bölmeye
+düşmez. Tek kayıtla çalışmak istiyorsanız açık kaçış yolu `--split 1.0,0,0`:
+
+```bash
+uv run sigkit build examples/bpsk_01.sigmf-meta -o /tmp/tek --split 1.0,0,0
+```
+
+Hangi kaydın hangi split'e düştüğü hem `build` çıktısında hem `stats`'ta
+isim isim listelenir ve `manifest.json` içinde saklanır.
 
 ## Doğrulama çıktıları
 
