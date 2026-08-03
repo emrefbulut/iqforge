@@ -8,9 +8,17 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sigkit.io import SUPPORTED_DATATYPES, SigkitError, load
+from sigkit.io import SUPPORTED_DATATYPES, Annotation, Recording, SigkitError, load
 
-EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "sample.sigmf-meta"
+EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
+EXAMPLES = sorted(EXAMPLES_DIR.glob("*.sigmf-meta"))
+
+
+def _burst(rec: Recording) -> Annotation:
+    """Kaydın tek modülasyonlu burst annotation'ını verir (ref_tone hariç)."""
+    bursts = [a for a in rec.annotations if a.label != "ref_tone"]
+    assert len(bursts) == 1, f"{rec.meta_path.name}: tam olarak bir burst bekleniyordu"
+    return bursts[0]
 
 
 def write_record(
@@ -156,34 +164,90 @@ def test_annotations_are_parsed_and_sorted(tmp_path: Path, tone: np.ndarray) -> 
     assert rec.annotations[0].freq_upper_edge == 101e6
 
 
-@pytest.mark.skipif(not EXAMPLE.exists(), reason="examples/sample.sigmf-meta üretilmemiş")
-def test_example_record_metadata() -> None:
-    """Paketle gelen sentetik kayıt beklenen metadata'ya sahip."""
-    rec = load(EXAMPLE)
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+def test_example_set_has_eight_records_balanced_by_class() -> None:
+    """Örnek veri seti dört bpsk + dört qpsk kayıttan oluşmalı.
 
-    assert rec.datatype == "cf32_le"
-    assert rec.sample_rate == 1_024_000.0
-    assert rec.center_frequency == 2_450_000_000.0
-    assert rec.num_samples == 512_000
-    assert rec.duration_seconds == pytest.approx(0.5)
-    assert rec.data_path.stat().st_size < 5_000_000
-    assert {a.label for a in rec.annotations} == {"ref_tone", "bpsk", "qpsk"}
+    Kayıt sayısı SPEC §5.6'nın kayıt bazında bölme kuralı için kritiktir: sınıf
+    başına dört kayıt, 0.7/0.15/0.15 bölmesinin üç split'i de doldurmasına yeter.
+    """
+    labels = [_burst(load(p)).label for p in EXAMPLES]
+
+    assert len(EXAMPLES) == 8
+    assert labels.count("bpsk") == 4
+    assert labels.count("qpsk") == 4
+    assert len({p.stem for p in EXAMPLES}) == 8, "kayıt adları benzersiz olmalı"
 
 
-@pytest.mark.skipif(not EXAMPLE.exists(), reason="examples/sample.sigmf-meta üretilmemiş")
-def test_example_reference_tone_is_exactly_plus_100_khz() -> None:
-    """Referans ton, merkez frekanstan tam +100 kHz'te olmalı.
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+def test_example_records_share_metadata_and_fit_size_budget() -> None:
+    """Her kayıt aynı temel metadata'ya sahip ve toplam 5 MB'ın altında."""
+    total = 0
+    for path in EXAMPLES:
+        rec = load(path)
+        assert rec.datatype == "cf32_le"
+        assert rec.sample_rate == 1_024_000.0
+        assert rec.center_frequency == 2_450_000_000.0
+        assert rec.num_samples == 65_536
+        assert rec.duration_seconds == pytest.approx(0.064)
+        assert {a.label for a in rec.annotations} == {"ref_tone", _burst(rec).label}
+        total += rec.data_path.stat().st_size + rec.meta_path.stat().st_size
+
+    assert total < 5_000_000, f"örnek veri seti 5 MB'ı aşıyor: {total / 1e6:.2f} MB"
+
+
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+def test_example_bursts_are_equal_in_bandwidth_and_duration() -> None:
+    """Tüm burstler aynı bant genişliğinde ve aynı sürede olmalı.
+
+    Sınıflar yalnızca modülasyonla ayrışmalı; bant genişliği veya süre farkı
+    sınıflandırıcıya kısayol verir.
+    """
+    widths = {_burst(load(p)).freq_upper_edge - _burst(load(p)).freq_lower_edge for p in EXAMPLES}
+    counts = {_burst(load(p)).sample_count for p in EXAMPLES}
+
+    assert widths == {86_400.0}
+    assert counts == {40_960}
+
+
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+def test_carrier_offset_carries_no_class_information() -> None:
+    """İki sınıf aynı taşıyıcı ofset havuzunu kullanmalı.
+
+    Aksi halde ağ modülasyonu değil taşıyıcı frekansını öğrenir ve Faz 4'teki
+    doğruluk ölçümü anlamsızlaşır.
+    """
+    by_class: dict[str, set[float]] = {}
+    for path in EXAMPLES:
+        rec = load(path)
+        a = _burst(rec)
+        centre = (a.freq_lower_edge + a.freq_upper_edge) / 2 - rec.center_frequency
+        by_class.setdefault(a.label, set()).add(round(centre))
+
+    assert by_class["bpsk"] == by_class["qpsk"], (
+        f"taşıyıcı ofsetleri sınıflar arasında farklı: {by_class}"
+    )
+    assert len(by_class["bpsk"]) == 4
+
+
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.stem)
+def test_example_reference_tone_is_exactly_plus_100_khz(path: Path) -> None:
+    """Her kayıtta referans ton merkez frekanstan tam +100 kHz'te olmalı.
 
     Sonraki fazların (özellikle spektrogram doğrulamasının) dayandığı sabit budur.
     """
-    rec = load(EXAMPLE)
+    rec = load(path)
     ref = next(a for a in rec.annotations if a.label == "ref_tone")
     assert ref.sample_start == 0
     assert ref.sample_count == rec.num_samples
     assert (ref.freq_lower_edge + ref.freq_upper_edge) / 2 - rec.center_frequency == 100_000.0
 
-    # Modülasyonlu burstlerin bittiği, yalnız tonun bulunduğu bölge (son 32768 örnek).
-    quiet = rec.read(start=rec.num_samples - 32_768, count=32_768)
+    # Burstün bittiği, yalnız tonun bulunduğu sessiz kuyruk.
+    quiet_start = _burst(rec).sample_end
+    quiet = rec.read(start=quiet_start, count=rec.num_samples - quiet_start)
+    assert quiet.size >= 8192, "ton ölçümü için yeterli sessiz bölge yok"
+
     spectrum = np.abs(np.fft.fftshift(np.fft.fft(quiet)))
     freqs = np.fft.fftshift(np.fft.fftfreq(quiet.size, d=1.0 / rec.sample_rate))
     bin_width = rec.sample_rate / quiet.size

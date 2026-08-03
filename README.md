@@ -10,8 +10,8 @@ etiketli veri setlerine çeviren komut satırı aracı.
 
 ```bash
 uv sync --group dev
-uv run sigkit info examples/sample.sigmf-meta
-uv run sigkit inspect examples/sample.sigmf-meta
+uv run sigkit info examples/bpsk_01.sigmf-meta
+uv run sigkit inspect examples/bpsk_01.sigmf-meta
 ```
 
 `inspect` spektrogramı Unicode yarım blok karakteriyle çizer ve tüm bilgiyi
@@ -19,13 +19,26 @@ uv run sigkit inspect examples/sample.sigmf-meta
 geriye tekdüze bir blok kalır; renkli kaydetmek için
 `scripts/capture_terminal.py` kullanın.
 
-`examples/sample.sigmf-meta` paketle gelen sentetik kayıttır; donanım gerektirmez.
-İçinde iki modülasyonlu burst (BPSK, QPSK) ve merkez frekanstan tam **+100 kHz**
-kaymış sürekli bir referans ton bulunur. Referans ton ayrı bir annotation
-(`ref_tone`) olarak işaretlidir ve sonraki fazlardaki doğrulamaların dayanağıdır.
+## Örnek veri seti
 
-İki burst yalnızca modülasyon türüyle ayrışır: sembol hızı (64 kBd), bant
-genişliği (86.4 kHz), süre ve ortalama güç ikisinde de aynıdır.
+`examples/` sekiz sentetik kayıt çifti içerir; donanım gerektirmez:
+`bpsk_01…bpsk_04` ve `qpsk_01…qpsk_04`, her biri 65536 örnek (0.064 s),
+toplam 4.2 MB.
+
+Her kayıtta merkez frekanstan tam **+100 kHz** kaymış sürekli bir referans ton
+(`ref_tone` annotation'ı) ve tek bir modülasyonlu burst vardır. Referans ton bir
+sınıf değil ölçüm referansıdır; etiketlemede `--exclude-label` ile dışlanır
+([SPEC.md](SPEC.md) §5.3).
+
+**Neden sekiz ayrı dosya:** SPEC §5.6 pencereleri kayıt bazında bölmeyi
+zorunlu kılar. Tek dosya olsaydı bu kural örnek veriyle sınanamazdı. Sınıf
+başına dört kayıt, 0.7/0.15/0.15 bölmesinin üç split'i de doldurmasına yeter.
+
+**Kısayol ipuçları kapatıldı.** İki sınıf yalnızca modülasyon türüyle ayrışır;
+şunlar ikisinde de birebir aynıdır: sembol hızı (64 kBd), bant genişliği
+(86.4 kHz), burst süresi (40960 örnek), ortalama güç ve taşıyıcı ofset havuzu
+(−280/−180/+180/+280 kHz — her sınıf dördünü de birer kez kullanır, yani
+taşıyıcı frekansı sınıf hakkında bilgi taşımaz).
 
 ## Doğrulama çıktıları
 
@@ -33,11 +46,9 @@ genişliği (86.4 kHz), süre ve ortalama güç ikisinde de aynıdır.
 
 | Dosya | İçerik |
 |---|---|
-| `inspect_default.{ansi.txt,svg}` | `sigkit inspect` varsayılan penceresi (262144 örnek), renkleriyle |
-| `inspect_full.{ansi.txt,svg}` | Kaydın tamamı (512000 örnek) |
-| `spectrogram_default.png` | Aynı varsayılan pencerenin matplotlib karşılığı |
-| `spectrogram_full.png` | Kaydın tamamının matplotlib karşılığı |
-| `verify_*.txt` | `scripts/verify_spectrogram.py` sayısal karşılaştırma raporu |
+| `inspect_{bpsk,qpsk}_01.{ansi.txt,svg}` | `sigkit inspect` çıktısı, renkleriyle |
+| `spectrogram_{bpsk,qpsk}_01.png` | Aynı verinin matplotlib karşılığı |
+| `verify_{bpsk,qpsk}_01.txt` | `scripts/verify_spectrogram.py` sayısal karşılaştırma raporu |
 
 `.ansi.txt` dosyaları terminalde `cat` ile, `.svg` dosyaları tarayıcıda görüntülenir.
 

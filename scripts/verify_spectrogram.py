@@ -38,8 +38,70 @@ from sigkit.display import (  # noqa: E402
 from sigkit.io import Recording, load  # noqa: E402
 
 REF_TONE_HZ = 100_000.0
+#: Örnek kayıtlardaki burst kenar rampasının uzunluğu (scripts/make_example.py).
+BURST_RAMP = 512
 #: Terminal görünümünün varsayılan karakter ızgarası (COLUMNS=100, 24 satır).
 TERM_WIDTH, TERM_HEIGHT = 91, 24
+
+
+#: Güç eğrisinin blok uzunluğu (örnek). Her bloğun zamanı blok MERKEZİ alınır.
+POWER_BLOCK = 512
+
+
+def power_curve(
+    samples: np.ndarray, start: int, sample_rate: float, block: int = POWER_BLOCK
+) -> tuple[np.ndarray, np.ndarray]:
+    """Zaman ekseninde blok ortalamalı güç eğrisini verir.
+
+    Zaman ekseni blokların MERKEZİNE karşılık gelir. Blok başlangıcı kullanılırsa
+    eğri yarım blok kadar (varsayılanda 0.25 ms) sola kayar ve annotation
+    kenarlarıyla karşılaştırma sistematik bir hata içerir.
+
+    Args:
+        samples: Kompleks örnekler.
+        start: Örneklerin kayıttaki başlangıç indisi.
+        sample_rate: Örnekleme hızı (Hz).
+        block: Ortalama alınacak blok uzunluğu (örnek).
+
+    Returns:
+        `(times, power_db)` — blok merkezlerinin zamanı (s) ve dB güç.
+    """
+    usable = (samples.size // block) * block
+    blocks = np.abs(samples[:usable].reshape(-1, block)) ** 2
+    centres = (np.arange(blocks.shape[0]) + 0.5) * block + start
+    return centres / sample_rate, 10.0 * np.log10(blocks.mean(axis=1) + 1e-12)
+
+
+def half_power_edges(
+    times: np.ndarray, power_db: np.ndarray
+) -> tuple[float, float] | tuple[None, None]:
+    """Basamak kenarlarını yarı-güç noktasında, alt örnek çözünürlükte bulur.
+
+    Taban ve plato seviyeleri persentille kestirilir; eşik ikisinin lineer güçteki
+    ortasıdır. Eşiği kesen komşu iki blok arasında doğrusal interpolasyon yapılır,
+    böylece çözünürlük blok aralığından daha ince olur.
+
+    Returns:
+        `(yükselen_kenar, düşen_kenar)` saniye; kenar bulunamazsa `(None, None)`.
+    """
+    floor_db, plateau_db = np.percentile(power_db, 10), np.percentile(power_db, 90)
+    threshold_db = 10.0 * np.log10((10 ** (floor_db / 10) + 10 ** (plateau_db / 10)) / 2.0)
+
+    above = power_db > threshold_db
+    if not above.any() or above.all():
+        return None, None
+
+    def _cross(i: int) -> float:
+        """i-1 ile i arasında eşiği kestiği anı doğrusal interpolasyonla bulur."""
+        y0, y1 = power_db[i - 1], power_db[i]
+        frac = (threshold_db - y0) / (y1 - y0)
+        return float(times[i - 1] + frac * (times[i] - times[i - 1]))
+
+    rises = np.flatnonzero(~above[:-1] & above[1:]) + 1
+    falls = np.flatnonzero(above[:-1] & ~above[1:]) + 1
+    if rises.size == 0 or falls.size == 0:
+        return None, None
+    return _cross(int(rises[0])), _cross(int(falls[-1]))
 
 
 def band_power_db(freqs: np.ndarray, power_db: np.ndarray, lo: float, hi: float) -> np.ndarray:
@@ -99,7 +161,10 @@ def draw_png(
     mesh = ax.pcolormesh(
         times, freqs / 1e3, power_db, cmap="viridis", vmin=vmin, vmax=vmax, shading="nearest"
     )
-    fig.colorbar(mesh, ax=ax, label="güç (dB)", pad=0.01)
+    # Etiketi açıkça 90° döndür: matplotlib'in colorbar varsayılanı -90'dır ve
+    # yazı baş aşağı okunur.
+    cbar = fig.colorbar(mesh, ax=ax, pad=0.01)
+    cbar.set_label("güç (dB)", rotation=90, va="bottom", labelpad=14)
     # Referans işareti yalnızca kenarlarda çizilir: tam genişlikte bir çizgi,
     # göstermesi gereken tek binlik tonun üstünü örterdi.
     for xmin, xmax in ((0.0, 0.035), (0.965, 1.0)):
@@ -153,11 +218,12 @@ def draw_png(
     ax.grid(alpha=0.3)
 
     ax = axes[2]
-    block = 512
-    usable = (samples.size // block) * block
-    p = np.abs(samples[:usable].reshape(-1, block)) ** 2
-    t_power = start / rec.sample_rate + np.arange(p.shape[0]) * block / rec.sample_rate
-    ax.plot(t_power, 10.0 * np.log10(p.mean(axis=1) + 1e-12), lw=0.7, color="#440154")
+    t_power, p_db = power_curve(samples, start, rec.sample_rate)
+    ax.plot(t_power, p_db, lw=0.7, color="#440154")
+    rise, fall = half_power_edges(t_power, p_db)
+    for edge in (rise, fall):
+        if edge is not None:
+            ax.axvline(edge, color="tab:red", ls=":", lw=1.2)
     for a in rec.annotations:
         t0, t1 = a.sample_start / rec.sample_rate, a.sample_end / rec.sample_rate
         if a.label == "ref_tone" or t1 < times[0] or t0 > times[-1]:
@@ -176,7 +242,14 @@ def draw_png(
     plt.close(fig)
 
 
-def report(rec: Recording, freqs: np.ndarray, times: np.ndarray, power_db: np.ndarray) -> bool:
+def report(
+    rec: Recording,
+    samples: np.ndarray,
+    start: int,
+    freqs: np.ndarray,
+    times: np.ndarray,
+    power_db: np.ndarray,
+) -> bool:
     """İki çizim yolunu karşılaştırır ve tüm kontrollerin geçip geçmediğini döndürür."""
     pixels, pixel_freqs = terminal_pixels(freqs, power_db)
     bin_width = float(freqs[1] - freqs[0])
@@ -238,14 +311,96 @@ def report(rec: Recording, freqs: np.ndarray, times: np.ndarray, power_db: np.nd
             ok = False
         else:
             print("      TAMAM: 5 ms tolerans içinde")
+
+    ok &= _report_power_edges(rec, samples, start, times)
     return ok
+
+
+def ramp_half_power_offset(ramp: int) -> float:
+    """Hann kenar rampasının yarı-güç noktasının rampa başından uzaklığı (örnek).
+
+    `scripts/make_example.py` burst kenarlarını `np.hanning(2*ramp)` genlik
+    rampasıyla yumuşatır. Güç eğrisi rampanın yarı-güç noktasında eşiği keser;
+    annotation ise rampanın BAŞINI işaretler. Beklenen kayıklık budur.
+    """
+    env_power = np.hanning(2 * ramp)[:ramp] ** 2
+    i = int(np.flatnonzero(env_power >= 0.5)[0])
+    y0, y1 = env_power[i - 1], env_power[i]
+    return float((i - 1) + (0.5 - y0) / (y1 - y0))
+
+
+def _report_power_edges(rec: Recording, samples: np.ndarray, start: int, times: np.ndarray) -> bool:
+    """Güç eğrisinin basamak kenarlarını annotation kenarlarıyla sayısal karşılaştırır.
+
+    Kenarlar iki farklı blok uzunluğunda ölçülür. Blok küçüldükçe ölçüm rampanın
+    analitik yarı-güç noktasına yakınsamalıdır; yakınsamıyorsa rampayla
+    açıklanamayan bir sistematik zaman hatası var demektir.
+    """
+    print("\n--- güç eğrisi basamak kenarları vs annotation ---")
+    bursts = [a for a in rec.annotations if a.label != "ref_tone"]
+    if len(bursts) != 1:
+        print(f"  {len(bursts)} burst annotation'ı var; bu kontrol tek burstlü kayıt bekliyor.")
+        return True
+
+    a = bursts[0]
+    exp0, exp1 = a.sample_start / rec.sample_rate, a.sample_end / rec.sample_rate
+    if exp0 < times[0] or exp1 > times[-1]:
+        print("  burst görüntülenen pencerenin dışında, atlandı")
+        return True
+
+    expected = ramp_half_power_offset(BURST_RAMP)
+    print(f"  annotation           : {exp0:.5f}…{exp1:.5f} s")
+    print(
+        f"  beklenen kayıklık    : {expected:+.1f} / {-expected:+.1f} örnek — "
+        f"{BURST_RAMP} örneklik Hann rampasının yarı-güç noktası"
+    )
+
+    fine = 32
+    results: dict[int, tuple[float, float]] = {}
+    for block in (POWER_BLOCK, fine):
+        t_p, p_db = power_curve(samples, start, rec.sample_rate, block=block)
+        rise, fall = half_power_edges(t_p, p_db)
+        if rise is None or fall is None:
+            print(f"  BAŞARISIZ: blok={block} için basamak kenarı bulunamadı")
+            return False
+        n0 = (rise - exp0) * rec.sample_rate
+        n1 = (fall - exp1) * rec.sample_rate
+        results[block] = (n0, n1)
+        tag = "çizilen eğri" if block == POWER_BLOCK else "ince ızgara"
+        print(
+            f"  blok={block:<4} ({tag}): {rise:.5f}…{fall:.5f} s  "
+            f"fark {(rise - exp0) * 1e3:+.3f} / {(fall - exp1) * 1e3:+.3f} ms  "
+            f"({n0:+.0f} / {n1:+.0f} örnek)"
+        )
+
+    coarse_n0, coarse_n1 = results[POWER_BLOCK]
+    fine_n0, fine_n1 = results[fine]
+    print(
+        f"  blok ızgarası etkisi : {abs(coarse_n0 - fine_n0):.0f} / "
+        f"{abs(coarse_n1 - fine_n1):.0f} örnek — {POWER_BLOCK} örneklik blok "
+        f"{BURST_RAMP} örneklik rampayı tek bloğa sıkıştırıp kenarı dışarı iter"
+    )
+
+    if not (fine_n0 > 0 > fine_n1):
+        print("  BAŞARISIZ: kayıklığın işareti rampayla uyumsuz (içeri değil dışarı kayıyor)")
+        return False
+    tolerance = 0.1 * BURST_RAMP
+    if abs(fine_n0 - expected) > tolerance or abs(fine_n1 + expected) > tolerance:
+        print(
+            f"  BAŞARISIZ: ince ızgara ölçümü rampanın yarı-güç noktasından "
+            f"{tolerance:.0f} örnekten fazla sapıyor — rampayla açıklanamayan hata var"
+        )
+        return False
+    print("  TAMAM: ince ızgarada kayıklık rampanın yarı-güç noktasına yakınsıyor;")
+    print("         kalan fark yalnızca blok ızgarası çözünürlüğü, sistematik hata yok")
+    return True
 
 
 def main() -> int:
     """Doğrulamayı çalıştırır; tüm kontroller geçerse 0 döndürür."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("path", nargs="?", default="examples/sample.sigmf-meta")
-    parser.add_argument("-o", "--output", default="artifacts/spectrogram_full.png")
+    parser.add_argument("path", nargs="?", default="examples/bpsk_01.sigmf-meta")
+    parser.add_argument("-o", "--output", default="artifacts/spectrogram_bpsk_01.png")
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--samples", type=int, default=None, help="varsayılan: kaydın tamamı")
     parser.add_argument("--nfft", type=int, default=1024)
@@ -264,7 +419,7 @@ def main() -> int:
         f"({times[0]:.4f}…{times[-1]:.4f} s), nfft={args.nfft}"
     )
 
-    ok = report(rec, freqs, times, power_db)
+    ok = report(rec, data, args.start, freqs, times, power_db)
     print("\nSONUÇ:", "tüm kontroller geçti" if ok else "EN AZ BİR KONTROL BAŞARISIZ")
     return 0 if ok else 1
 

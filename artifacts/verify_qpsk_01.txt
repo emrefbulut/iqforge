@@ -1,0 +1,25 @@
+PNG yazıldı: artifacts\spectrogram_qpsk_01.png
+pencere: örnek 0…65536 (0.0005…0.0635 s), nfft=1024
+
+--- referans ton (+100 kHz) ---
+  matplotlib (tam çözünürlük): tepe +100.000 kHz  (bin 1000 Hz)
+  terminal (havuzlanmış)     : tepe satırı +96.0 kHz  (satır yüksekliği ~21.3 kHz)
+  TAMAM: tam çözünürlüklü tepe +100 kHz'te (bir bin içinde)
+  TAMAM: terminal tepe satırı +100 kHz'i içeriyor
+
+--- burst zaman aralıkları ---
+  qpsk: annotation 0.0120…0.0520 s  (-323.2…-236.8 kHz)
+      matplotlib ölçümü : 0.0125…0.0515 s  (fark +0.5 / +0.5 ms)
+      terminal ölçümü   : 0.0123…0.0512 s
+      TAMAM: 5 ms tolerans içinde
+
+--- güç eğrisi basamak kenarları vs annotation ---
+  annotation           : 0.01200…0.05200 s
+  beklenen kayıklık    : +325.3 / -325.3 örnek — 512 örneklik Hann rampasının yarı-güç noktası
+  blok=512  (çizilen eğri): 0.01237…0.05163 s  fark +0.373 / -0.373 ms  (+382 / -382 örnek)
+  blok=32   (ince ızgara): 0.01234…0.05170 s  fark +0.345 / -0.296 ms  (+353 / -303 örnek)
+  blok ızgarası etkisi : 30 / 79 örnek — 512 örneklik blok 512 örneklik rampayı tek bloğa sıkıştırıp kenarı dışarı iter
+  TAMAM: ince ızgarada kayıklık rampanın yarı-güç noktasına yakınsıyor;
+         kalan fark yalnızca blok ızgarası çözünürlüğü, sistematik hata yok
+
+SONUÇ: tüm kontroller geçti

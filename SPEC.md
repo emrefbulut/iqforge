@@ -184,6 +184,36 @@ Kayıt bazında böl, pencere bazında değil. Aksi halde komşu pencereler hem
 eğitim hem test setine düşer ve doğruluk yapay olarak şişer. Bu kural
 ihlal edilmemeli.
 
+**Kayıt bazında bölme yapılamıyorsa `build` HATA VERSİN.** Pencere bazlı
+bölmeye sessizce düşmek yasaktır. Sessiz geri düşüş, kullanıcıya doğru
+çalışıyormuş gibi görünen ama test doğruluğu şişmiş bir veri seti üretir —
+bu, aracın üretebileceği en zararlı çıktıdır, çünkü hata sonuçlara bakarak
+fark edilmez.
+
+Hata verilecek durumlar:
+
+- Girdide tek bir kayıt dosyası var (bir split'e ayıracak ikinci kayıt yok).
+- Bir sınıfın kayıt sayısı, istenen split oranlarıyla o sınıfa boş olmayan
+  her split'i dolduramayacak kadar az.
+
+Hata mesajı hem sorunu hem çözümü söylemeli. Örnek:
+
+```
+Kayıt bazında katmanlı bölme yapılamıyor: 'bpsk' sınıfında yalnızca 1 kayıt
+dosyası var, 0.7/0.15/0.15 bölmesi için en az 3 gerekli.
+
+SPEC §5.6 gereği aynı kayıttan gelen pencereler aynı split'e gitmeli; pencere
+bazlı bölmeye düşmek test doğruluğunu yapay olarak şişirir.
+
+Şunlardan birini yapın:
+  - her sınıf için daha fazla kayıt dosyası verin (klasör girdisi kullanın)
+  - --split oranlarını azaltın, örn. --split 0.5,0.25,0.25
+  - tek kayıtla yalnızca eğitim seti üretin: --split 1.0,0,0
+```
+
+`--split 1.0,0,0` boş val/test üretmek isteyen kullanıcı için açık bir kaçış
+yoludur; bu bilinçli bir seçim olduğu için hata verilmez.
+
 ### 5.7 Disk formatı
 
 ```
@@ -274,13 +304,19 @@ sigkit/
     test_splitting.py
     test_storage.py
   examples/
-    sample.sigmf-meta     küçük sentetik örnek kayıt
-    sample.sigmf-data
+    bpsk_01.sigmf-meta    sekiz küçük sentetik kayıt: dört bpsk, dört qpsk
+    bpsk_01.sigmf-data    (bpsk_01…bpsk_04, qpsk_01…qpsk_04)
+    ...
 ```
 
-`examples/` içindeki örnek kaydı sen üret: birkaç saniyelik, iki farklı
-modülasyonlu sentetik sinyal, annotation'larıyla birlikte, 5 MB'ın altında.
-Bu dosya kritik — kullanıcı donanım olmadan aracı deneyebilmeli.
+`examples/` içindeki örnek kayıtları sen üret: her biri kısa, tek modülasyonlu,
+annotation'larıyla birlikte, toplamı 5 MB'ın altında. Bu dosyalar kritik —
+kullanıcı donanım olmadan aracı deneyebilmeli.
+
+**Neden tek dosya değil birden fazla:** §5.6 kayıt bazında bölme istiyor. Tek
+kayıt dosyası olsaydı bu kural örnek veriyle sınanamaz, `build` da sessizce
+pencere bazlı bölmeye düşebilirdi. Sınıf başına dört kayıt, 0.7/0.15/0.15
+bölmesinin her üç split'i de boş olmayacak şekilde doldurmasına yeter.
 
 ---
 
