@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.table import Table
 
 from sigkit import __version__
+from sigkit.display import render_inspect
 from sigkit.io import Recording, SigkitError, load
 
 app = typer.Typer(
@@ -99,6 +100,32 @@ def info(
         console.print(_render_annotations(rec))
     else:
         console.print("[dim]Kayıtta annotation yok.[/]")
+
+
+@app.command()
+def inspect(
+    path: Annotated[Path, typer.Argument(help="SigMF kaydı (.sigmf-meta veya kayıt adı)")],
+    start: Annotated[int, typer.Option("--start", help="Kaçıncı örnekten başlasın")] = 0,
+    samples: Annotated[int, typer.Option("--samples", help="Kaç örnek gösterilsin")] = 262_144,
+    nfft: Annotated[int, typer.Option("--nfft", help="FFT uzunluğu")] = 1024,
+    height: Annotated[
+        int | None, typer.Option("--height", help="Spektrogram yüksekliği (karakter satırı)")
+    ] = None,
+) -> None:
+    """Terminalde spektrogram ve zaman ekseninde güç grafiği çizer."""
+    try:
+        rec = load(path)
+        data = rec.read(start=start, count=samples)
+        rows = height if height is not None else max(8, min(24, console.size.height - 10))
+        panel = render_inspect(rec, data, start, nfft, width=console.size.width, height=rows)
+    except SigkitError as exc:
+        err_console.print(f"[bold red]Hata:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+    except ValueError as exc:
+        err_console.print(f"[bold red]Hata:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(panel)
 
 
 @app.command()

@@ -1,0 +1,17 @@
+PNG yazıldı: artifacts\spectrogram_default.png
+pencere: örnek 0…262144 (0.0005…0.2555 s), nfft=1024
+
+--- referans ton (+100 kHz) ---
+  matplotlib (tam çözünürlük): tepe +100.000 kHz  (bin 1000 Hz)
+  terminal (havuzlanmış)     : tepe satırı +96.0 kHz  (satır yüksekliği ~21.3 kHz)
+  TAMAM: tam çözünürlüklü tepe +100 kHz'te (bir bin içinde)
+  TAMAM: terminal tepe satırı +100 kHz'i içeriyor
+
+--- burst zaman aralıkları ---
+  bpsk: annotation 0.0250…0.2250 s  (-243.2…-156.8 kHz)
+      matplotlib ölçümü : 0.0250…0.2250 s  (fark +0.0 / +0.0 ms)
+      terminal ölçümü   : 0.0267…0.2232 s
+      TAMAM: 5 ms tolerans içinde
+  qpsk: görüntülenen pencerenin dışında, atlandı
+
+SONUÇ: tüm kontroller geçti

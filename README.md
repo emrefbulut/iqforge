@@ -3,7 +3,7 @@
 SDR ile yakalanmış ham RF kayıtlarını (SigMF) makine öğrenmesinde kullanılabilir
 etiketli veri setlerine çeviren komut satırı aracı.
 
-> Geliştirme aşamasında — Faz 1 (iskelet + SigMF okuma + `info`) tamamlandı.
+> Geliştirme aşamasında — Faz 2 (`info` + terminal spektrogramı) tamamlandı.
 > Ayrıntılı README Faz 5'te yazılacak; yol haritası için [SPEC.md](SPEC.md).
 
 ## Hızlı deneme
@@ -11,7 +11,13 @@ etiketli veri setlerine çeviren komut satırı aracı.
 ```bash
 uv sync --group dev
 uv run sigkit info examples/sample.sigmf-meta
+uv run sigkit inspect examples/sample.sigmf-meta
 ```
+
+`inspect` spektrogramı Unicode yarım blok karakteriyle çizer ve tüm bilgiyi
+**renkte** taşır. Çıktıyı bir dosyaya yönlendirirseniz `rich` renkleri kapatır ve
+geriye tekdüze bir blok kalır; renkli kaydetmek için
+`scripts/capture_terminal.py` kullanın.
 
 `examples/sample.sigmf-meta` paketle gelen sentetik kayıttır; donanım gerektirmez.
 İçinde iki modülasyonlu burst (BPSK, QPSK) ve merkez frekanstan tam **+100 kHz**
@@ -20,6 +26,20 @@ kaymış sürekli bir referans ton bulunur. Referans ton ayrı bir annotation
 
 İki burst yalnızca modülasyon türüyle ayrışır: sembol hızı (64 kBd), bant
 genişliği (86.4 kHz), süre ve ortalama güç ikisinde de aynıdır.
+
+## Doğrulama çıktıları
+
+`artifacts/` altındaki dosyalar faz doğrulamalarının kalıcı kayıtlarıdır:
+
+| Dosya | İçerik |
+|---|---|
+| `inspect_default.{ansi.txt,svg}` | `sigkit inspect` varsayılan penceresi (262144 örnek), renkleriyle |
+| `inspect_full.{ansi.txt,svg}` | Kaydın tamamı (512000 örnek) |
+| `spectrogram_default.png` | Aynı varsayılan pencerenin matplotlib karşılığı |
+| `spectrogram_full.png` | Kaydın tamamının matplotlib karşılığı |
+| `verify_*.txt` | `scripts/verify_spectrogram.py` sayısal karşılaştırma raporu |
+
+`.ansi.txt` dosyaları terminalde `cat` ile, `.svg` dosyaları tarayıcıda görüntülenir.
 
 ## Bilinen sınırlamalar
 
