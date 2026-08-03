@@ -182,10 +182,22 @@ def test_example_reference_tone_is_exactly_plus_100_khz() -> None:
     assert ref.sample_count == rec.num_samples
     assert (ref.freq_lower_edge + ref.freq_upper_edge) / 2 - rec.center_frequency == 100_000.0
 
-    # Modülasyonlu burstlerin olmadığı, yalnız tonun bulunduğu bir bölge seç.
-    quiet = rec.read(start=470_000, count=32_768)
+    # Modülasyonlu burstlerin bittiği, yalnız tonun bulunduğu bölge (son 32768 örnek).
+    quiet = rec.read(start=rec.num_samples - 32_768, count=32_768)
     spectrum = np.abs(np.fft.fftshift(np.fft.fft(quiet)))
     freqs = np.fft.fftshift(np.fft.fftfreq(quiet.size, d=1.0 / rec.sample_rate))
-    peak_offset = freqs[int(np.argmax(spectrum))]
+    bin_width = rec.sample_rate / quiet.size
 
-    assert peak_offset == pytest.approx(100_000.0, abs=rec.sample_rate / quiet.size)
+    # Tepe İŞARETLİ olarak +100 kHz'te olmalı. I/Q yer değiştirirse (x -> j*conj(x))
+    # ton -100 kHz'e taşınır; bu yüzden |frekans| değil, işaretli frekans kontrol edilir.
+    peak_offset = freqs[int(np.argmax(spectrum))]
+    assert peak_offset == pytest.approx(100_000.0, abs=bin_width)
+    assert peak_offset > 0, f"Referans ton negatif frekansta bulundu ({peak_offset:.0f} Hz)"
+
+    # Ayna bin (-100 kHz) belirgin biçimde zayıf olmalı: I/Q takasına karşı
+    # tek başına yeterli olan asıl kontrol budur.
+    power_plus = spectrum[int(np.argmin(np.abs(freqs - 100_000.0)))]
+    power_minus = spectrum[int(np.argmin(np.abs(freqs + 100_000.0)))]
+    assert power_plus > 100.0 * power_minus, (
+        f"+100 kHz / -100 kHz güç oranı yetersiz: {power_plus / power_minus:.1f}x"
+    )

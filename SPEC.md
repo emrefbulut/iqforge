@@ -84,8 +84,10 @@ sigkit inspect <path> [--start N] [--samples N] [--nfft 1024]
 sigkit build <input> -o <output_dir>
               [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
-              [--split 0.7,0.15,0.15] [--seed 42]
+              [--exclude-label <label>] [--split 0.7,0.15,0.15] [--seed 42]
               [--repr {iq2ch,complex,magphase}] [--normalize/--no-normalize]
+    --exclude-label: bu etikete sahip annotation'lar etiketleme sırasında hiç
+              dikkate alınmaz. Yinelenebilir. Varsayılan: `ref_tone`. Ayrıntı 5.3.
     <input> tek bir .sigmf-meta dosyası VEYA içinde birden fazla kayıt olan
     bir klasör olabilir. Klasörse özyinelemeli tarar.
     Çıktı: <output_dir> içine shard dosyaları + manifest.json
@@ -133,6 +135,28 @@ Pencere sayısı = `floor((N - window) / stride) + 1`
 - `dirname`: kaydın bulunduğu klasörün adı etiket olur. Cihaz sınıflandırma
   veri setlerinde (AirID, ORACLE) yaygın düzen budur.
 - `csv`: `--label-file` ile verilen CSV. Sütunlar: `filename,label`.
+
+**Not — zamanda örtüşen annotation'lar ve `--exclude-label`.**
+Yukarıdaki `annotations` kuralı yalnızca zaman eksenine bakar. Frekansta ayrık
+ama zamanda örtüşen iki sinyal varsa (örneğin `examples/sample` kaydında kayıt
+boyunca süren `ref_tone` ile aynı anda var olan `bpsk`/`qpsk` burstleri) bir
+pencere birden fazla annotation aralığına düşer ve bu kural hangisinin
+kastedildiğini söyleyemez.
+
+Bu belirsizlik "en dar aralık kazanır" gibi bir heuristic'le **çözülmez.**
+Böyle bir kural doğru cevabı tahmin ediyormuş gibi görünür, oysa aracın
+frekans boyutunu hiç kullanmadığı gerçeğini gizler; başka bir kayıtta sessizce
+yanlış etiket üretir. Bunun yerine sorun açıkça ele alınır: `--exclude-label`
+ile belirtilen etiketler etiketleme sırasında hiç dikkate alınmaz. Varsayılan
+değer `ref_tone`'dur, çünkü paketle gelen örnek kayıttaki referans ton bir
+sınıf değil, ölçüm referansıdır.
+
+Bir pencere `--exclude-label` uygulandıktan sonra hâlâ birden fazla annotation
+aralığına düşüyorsa etiketlenemez sayılır ve atılır; sessizce birini seçme.
+Kaç pencerenin bu nedenle atıldığı `build` çıktısında raporlanmalı.
+
+Frekans-farkındalıklı etiketleme (`core:freq_lower_edge`/`core:freq_upper_edge`
+kullanarak zaman-frekans karolarına ayırma) v0 kapsamı dışındadır.
 
 ### 5.4 Temsil (`--repr`)
 

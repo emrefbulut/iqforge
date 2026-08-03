@@ -10,6 +10,12 @@ Kaydın içeriği:
   * QPSK bursti  — merkez frekanstan +250 kHz kaymış, 0.2625 s … 0.4625 s.
   * Düşük seviyeli kompleks Gauss gürültüsü.
 
+İki burst **yalnızca modülasyon türüyle** ayrışır: sembol hızı (64 kBd), RRC
+roll-off (beta=0.35), dolayısıyla işgal edilen bant genişliği (86.4 kHz), süre
+(204800 örnek) ve ortalama güç ikisinde de aynıdır. Yalnızca taşıyıcı ofseti
+farklıdır. Böylece sınıflandırıcı bant genişliği veya güç gibi kestirme
+ipuçlarıyla değil, gerçekten takımyıldız yapısıyla ayırmak zorunda kalır.
+
 Örnekleme hızı bilerek 1.024 MHz seçilmiştir: 1024 noktalı FFT'de bin aralığı
 tam 1 kHz olur, böylece +100 kHz'lik referans ton tam olarak +100. bine düşer.
 
@@ -35,13 +41,22 @@ NUM_SAMPLES = 512_000  # 0.5 s
 REF_TONE_OFFSET = 100_000.0  # Hz — bilinen referans sinyal
 REF_TONE_AMPLITUDE = 0.35
 
+# İki burst için ortak parametreler: aynı sembol hızı ve aynı roll-off, yani
+# aynı bant genişliği; aynı süre; aynı ortalama güç. Tek fark modülasyon türü.
+SYMBOL_RATE = 64_000.0  # Bd
+RRC_BETA = 0.35
+BURST_RMS = 0.30  # her iki burst de bu ortalama güce normalize edilir
+BURST_COUNT = 204_800  # örnek — her iki burst için aynı
+BURST_RAMP = 512  # örnek — zarf yükselme/düşme süresi
+
+#: İşgal edilen bant genişliği (Hz); annotation frekans sınırları buradan gelir.
+OCCUPIED_BW = SYMBOL_RATE * (1.0 + RRC_BETA)
+
 BPSK_OFFSET = -200_000.0
-BPSK_START, BPSK_COUNT = 25_600, 204_800
-BPSK_SYMBOL_RATE = 64_000.0
+BPSK_START = 25_600
 
 QPSK_OFFSET = 250_000.0
-QPSK_START, QPSK_COUNT = 268_800, 204_800
-QPSK_SYMBOL_RATE = 128_000.0
+QPSK_START = 268_800
 
 NOISE_SIGMA = 0.02
 PEAK_TARGET = 0.9
@@ -81,17 +96,28 @@ def rrc_taps(sps: int, span: int = 8, beta: float = 0.35) -> np.ndarray:
     return taps / np.sqrt(np.sum(taps**2))
 
 
-def _shaped_burst(
-    symbols: np.ndarray, sps: int, length: int, rng: np.random.Generator
-) -> np.ndarray:
-    """Sembolleri RRC ile şekillendirip istenen uzunlukta bir burst döndürür."""
-    del rng  # şekillendirme deterministik; semboller çağıran tarafından üretilir
+def _shaped_burst(symbols: np.ndarray, sps: int, length: int) -> np.ndarray:
+    """Sembolleri RRC ile şekillendirip istenen uzunlukta bir burst döndürür.
+
+    Burst, kenarları yumuşatılmış zarfla çarpılır ve ortalama gücü tam olarak
+    `BURST_RMS**2` olacak şekilde normalize edilir. Böylece farklı modülasyonlar
+    birebir aynı güçte olur.
+
+    Args:
+        symbols: Kompleks sembol dizisi.
+        sps: Sembol başına örnek sayısı.
+        length: İstenen burst uzunluğu (örnek).
+
+    Returns:
+        `length` uzunluğunda, ortalama gücü `BURST_RMS**2` olan complex128 dizi.
+    """
     upsampled = np.zeros(len(symbols) * sps, dtype=np.complex128)
     upsampled[::sps] = symbols
-    shaped = np.convolve(upsampled, rrc_taps(sps), mode="same")
+    shaped = np.convolve(upsampled, rrc_taps(sps, beta=RRC_BETA), mode="same")
     if len(shaped) < length:
         shaped = np.pad(shaped, (0, length - len(shaped)))
-    return shaped[:length]
+    burst = shaped[:length] * _envelope(length, BURST_RAMP)
+    return burst * (BURST_RMS / np.sqrt(np.mean(np.abs(burst) ** 2)))
 
 
 def _envelope(length: int, ramp: int) -> np.ndarray:
@@ -112,24 +138,21 @@ def build_signal() -> np.ndarray:
     # Referans ton: merkez frekanstan tam +100 kHz, kaydın tamamı boyunca.
     x += REF_TONE_AMPLITUDE * np.exp(2j * np.pi * REF_TONE_OFFSET * t)
 
-    # BPSK bursti
-    sps = int(round(SAMPLE_RATE / BPSK_SYMBOL_RATE))
-    n_sym = BPSK_COUNT // sps + 8
-    bits = rng.integers(0, 2, n_sym)
-    bpsk = _shaped_burst(2.0 * bits - 1.0 + 0j, sps, BPSK_COUNT, rng)
-    bpsk *= _envelope(BPSK_COUNT, 512)
-    seg = slice(BPSK_START, BPSK_START + BPSK_COUNT)
-    x[seg] += 0.55 * bpsk * np.exp(2j * np.pi * BPSK_OFFSET * t[seg])
+    # Her iki burst de aynı sembol hızında, aynı uzunlukta ve aynı güçte.
+    sps = int(round(SAMPLE_RATE / SYMBOL_RATE))
+    n_sym = BURST_COUNT // sps + 8
 
-    # QPSK bursti
-    sps = int(round(SAMPLE_RATE / QPSK_SYMBOL_RATE))
-    n_sym = QPSK_COUNT // sps + 8
+    # BPSK: takımyıldız {-1, +1}
+    bits = rng.integers(0, 2, n_sym)
+    bpsk = _shaped_burst(2.0 * bits - 1.0 + 0j, sps, BURST_COUNT)
+    seg = slice(BPSK_START, BPSK_START + BURST_COUNT)
+    x[seg] += bpsk * np.exp(2j * np.pi * BPSK_OFFSET * t[seg])
+
+    # QPSK: takımyıldız {e^{j(pi/4 + k*pi/2)}}
     quad = rng.integers(0, 4, n_sym)
-    qpsk_syms = np.exp(1j * (np.pi / 4.0 + quad * np.pi / 2.0))
-    qpsk = _shaped_burst(qpsk_syms, sps, QPSK_COUNT, rng)
-    qpsk *= _envelope(QPSK_COUNT, 512)
-    seg = slice(QPSK_START, QPSK_START + QPSK_COUNT)
-    x[seg] += 0.55 * qpsk * np.exp(2j * np.pi * QPSK_OFFSET * t[seg])
+    qpsk = _shaped_burst(np.exp(1j * (np.pi / 4.0 + quad * np.pi / 2.0)), sps, BURST_COUNT)
+    seg = slice(QPSK_START, QPSK_START + BURST_COUNT)
+    x[seg] += qpsk * np.exp(2j * np.pi * QPSK_OFFSET * t[seg])
 
     # Gürültü tabanı
     x += NOISE_SIGMA * (rng.standard_normal(NUM_SAMPLES) + 1j * rng.standard_normal(NUM_SAMPLES))
@@ -195,26 +218,24 @@ def write_record(samples: np.ndarray, out_dir: Path, name: str) -> Path:
             ),
         },
     )
-    meta.add_annotation(
-        BPSK_START,
-        BPSK_COUNT,
-        metadata={
-            sigmf.LABEL_KEY: "bpsk",
-            sigmf.FREQ_LOWER_EDGE_KEY: CENTER_FREQ + BPSK_OFFSET - BPSK_SYMBOL_RATE * 0.675,
-            sigmf.FREQ_UPPER_EDGE_KEY: CENTER_FREQ + BPSK_OFFSET + BPSK_SYMBOL_RATE * 0.675,
-            sigmf.COMMENT_KEY: "BPSK, 64 kBd, RRC beta=0.35",
-        },
+    burst_comment = (
+        f"{SYMBOL_RATE / 1e3:.0f} kBd, RRC beta={RRC_BETA}, "
+        f"bant genişliği {OCCUPIED_BW / 1e3:.1f} kHz, ortalama güç {BURST_RMS**2:.4f}"
     )
-    meta.add_annotation(
-        QPSK_START,
-        QPSK_COUNT,
-        metadata={
-            sigmf.LABEL_KEY: "qpsk",
-            sigmf.FREQ_LOWER_EDGE_KEY: CENTER_FREQ + QPSK_OFFSET - QPSK_SYMBOL_RATE * 0.675,
-            sigmf.FREQ_UPPER_EDGE_KEY: CENTER_FREQ + QPSK_OFFSET + QPSK_SYMBOL_RATE * 0.675,
-            sigmf.COMMENT_KEY: "QPSK, 128 kBd, RRC beta=0.35",
-        },
-    )
+    for label, offset, start in (
+        ("bpsk", BPSK_OFFSET, BPSK_START),
+        ("qpsk", QPSK_OFFSET, QPSK_START),
+    ):
+        meta.add_annotation(
+            start,
+            BURST_COUNT,
+            metadata={
+                sigmf.LABEL_KEY: label,
+                sigmf.FREQ_LOWER_EDGE_KEY: CENTER_FREQ + offset - OCCUPIED_BW / 2.0,
+                sigmf.FREQ_UPPER_EDGE_KEY: CENTER_FREQ + offset + OCCUPIED_BW / 2.0,
+                sigmf.COMMENT_KEY: f"{label.upper()}, {burst_comment}",
+            },
+        )
 
     meta.tofile(str(meta_path), skip_validate=False, pretty=True)
     return meta_path
@@ -243,6 +264,18 @@ def main() -> None:
     print(f"yazıldı: {data_path} ({data_path.stat().st_size / 1e6:.2f} MB)")
     print(f"örnek sayısı: {samples.size}, süre: {samples.size / SAMPLE_RATE:.4f} s")
     print(f"referans ton: merkez {REF_TONE_OFFSET:+.0f} Hz")
+    print(
+        f"burstler: {SYMBOL_RATE / 1e3:.0f} kBd, "
+        f"bant genişliği {OCCUPIED_BW / 1e3:.1f} kHz, {BURST_COUNT} örnek (her ikisi de)"
+    )
+    for label, start in (("bpsk", BPSK_START), ("qpsk", QPSK_START)):
+        seg = samples[start : start + BURST_COUNT]
+        t0, t1 = start / SAMPLE_RATE, (start + BURST_COUNT) / SAMPLE_RATE
+        print(
+            f"  {label}: örnek {start}..{start + BURST_COUNT} "
+            f"({t0:.4f}..{t1:.4f} s), segment gücü {np.mean(np.abs(seg) ** 2):.6f} "
+            f"(ton ve gürültü dahil — ikisinde de aynı)"
+        )
 
 
 if __name__ == "__main__":
