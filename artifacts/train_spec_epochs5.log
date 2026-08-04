@@ -1,0 +1,9 @@
+epoch   1  kayıp 0.6960  eğitim 52.50%  val 50.00%
+epoch   2  kayıp 0.6764  eğitim 58.75%  val 50.00%
+epoch   3  kayıp 0.6529  eğitim 66.88%  val 50.00%
+epoch   4  kayıp 0.6247  eğitim 72.50%  val 50.00%
+epoch   5  kayıp 0.5919  eğitim 81.25%  val 62.50%
+model: 13490 eğitilebilir parametre (bütçe 50000)  eğitim tohumu: 0
+test doğruluğu: 50.00%
+  bpsk: 100.00%
+  qpsk: 0.00%

@@ -403,6 +403,33 @@ uv run --extra torch iqforge train /tmp/ds --epochs 5
 Sentetik veride eğitim doğruluğu %90'ın üstüne çıkmalı. Çıkmıyorsa veri
 pipeline'ında hata var demektir — durup nedenini bul, hyperparameter oynama.
 
+**Ölçülen sonuç.** 5 epoch'ta eğitim doğruluğu %81.25'te kalıyor; eğri
+monoton yükseliyor ve 20 epoch'ta %100'e ulaşıyor. Yani %90 eşiğinin altında
+kalmasının nedeni yakınsama hızı, boru hattı hatası değil.
+
+**Test doğruluğu bu örnek veri setinde ~%50'dir ve bu beklenen sonuçtur.**
+`examples/` her (sınıf, taşıyıcı ofset) çifti için tek kayıt içerir. Split
+içinde ofsetin etiketi ele vermemesi için bir ofsetin tüm kayıtları aynı
+split'e gitmek zorundadır (§5.6), dolayısıyla train ile test hiçbir ofseti
+paylaşamaz ve model hiç görmediği taşıyıcı frekanslarında değerlendirilir.
+Model o koşulda sabit sınıf tahmin eder; sınıf bazında doğruluk 100%/0%
+biçiminde çıkar.
+
+Bunun bir boru hattı hatası OLMADIĞI kontrol deneyiyle gösterilmiştir
+(`scripts/control_shared_offsets.py`): taşıyıcı ofseti tüm kayıtlarda
+sabitlendiğinde, eğitimde hiç görülmemiş kayıtlar üzerinde test doğruluğu üç
+eğitim tohumunda da %100 çıkar. Etiketleme, pencereleme, kayıt bazlı bölme ve
+`IQForgeDataset` doğru çalışıyor demektir.
+
+Örnek veri setinin taşıyıcıya genelleme yeteneğini ölçebilmesi için ofset
+başına en az iki kayıt gerekir; bu v0 kapsamı dışındadır.
+
+**Tohum protokolü.** Bölme tohumu (`build --seed`) ile eğitim tohumu
+(`train --seed`) ayrıdır ve karıştırılmamalıdır: ilki veri setinin içeriğini,
+ikincisi yalnızca ağırlık ilklendirmesi ile batch sırasını belirler. Faz 4
+sonuçları 5 bölme × 3 eğitim tohumu ızgarasıyla raporlanır
+(`scripts/run_seed_grid.py`, çıktılar `artifacts/train_seed_grid.*`).
+
 ### Faz 5 — Paketleme ve dokümantasyon
 README (kurulum, 3 komutluk hızlı başlangıç, örnek çıktı), MIT lisansı,
 GitHub Actions CI (lint + test, Python 3.11 ve 3.12).

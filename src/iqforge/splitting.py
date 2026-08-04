@@ -109,47 +109,62 @@ def _assign_balanced(
     """Katmanlı bölmeyi, rahatsız edici değişkeni split'lere yayarak yapar.
 
     Her sınıfın split başına kayıt sayısı `_allocate` ile sabittir — katmanlama
-    bozulmaz. Değişen yalnızca HANGİ kaydın hangi split'e gittiğidir: kayıtlar
-    grup grup dönüşümlü işlenir ve her kayıt, kendi grubunun en az temsil
-    edildiği split'e yerleştirilir.
+    bozulmaz. Değişen yalnızca HANGİ kaydın hangi split'e gittiğidir.
 
-    Grup sayaçları sınıflar arasında paylaşılır. Bu kritik: ilk sınıf train'e
-    hangi grupları koyduysa, ikinci sınıf onları görüp diğer grupları tercih
-    eder ve split'ler grup açısından birbirini tamamlar.
+    Hedef: **bir split'in içinde grup ile etiket bağımsız olsun.** Bunun için bir
+    grubun tüm kayıtları, sınıf ayrımı olmaksızın aynı split'e yerleştirilir;
+    gruplar split'lere tur tur dağıtılır.
+
+    Bu kural şart, çünkü tersi felakettir: gruplar sınıflar arasında
+    tamamlayıcı dağıtılırsa (bpsk train'de pozitif ofsetleri, qpsk negatifleri
+    alırsa) grup, split İÇİNDE etiketi birebir tahmin eder. Model o kestirmeyi
+    öğrenir, eğitimde %100 yapar ve ilişki başka split'te tersine döndüğü için
+    testte %0'a düşer — şans seviyesinin de altına.
+
+    Grup başına yalnızca bir sınıfın kaydı varsa bu garanti verilemez; kalan
+    kayıtlar kapasitesi en çok olan split'e konur ve `balance_warnings` durumu
+    bildirir.
     """
-    assignment: dict[str, str] = {}
     remaining: dict[tuple[str, int], int] = {}
     for label, records in by_label.items():
         counts = _allocate(len(records), ratios, active)
         for i in active:
             remaining[(label, i)] = counts[i]
 
-    group_counts: dict[tuple[int, str], int] = defaultdict(int)
+    # cell[grup][etiket] = o gruptaki, o etikete sahip kayıtlar
+    cell: dict[str, dict[str, list[str]]] = defaultdict(dict)
+    for label, records in by_label.items():
+        for record_id in records:
+            cell[groups[record_id]].setdefault(label, []).append(record_id)
+    for buckets in cell.values():
+        for label in buckets:
+            buckets[label] = _shuffled(buckets[label], rng)
 
-    for label in sorted(by_label):
-        buckets: dict[str, list[str]] = defaultdict(list)
-        for record_id in by_label[label]:
-            buckets[groups[record_id]].append(record_id)
-        queues = {key: _shuffled(values, rng) for key, values in buckets.items()}
-
-        # Gruplar arasında dönüşümlü ilerle: hiçbir grup ardışık yerleşmesin.
-        order: list[str] = []
-        rotation = _shuffled(list(queues), rng)
-        while any(queues[g] for g in rotation):
-            for group in rotation:
-                if queues[group]:
-                    order.append(queues[group].pop(0))
-
-        for record_id in order:
-            group = groups[record_id]
-            candidates = [i for i in active if remaining[(label, i)] > 0]
-            best = min(
-                candidates,
-                key=lambda i: (group_counts[(i, group)], -remaining[(label, i)], i),
+    assignment: dict[str, str] = {}
+    for group in _shuffled(list(cell), rng):
+        buckets = cell[group]
+        while any(buckets.values()):
+            present = [label for label, records in buckets.items() if records]
+            # Bir "tur" = her etiketten bir kayıt. Turu bütün olarak alabilen
+            # split tercih edilir; böylece grup split içinde etiketi ele vermez.
+            rounds = {i: min(remaining[(label, i)] for label in present) for i in active}
+            best = max(
+                active,
+                key=lambda i: (rounds[i], sum(remaining[(label, i)] for label in present), -i),
             )
-            assignment[record_id] = SPLIT_NAMES[best]
-            remaining[(label, best)] -= 1
-            group_counts[(best, group)] += 1
+            if rounds[best] > 0:
+                for label in present:
+                    record_id = buckets[label].pop()
+                    assignment[record_id] = SPLIT_NAMES[best]
+                    remaining[(label, best)] -= 1
+                continue
+
+            # Tam tur alınamıyor: kalanları etiket bazında en boş split'e koy.
+            for label in present:
+                record_id = buckets[label].pop()
+                target = max(active, key=lambda i: (remaining[(label, i)], -i))
+                assignment[record_id] = SPLIT_NAMES[target]
+                remaining[(label, target)] -= 1
 
     return assignment
 
@@ -253,25 +268,54 @@ def balance_warnings(plan: SplitPlan, field_name: str) -> list[str]:
             "Daha kaba bir alan seçin."
         )
 
-    non_empty = [name for name in SPLIT_NAMES if plan.records_in(name)]
-    where: dict[str, set[str]] = defaultdict(set)
-    for record_id, split in plan.assignment.items():
-        where[plan.groups[record_id]].add(split)
+    return warnings
 
-    confined = sorted(g for g in distinct if len(where[g]) == 1)
-    if confined and len(non_empty) > 1:
-        detail = ", ".join(f"{g} -> yalnızca {next(iter(where[g]))}" for g in confined)
-        warnings.append(
-            f"--balance-by '{field_name}': bazı gruplar tek bir split'te kaldı ({detail}). "
-            "O grup için split'ler arası karşılaştırma yapılamaz; daha fazla kayıt gerekir."
-        )
 
-    for name in non_empty:
+def leakage_warnings(plan: SplitPlan, record_labels: dict[str, str], field_name: str) -> list[str]:
+    """Grubun split İÇİNDE etiketi ele verip vermediğini denetler.
+
+    En tehlikeli durum budur: bir split'te her sınıf ayrı gruplara düşerse grup,
+    etiketi birebir tahmin eder. Model o kestirmeyi öğrenir; ilişki başka
+    split'te değiştiğinde doğruluk şans seviyesinin de altına iner.
+
+    Ayrıca eğitimde hiç görülmeyen gruplarla değerlendirme yapılıp yapılmadığı
+    da bildirilir — bu bir hata değil, ama sonuçları okurken bilinmeli.
+
+    Returns:
+        Uyarı metinleri; sorun yoksa boş liste.
+    """
+    if not plan.groups:
+        return []
+
+    warnings: list[str] = []
+    for name in SPLIT_NAMES:
         records = plan.records_in(name)
-        seen = {plan.groups[r] for r in records}
-        if len(seen) == 1 and len(records) > 1:
+        if len(records) < 2:
+            continue
+        by_label: dict[str, set[str]] = defaultdict(set)
+        for record_id in records:
+            by_label[record_labels[record_id]].add(plan.groups[record_id])
+        if len(by_label) < 2:
+            continue
+        if not set.intersection(*by_label.values()):
+            detail = ", ".join(f"{label}={sorted(gs)}" for label, gs in sorted(by_label.items()))
             warnings.append(
-                f"--balance-by '{field_name}': '{name}' split'indeki {len(records)} kaydın "
-                f"tamamı aynı grupta ({next(iter(seen))})."
+                f"SIZINTI RİSKİ — '{name}' split'inde '{field_name}' değeri sınıfları "
+                f"birebir ayırıyor ({detail}). Model etiketi bu alandan okuyabilir; "
+                "doğruluk sayıları güvenilmez. Daha fazla kayıt verin veya "
+                "--balance-by alanını değiştirin."
+            )
+
+    train_groups = {plan.groups[r] for r in plan.records_in("train")}
+    for name in ("val", "test"):
+        records = plan.records_in(name)
+        if not records or not train_groups:
+            continue
+        unseen = {plan.groups[r] for r in records} - train_groups
+        if unseen == {plan.groups[r] for r in records}:
+            warnings.append(
+                f"'{name}' split'indeki tüm kayıtların '{field_name}' değeri eğitimde hiç "
+                f"görülmedi ({sorted(unseen)}). Bu bir dışdeğerleme testidir; doğruluk "
+                "beklenenden düşük çıkabilir ve bu bir hata değildir."
             )
     return warnings

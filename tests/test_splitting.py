@@ -8,6 +8,7 @@ from iqforge.io import IQForgeError
 from iqforge.splitting import (
     SPLIT_NAMES,
     balance_warnings,
+    leakage_warnings,
     parse_ratios,
     stratified_record_split,
 )
@@ -177,30 +178,48 @@ def test_uneven_class_sizes_are_stratified_independently() -> None:
     assert qpsk_per_split == {"train": 2, "val": 1, "test": 1}
 
 
-def test_balancing_spreads_the_nuisance_variable_across_splits() -> None:
-    """--balance-by taşıyıcı ofsetini split'lere yaymalı.
+@pytest.mark.parametrize("seed", range(8))
+def test_group_never_predicts_the_label_within_a_split(seed: int) -> None:
+    """Bir split'in İÇİNDE grup, etiketi tahmin edebilir olmamalı.
 
-    Dengeleme olmadan seed 42, train'e yalnızca pozitif ofsetleri veriyordu;
-    bu bir dağılım kaymasıdır ve Faz 4 doğrulamasını geçersiz kılar.
+    Bu dengelemenin asıl amacı. İhlal edilirse felaket olur: gruplar sınıflar
+    arasında tamamlayıcı dağıtılırsa (train'de bpsk pozitif ofsetleri, qpsk
+    negatifleri alırsa) model kestirmeyi öğrenir, eğitimde %100 yapar ve ilişki
+    başka split'te ters döndüğü için testte %0'a düşer — şansın da altına.
+    Bu gerileme gerçekten yaşandı; test onu kilitliyor.
+    """
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = _offset_groups(records)
+
+    plan = stratified_record_split(records, DEFAULT, seed=seed, record_groups=groups)
+
+    for name in SPLIT_NAMES:
+        in_split = plan.records_in(name)
+        if len(in_split) < 2:
+            continue
+        by_label: dict[str, set[str]] = {}
+        for record_id in in_split:
+            by_label.setdefault(records[record_id], set()).add(groups[record_id])
+        assert set.intersection(*by_label.values()), (
+            f"seed {seed}, '{name}': grup etiketi ele veriyor -> {by_label}"
+        )
+
+
+def test_each_group_stays_in_a_single_split_when_it_has_one_record_per_class() -> None:
+    """Grup başına sınıfta tek kayıt varsa grup bölünemez, bütün olarak yerleşir.
+
+    Bu, yukarıdaki bağımsızlık garantisinin bedelidir: train ile test aynı grubu
+    paylaşamaz. `leakage_warnings` bunu dışdeğerleme uyarısı olarak bildirir.
     """
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
 
     plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
 
-    for name in SPLIT_NAMES:
-        signs = {groups[r][0] for r in plan.records_in(name)}
-        assert signs == {"-", "+"}, f"{name} split'i tek işaretli ofset içeriyor: {signs}"
-
-
-def test_balancing_covers_every_group_in_the_largest_split() -> None:
-    """En büyük split, kapasitesi yettiği ölçüde tüm grupları görmeli."""
-    records = _records({"bpsk": 4, "qpsk": 4})
-    groups = _offset_groups(records)
-
-    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
-
-    assert {groups[r] for r in plan.records_in("train")} == set(OFFSET_GROUPS)
+    where: dict[str, set[str]] = {}
+    for record_id, split in plan.assignment.items():
+        where.setdefault(groups[record_id], set()).add(split)
+    assert all(len(splits) == 1 for splits in where.values()), where
 
 
 def test_balancing_preserves_class_stratification() -> None:
@@ -264,19 +283,39 @@ def test_balance_warning_when_only_one_group_exists() -> None:
     assert any("dengeleme etkisiz" in w for w in warnings)
 
 
-def test_balance_warning_when_a_group_is_confined_to_one_split() -> None:
-    """Tek kayıtlık bir grup zorunlu olarak tek split'te kalır; bu uyarılmalı.
+def test_leakage_warning_when_group_separates_classes_within_a_split() -> None:
+    """Grup bir split'te sınıfları ayırıyorsa yüksek sesle uyarılmalı.
 
-    Uyarı gerekli çünkü o grup için split'ler arası karşılaştırma yapılamaz —
-    ama hata değil, çünkü bölme yine de geçerli ve kayıt bazlıdır.
+    Dengeleme kullanılmadığında (ya da alan sınıfla ilişkiliyse) bu olabilir;
+    kullanıcı doğruluk sayılarına güvenmeden önce bilmeli.
     """
+    records = _records({"bpsk": 2, "qpsk": 2})
+    # Grup etiketle birebir örtüşüyor: en kötü durum.
+    groups = {r: ("g_bpsk" if records[r] == "bpsk" else "g_qpsk") for r in records}
+
+    plan = stratified_record_split(records, (0.5, 0.5, 0.0), seed=42, record_groups=groups)
+    warnings = leakage_warnings(plan, records, "core:hw")
+
+    assert any("SIZINTI RİSKİ" in w for w in warnings)
+
+
+def test_leakage_warning_when_evaluation_groups_are_unseen_in_training() -> None:
+    """Test grubu eğitimde hiç görülmediyse bu dışdeğerlemedir, bildirilmeli."""
     records = _records({"bpsk": 4, "qpsk": 4})
-    groups = {r: ("nadir" if r == "bpsk_00" else "yaygin") for r in records}
+    groups = _offset_groups(records)
 
     plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
-    warnings = balance_warnings(plan, "core:hw")
+    warnings = leakage_warnings(plan, records, "core:freq_lower_edge")
 
-    assert any("tek bir split'te kaldı" in w and "nadir" in w for w in warnings)
+    assert any("eğitimde hiç" in w and "test" in w for w in warnings)
+
+
+def test_no_leakage_warning_without_balancing() -> None:
+    """--balance-by kullanılmadıysa sızıntı denetimi sessiz kalmalı."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    plan = stratified_record_split(records, DEFAULT, seed=42)
+
+    assert leakage_warnings(plan, records, "core:hw") == []
 
 
 def test_balance_warnings_are_empty_when_balancing_works() -> None:

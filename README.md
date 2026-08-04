@@ -118,7 +118,7 @@ visible whether or not you asked for balancing.
 - [x] SigMF reading, metadata inspection
 - [x] Terminal spectrogram
 - [x] Windowing, labelling, recording-level splitting, sharded storage
-- [ ] `torch.utils.data.Dataset` + baseline classifier
+- [x] `torch.utils.data.Dataset` + baseline classifier
 - [ ] Packaging, PyPI release, CI
 - [ ] Live capture from RTL-SDR / HackRF / PlutoSDR
 - [ ] Kitty and iTerm graphics protocols for the inspector

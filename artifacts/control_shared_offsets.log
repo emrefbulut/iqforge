@@ -1,0 +1,16 @@
+kayıt sayısı        : 8 (hepsi +180 kHz ofsetinde)
+train ofsetleri (kHz): [180.0]
+val   ofsetleri (kHz): [180.0]
+test  ofsetleri (kHz): [180.0]
+train ile test PAYLAŞILAN ofset: [180000.0]
+
+eğitim tohumu 0: eğitim 100.00%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+eğitim tohumu 1: eğitim 99.69%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+eğitim tohumu 2: eğitim 99.06%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+
+test doğruluğu: ortalama 100.00%  min 100.00%  maks 100.00%
+
+SONUÇ: taşıyıcı ofseti sabitlenince doğruluk yükseliyor.
+       Boru hattı, etiketleme ve model doğru çalışıyor; examples/
+       üzerindeki ~%50 taşıyıcı ofsetine genelleme sorunudur,
+       pipeline bug'ı değil.

@@ -31,6 +31,7 @@ from iqforge.splitting import (
     SPLIT_NAMES,
     SplitPlan,
     balance_warnings,
+    leakage_warnings,
     parse_ratios,
     stratified_record_split,
 )
@@ -452,6 +453,8 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
     if balance_by is not None:
         for warning in balance_warnings(plan, balance_by):
             console.print(f"[yellow]uyarı[/] {warning}")
+        for warning in leakage_warnings(plan, {k: v.dominant for k, v in work.items()}, balance_by):
+            console.print(f"[bold yellow]uyarı[/] {warning}")
 
     all_labels = sorted({label for item in work.values() for label in item.labels})
     label_map = {label: i for i, label in enumerate(all_labels)}
@@ -637,6 +640,69 @@ def stats(
             records.add_row(*row)
     console.print(records)
     console.print(_render_offset_summary(manifest))
+
+
+@app.command()
+def train(
+    dataset_dir: Annotated[Path, typer.Argument(help="iqforge build ile üretilmiş klasör")],
+    epochs: Annotated[int, typer.Option("--epochs", help="Epoch sayısı")] = 10,
+    batch_size: Annotated[int, typer.Option("--batch-size", help="Batch boyutu")] = 64,
+    seed: Annotated[
+        int, typer.Option("--seed", help="EĞİTİM tohumu (ağırlık init + batch sırası)")
+    ] = 0,
+    learning_rate: Annotated[float, typer.Option("--lr", help="Adam öğrenme oranı")] = 1e-3,
+) -> None:
+    """Basit bir baseline CNN eğitir.
+
+    Amaç doğruluk rekoru değil, veri setinin gerçekten eğitilebilir olduğunu
+    kanıtlamaktır. `--seed` yalnızca eğitimi etkiler; veri setinin bölünmesi
+    `build --seed` ile belirlenir ve burada değiştirilemez.
+    """
+    try:
+        # torch opsiyonel: import yalnızca `train` çağrıldığında yapılır, böylece
+        # info/inspect/build/stats torch olmadan çalışmaya devam eder.
+        from iqforge.models import MAX_PARAMETERS
+        from iqforge.training import train_baseline
+    except ImportError as exc:  # pragma: no cover - torch kurulu değilse
+        err_console.print(
+            "[bold red]Hata:[/] `train` için torch gerekli. Kurulum: "
+            "`uv sync --extra torch` veya `pip install 'iqforge[torch]'`."
+        )
+        raise typer.Exit(code=1) from exc
+
+    def _report(epoch_result: Any) -> None:
+        line = (
+            f"epoch {epoch_result.epoch:>3}  kayıp {epoch_result.train_loss:.4f}  "
+            f"eğitim {epoch_result.train_accuracy:6.2%}"
+        )
+        if epoch_result.val_accuracy is not None:
+            line += f"  val {epoch_result.val_accuracy:6.2%}"
+        console.print(line)
+
+    try:
+        result = train_baseline(
+            dataset_dir,
+            epochs=epochs,
+            batch_size=batch_size,
+            seed=seed,
+            learning_rate=learning_rate,
+            on_epoch=_report,
+        )
+    except IQForgeError as exc:
+        err_console.print(f"[bold red]Hata:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+
+    console.print(
+        f"[dim]model:[/] {result.parameters} eğitilebilir parametre "
+        f"(bütçe {MAX_PARAMETERS})  [dim]eğitim tohumu:[/] {seed}"
+    )
+    if result.test_accuracy is None:
+        console.print("[yellow]test split'i boş — test doğruluğu hesaplanmadı[/]")
+        return
+
+    console.print(f"[bold]test doğruluğu: {result.test_accuracy:.2%}[/]")
+    for name, accuracy in result.test_per_class.items():
+        console.print(f"[dim]  {name}:[/] {accuracy:.2%}")
 
 
 @app.command()
