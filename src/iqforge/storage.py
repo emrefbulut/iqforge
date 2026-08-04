@@ -9,7 +9,7 @@ from typing import Any
 
 import numpy as np
 
-from sigkit.io import SigkitError
+from iqforge.io import IQForgeError
 
 MANIFEST_NAME = "manifest.json"
 
@@ -87,7 +87,7 @@ def write_manifest(
 
     Args:
         root: Veri seti kök klasörü.
-        version: sigkit sürümü.
+        version: iqforge sürümü.
         config: Kullanılan build parametreleri.
         label_map: Etiket -> tamsayı eşlemesi.
         source_files: Kaynak `.sigmf-meta` yolları.
@@ -98,7 +98,7 @@ def write_manifest(
     """
     root.mkdir(parents=True, exist_ok=True)
     manifest = {
-        "sigkit_version": version,
+        "iqforge_version": version,
         "created": dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z"),
         "config": config,
         "label_map": label_map,
@@ -114,18 +114,18 @@ def read_manifest(root: Path) -> dict[str, Any]:
     """Veri setinin manifest'ini okur.
 
     Raises:
-        SigkitError: Klasör veya manifest yoksa, ya da JSON bozuksa.
+        IQForgeError: Klasör veya manifest yoksa, ya da JSON bozuksa.
     """
     path = Path(root) / MANIFEST_NAME
     if not path.exists():
-        raise SigkitError(
-            f"'{root}' bir sigkit veri seti değil: {MANIFEST_NAME} bulunamadı. "
-            "Önce `sigkit build <girdi> -o <klasör>` çalıştırın."
+        raise IQForgeError(
+            f"'{root}' bir iqforge veri seti değil: {MANIFEST_NAME} bulunamadı. "
+            "Önce `iqforge build <girdi> -o <klasör>` çalıştırın."
         )
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise SigkitError(f"'{path}' geçerli JSON değil: {exc}") from exc
+        raise IQForgeError(f"'{path}' geçerli JSON değil: {exc}") from exc
 
 
 def dataset_size_bytes(root: Path) -> int:

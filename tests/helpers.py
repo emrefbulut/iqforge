@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from sigkit.io import SUPPORTED_DATATYPES
+from iqforge.io import SUPPORTED_DATATYPES
 
 
 def write_record(

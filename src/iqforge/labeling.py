@@ -6,10 +6,11 @@ import csv
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-from sigkit.io import Recording, SigkitError
+from iqforge.io import Annotation, IQForgeError, Recording
 
 #: Desteklenen etiket kaynakları (`--labels`).
 LABEL_SOURCES = ("annotations", "dirname", "csv")
@@ -125,16 +126,16 @@ def load_label_csv(path: Path) -> dict[str, str]:
     `filename` alanı yol ayracı içerebilir; eşleştirme dosya adına göre yapılır.
 
     Raises:
-        SigkitError: Dosya yoksa veya beklenen sütunlar eksikse.
+        IQForgeError: Dosya yoksa veya beklenen sütunlar eksikse.
     """
     if not path.exists():
-        raise SigkitError(f"Etiket dosyası bulunamadı: {path}")
+        raise IQForgeError(f"Etiket dosyası bulunamadı: {path}")
 
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fields = set(reader.fieldnames or ())
         if not {"filename", "label"} <= fields:
-            raise SigkitError(
+            raise IQForgeError(
                 f"'{path.name}' içinde 'filename' ve 'label' sütunları olmalı. "
                 f"Bulunan sütunlar: {', '.join(sorted(fields)) or '(yok)'}."
             )
@@ -150,12 +151,12 @@ def label_from_csv(
     """CSV tablosundan kaydın etiketini bulup tüm pencerelere verir.
 
     Raises:
-        SigkitError: Kayıt CSV'de yoksa.
+        IQForgeError: Kayıt CSV'de yoksa.
     """
     candidates = (rec.meta_path.name, rec.meta_path.stem, rec.data_path.name)
     label = next((table[c] for c in candidates if c in table), None)
     if label is None:
-        raise SigkitError(
+        raise IQForgeError(
             f"'{rec.meta_path.name}' etiket CSV'sinde yok. "
             f"CSV'nin 'filename' sütununda şunlardan biri bulunmalı: {', '.join(candidates)}."
         )
@@ -181,6 +182,62 @@ def dominant_label(labels: list[str | None]) -> str | None:
         return None
     best = max(counts.values())
     return sorted(label for label, n in counts.items() if n == best)[0]
+
+
+def labelled_annotation(
+    rec: Recording, label: str, exclude_labels: frozenset[str]
+) -> Annotation | None:
+    """Kayda etiketini veren annotation'ı bulur.
+
+    Önce `core:label` alanı `label` ile eşleşen annotation aranır (annotations
+    kaynağı). Bulunamazsa — `dirname`/`csv` kaynaklarında etiket annotation'dan
+    gelmez — dışlanmamış tek bir annotation varsa o kullanılır.
+
+    Returns:
+        Bulunan `Annotation` veya None.
+    """
+    for annotation in rec.annotations:
+        if annotation.label == label:
+            return annotation
+    usable = [a for a in rec.annotations if a.label not in exclude_labels]
+    return usable[0] if len(usable) == 1 else None
+
+
+def annotation_field_value(rec: Recording, field: str, label: str, exclude: frozenset[str]) -> Any:
+    """Bir kayıttan, dengeleme için kullanılacak metadata alanının değerini okur.
+
+    Alan sırayla şuralarda aranır:
+      1. Kayda etiketini veren annotation'ın ham SigMF sözlüğü.
+      2. `global` bölümü (`core:hw` gibi kayıt geneli alanlar için).
+
+    Args:
+        rec: Açılmış kayıt.
+        field: SigMF anahtarı, ör. `core:freq_lower_edge` veya `core:hw`.
+        label: Kaydın baskın etiketi.
+        exclude: Etiketlemede dışlanan etiketler.
+
+    Returns:
+        Alanın değeri; hiçbir yerde bulunamazsa None.
+    """
+    annotation = labelled_annotation(rec, label, exclude)
+    if annotation is not None and field in annotation.raw:
+        return annotation.raw[field]
+    return rec.global_info.get(field)
+
+
+def carrier_offset_hz(rec: Recording, label: str, exclude: frozenset[str]) -> float | None:
+    """Kaydın burst'ünün merkez frekansa göre taşıyıcı ofsetini verir (Hz).
+
+    Annotation'ın frekans sınırlarının ortası ile capture merkez frekansının
+    farkıdır. Sınırlar veya merkez frekans yoksa None döner.
+    """
+    annotation = labelled_annotation(rec, label, exclude)
+    if annotation is None or rec.center_frequency is None:
+        return None
+    if annotation.freq_lower_edge is None or annotation.freq_upper_edge is None:
+        return None
+    centre = (annotation.freq_lower_edge + annotation.freq_upper_edge) / 2.0
+    return float(centre - rec.center_frequency)
 
 
 def resolve_exclude_labels(values: list[str] | None) -> frozenset[str]:

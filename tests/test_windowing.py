@@ -1,4 +1,4 @@
-"""sigkit.windowing testleri."""
+"""iqforge.windowing testleri."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sigkit.io import SigkitError
-from sigkit.windowing import (
+from iqforge.io import IQForgeError
+from iqforge.windowing import (
     iter_window_batches,
     normalize_windows,
     to_representation,
@@ -47,9 +47,9 @@ def test_window_starts_never_exceed_record() -> None:
 
 def test_validate_window_params_rejects_non_positive() -> None:
     """Sıfır veya negatif pencere/adım açık hata vermeli."""
-    with pytest.raises(SigkitError, match="--window"):
+    with pytest.raises(IQForgeError, match="--window"):
         validate_window_params(0, 512)
-    with pytest.raises(SigkitError, match="--stride"):
+    with pytest.raises(IQForgeError, match="--stride"):
         validate_window_params(1024, -1)
 
 
@@ -115,7 +115,7 @@ def test_magphase_round_trips_to_original() -> None:
 
 def test_unknown_representation_is_explicit() -> None:
     """Tanınmayan temsil desteklenenleri listelemeli."""
-    with pytest.raises(SigkitError) as exc:
+    with pytest.raises(IQForgeError) as exc:
         to_representation(np.zeros((1, 4), dtype=np.complex64), "iq3ch")
     assert "iq2ch" in str(exc.value) and "magphase" in str(exc.value)
 

@@ -1,4 +1,4 @@
-"""sigkit.storage testleri."""
+"""iqforge.storage testleri."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sigkit.io import SigkitError
-from sigkit.storage import (
+from iqforge.io import IQForgeError
+from iqforge.storage import (
     MANIFEST_NAME,
     ShardWriter,
     dataset_size_bytes,
@@ -91,7 +91,7 @@ def test_manifest_round_trip(tmp_path: Path) -> None:
 
     manifest = read_manifest(tmp_path)
 
-    assert manifest["sigkit_version"] == "0.1.0"
+    assert manifest["iqforge_version"] == "0.1.0"
     assert manifest["label_map"] == {"bpsk": 0, "qpsk": 1}
     assert manifest["config"]["window"] == 1024
     assert manifest["splits"]["train"]["count"] == 2
@@ -117,15 +117,15 @@ def test_manifest_is_utf8_and_human_readable(tmp_path: Path) -> None:
 
 def test_missing_manifest_points_at_the_fix(tmp_path: Path) -> None:
     """Manifest yoksa hata ne yapılacağını söylemeli."""
-    with pytest.raises(SigkitError) as exc:
+    with pytest.raises(IQForgeError) as exc:
         read_manifest(tmp_path)
-    assert "sigkit build" in str(exc.value)
+    assert "iqforge build" in str(exc.value)
 
 
 def test_corrupt_manifest_is_reported(tmp_path: Path) -> None:
     """Bozuk JSON sessizce yutulmamalı."""
     (tmp_path / MANIFEST_NAME).write_text("{bozuk", encoding="utf-8")
-    with pytest.raises(SigkitError, match="geçerli JSON değil"):
+    with pytest.raises(IQForgeError, match="geçerli JSON değil"):
         read_manifest(tmp_path)
 
 

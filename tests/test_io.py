@@ -1,4 +1,4 @@
-"""sigkit.io testleri. Tümü sentetik veriyle çalışır, ağ erişimi gerektirmez."""
+"""iqforge.io testleri. Tümü sentetik veriyle çalışır, ağ erişimi gerektirmez."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from helpers import write_record
-from sigkit.io import Annotation, Recording, SigkitError, load
+from iqforge.io import Annotation, IQForgeError, Recording, load
 
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 EXAMPLES = sorted(EXAMPLES_DIR.glob("*.sigmf-meta"))
@@ -65,14 +65,14 @@ def test_partial_read(tmp_path: Path, tone: np.ndarray) -> None:
     assert rec.read(start=4000, count=10_000).size == 96
     assert rec.read(start=rec.num_samples).size == 0
 
-    with pytest.raises(SigkitError, match="sınırlarının dışında"):
+    with pytest.raises(IQForgeError, match="sınırlarının dışında"):
         rec.read(start=-1)
 
 
 def test_unsupported_datatype_is_explicit(tmp_path: Path, tone: np.ndarray) -> None:
     """Desteklenmeyen veri tipi sessizce tahmin edilmez; mesaj eylem içerir."""
     meta = write_record(tmp_path, tone, datatype="cf64_le")
-    with pytest.raises(SigkitError) as exc:
+    with pytest.raises(IQForgeError) as exc:
         load(meta)
     message = str(exc.value)
     assert "cf64_le" in message
@@ -82,18 +82,18 @@ def test_unsupported_datatype_is_explicit(tmp_path: Path, tone: np.ndarray) -> N
 def test_missing_sample_rate_is_an_error(tmp_path: Path, tone: np.ndarray) -> None:
     """Örnekleme hızı yoksa varsayılan uydurulmaz, hata verilir."""
     meta = write_record(tmp_path, tone, sample_rate=None)
-    with pytest.raises(SigkitError, match="core:sample_rate"):
+    with pytest.raises(IQForgeError, match="core:sample_rate"):
         load(meta)
 
 
 def test_missing_files_are_reported(tmp_path: Path, tone: np.ndarray) -> None:
     """Eksik meta/veri dosyaları için ayrı ayrı açık hata verilir."""
-    with pytest.raises(SigkitError, match="metadata dosyası bulunamadı"):
+    with pytest.raises(IQForgeError, match="metadata dosyası bulunamadı"):
         load(tmp_path / "yok.sigmf-meta")
 
     meta = write_record(tmp_path, tone)
     meta.with_suffix(".sigmf-data").unlink()
-    with pytest.raises(SigkitError, match="veri dosyası bulunamadı"):
+    with pytest.raises(IQForgeError, match="veri dosyası bulunamadı"):
         load(meta)
 
 
@@ -102,7 +102,7 @@ def test_truncated_data_file_is_rejected(tmp_path: Path, tone: np.ndarray) -> No
     meta = write_record(tmp_path, tone)
     data = meta.with_suffix(".sigmf-data")
     data.write_bytes(data.read_bytes()[:-3])
-    with pytest.raises(SigkitError, match="bozuk"):
+    with pytest.raises(IQForgeError, match="bozuk"):
         load(meta)
 
 

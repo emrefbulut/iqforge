@@ -1,12 +1,12 @@
 {
     "global": {
-        "core:author": "sigkit",
+        "core:author": "iqforge",
         "core:datatype": "cf32_le",
-        "core:description": "sigkit sentetik \u00f6rnek kayd\u0131 'bpsk_01'. S\u00fcrekli referans ton (merkez +100 kHz), tek BPSK bursti, d\u00fc\u015f\u00fck seviyeli AWGN.",
+        "core:description": "iqforge sentetik \u00f6rnek kayd\u0131 'bpsk_01'. S\u00fcrekli referans ton (merkez +100 kHz), tek BPSK bursti, d\u00fc\u015f\u00fck seviyeli AWGN.",
         "core:hw": "synthetic (scripts/make_example.py)",
         "core:num_channels": 1,
         "core:offset": 0,
-        "core:recorder": "sigkit scripts/make_example.py",
+        "core:recorder": "iqforge scripts/make_example.py",
         "core:sample_rate": 1024000.0,
         "core:sha512": "1787ffa3d89215989a4fd6236dd2a2134dfdeed172763137257e911d169ce4fb3896f68ab6fc6793ee4bc45c0354245450b6c124f9387e4ea8a83d3321c19d87",
         "core:version": "1.0.0"

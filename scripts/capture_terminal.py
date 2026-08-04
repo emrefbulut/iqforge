@@ -1,4 +1,4 @@
-"""`sigkit inspect` çıktısını renkleriyle birlikte artifacts/ altına kaydeder.
+"""`iqforge inspect` çıktısını renkleriyle birlikte artifacts/ altına kaydeder.
 
 Terminal spektrogramı bilgisini tamamen renkte taşır; çıktı bir dosyaya
 yönlendirildiğinde `rich` renkleri kapatır ve geriye tekdüze bir `▀` bloğu
@@ -18,8 +18,8 @@ from pathlib import Path
 
 from rich.console import Console
 
-from sigkit.display import render_inspect
-from sigkit.io import load
+from iqforge.display import render_inspect
+from iqforge.io import load
 
 
 def main() -> None:
@@ -47,7 +47,7 @@ def main() -> None:
     # clear=False şart: varsayılan davranış kayıt tamponunu boşaltır ve ardından
     # gelen save_svg boş bir SVG üretir.
     console.save_text(str(out.with_suffix(".ansi.txt")), styles=True, clear=False)
-    console.save_svg(str(out.with_suffix(".svg")), title=f"sigkit inspect — {rec.meta_path.name}")
+    console.save_svg(str(out.with_suffix(".svg")), title=f"iqforge inspect — {rec.meta_path.name}")
     print(f"yazıldı: {out.with_suffix('.ansi.txt')}")
     print(f"yazıldı: {out.with_suffix('.svg')}")
 

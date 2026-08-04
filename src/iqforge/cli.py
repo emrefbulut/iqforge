@@ -1,4 +1,4 @@
-"""sigkit komut satırı arayüzü."""
+"""iqforge komut satırı arayüzü."""
 
 from __future__ import annotations
 
@@ -12,12 +12,14 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
 
-from sigkit import __version__
-from sigkit.display import render_inspect
-from sigkit.io import META_EXT, Recording, SigkitError, load
-from sigkit.labeling import (
+from iqforge import __version__
+from iqforge.display import render_inspect
+from iqforge.io import META_EXT, IQForgeError, Recording, load
+from iqforge.labeling import (
     LABEL_SOURCES,
     LabelingStats,
+    annotation_field_value,
+    carrier_offset_hz,
     dominant_label,
     label_from_annotations,
     label_from_csv,
@@ -25,14 +27,20 @@ from sigkit.labeling import (
     load_label_csv,
     resolve_exclude_labels,
 )
-from sigkit.splitting import SPLIT_NAMES, SplitPlan, parse_ratios, stratified_record_split
-from sigkit.storage import (
+from iqforge.splitting import (
+    SPLIT_NAMES,
+    SplitPlan,
+    balance_warnings,
+    parse_ratios,
+    stratified_record_split,
+)
+from iqforge.storage import (
     ShardWriter,
     dataset_size_bytes,
     read_manifest,
     write_manifest,
 )
-from sigkit.windowing import (
+from iqforge.windowing import (
     REPRESENTATIONS,
     iter_window_batches,
     normalize_windows,
@@ -119,7 +127,7 @@ def info(
     """SigMF kaydının metadata'sını okunabilir tablo olarak yazdırır."""
     try:
         rec = load(path)
-    except SigkitError as exc:
+    except IQForgeError as exc:
         err_console.print(f"[bold red]Hata:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
@@ -146,7 +154,7 @@ def inspect(
         data = rec.read(start=start, count=samples)
         rows = height if height is not None else max(8, min(24, console.size.height - 10))
         panel = render_inspect(rec, data, start, nfft, width=console.size.width, height=rows)
-    except SigkitError as exc:
+    except IQForgeError as exc:
         err_console.print(f"[bold red]Hata:[/] {exc}")
         raise typer.Exit(code=1) from exc
     except ValueError as exc:
@@ -173,6 +181,8 @@ class _RecordWork:
     indices: np.ndarray
     labels: list[str]
     dominant: str
+    offset_hz: float | None = None
+    group: str | None = None
 
 
 def _collect_inputs(path: Path) -> tuple[list[Path], Path]:
@@ -183,14 +193,14 @@ def _collect_inputs(path: Path) -> tuple[list[Path], Path]:
         hesaplanacağı klasördür.
 
     Raises:
-        SigkitError: Yol yoksa veya hiç kayıt bulunamazsa.
+        IQForgeError: Yol yoksa veya hiç kayıt bulunamazsa.
     """
     if not path.exists():
-        raise SigkitError(f"Girdi bulunamadı: {path}")
+        raise IQForgeError(f"Girdi bulunamadı: {path}")
     if path.is_dir():
         metas = sorted(path.rglob(f"*{META_EXT}"))
         if not metas:
-            raise SigkitError(
+            raise IQForgeError(
                 f"'{path}' içinde (alt klasörler dahil) hiç '*{META_EXT}' dosyası yok."
             )
         return metas, path
@@ -215,9 +225,33 @@ def _label_one(
     if source == "csv":
         assert csv_table is not None  # CLI tarafında doğrulanıyor
         return label_from_csv(rec, starts, csv_table, exclude)
-    raise SigkitError(
+    raise IQForgeError(
         f"Bilinmeyen etiket kaynağı '{source}'. Desteklenenler: {', '.join(LABEL_SOURCES)}."
     )
+
+
+def _group_key(value: Any) -> str:
+    """Dengeleme alanının değerini kararlı bir grup anahtarına çevirir.
+
+    Sayısal değerler 12 anlamlı basamağa yazılır: kayan nokta gürültüsünü
+    (0.1+0.2 gibi) normalize etmeye yeter ama gerçek farkları silmez. Daha az
+    basamak tehlikelidir — 2.45 GHz'lik bir taşıyıcıda 6 basamak yalnızca
+    ~10 kHz çözünürlük verir ve yakın ofsetler sessizce aynı gruba düşer.
+    """
+    if value is None:
+        return "(yok)"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float)):
+        return f"{float(value):.12g}"
+    return str(value)
+
+
+def _format_offset(offset_hz: float | None) -> str:
+    """Taşıyıcı ofsetini okunabilir biçimde verir."""
+    if offset_hz is None:
+        return "—"
+    return f"{offset_hz / 1e3:+.1f} kHz"
 
 
 def _render_split_records(plan: SplitPlan, work: dict[str, _RecordWork]) -> Table:
@@ -226,21 +260,28 @@ def _render_split_records(plan: SplitPlan, work: dict[str, _RecordWork]) -> Tabl
     table.add_column("Split", style="cyan", no_wrap=True)
     table.add_column("Kayıt", style="white")
     table.add_column("Etiket", style="green")
+    table.add_column("Taşıyıcı", justify="right", style="magenta")
     table.add_column("Pencere", justify="right")
+    if plan.groups:
+        table.add_column("Grup", style="yellow")
 
     for split in SPLIT_NAMES:
         records = plan.records_in(split)
         if not records:
-            table.add_row(split, "[dim]— boş —[/]", "", "0")
+            table.add_row(split, "[dim]— boş —[/]", "", "", "0", *([""] if plan.groups else []))
             continue
         for i, record_id in enumerate(records):
             item = work[record_id]
-            table.add_row(
+            row = [
                 split if i == 0 else "",
                 record_id,
                 item.dominant,
+                _format_offset(item.offset_hz),
                 str(len(item.labels)),
-            )
+            ]
+            if plan.groups:
+                row.append(item.group or "—")
+            table.add_row(*row)
     return table
 
 
@@ -267,6 +308,13 @@ def build(  # noqa: PLR0913 — CLI seçenekleri SPEC §4'te tanımlı
         str, typer.Option("--split", help="train,val,test oranları")
     ] = "0.7,0.15,0.15",
     seed: Annotated[int, typer.Option("--seed", help="Deterministik bölme tohumu")] = 42,
+    balance_by: Annotated[
+        str | None,
+        typer.Option(
+            "--balance-by",
+            help="Split'lere yayılacak SigMF alanı, ör. core:freq_lower_edge",
+        ),
+    ] = None,
     representation: Annotated[
         str, typer.Option("--repr", help=f"Temsil: {', '.join(REPRESENTATIONS)}")
     ] = "iq2ch",
@@ -287,10 +335,11 @@ def build(  # noqa: PLR0913 — CLI seçenekleri SPEC §4'te tanımlı
             keep_unlabeled=keep_unlabeled,
             split=split,
             seed=seed,
+            balance_by=balance_by,
             representation=representation,
             normalize=normalize,
         )
-    except SigkitError as exc:
+    except IQForgeError as exc:
         err_console.print(f"[bold red]Hata:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
@@ -307,21 +356,22 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
     keep_unlabeled: bool,
     split: str,
     seed: int,
+    balance_by: str | None,
     representation: str,
     normalize: bool,
 ) -> None:
-    """`build` komutunun boru hattı. Hatalar `SigkitError` olarak yükselir."""
+    """`build` komutunun boru hattı. Hatalar `IQForgeError` olarak yükselir."""
     validate_window_params(window, stride)
     if source not in LABEL_SOURCES:
-        raise SigkitError(
+        raise IQForgeError(
             f"Bilinmeyen etiket kaynağı '{source}'. Desteklenenler: {', '.join(LABEL_SOURCES)}."
         )
     if representation not in REPRESENTATIONS:
-        raise SigkitError(
+        raise IQForgeError(
             f"Bilinmeyen temsil '{representation}'. Desteklenenler: {', '.join(REPRESENTATIONS)}."
         )
     if source == "csv" and label_file is None:
-        raise SigkitError("--labels csv seçildi ama --label-file verilmedi.")
+        raise IQForgeError("--labels csv seçildi ama --label-file verilmedi.")
 
     ratios = parse_ratios(split)
     exclude = resolve_exclude_labels(exclude_label)
@@ -360,24 +410,48 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
         record_id = meta.relative_to(root).as_posix() if meta != root else meta.name
         kept_labels = [window_labels[i] for i in kept]
         assert all(label is not None for label in kept_labels)
+        dominant = dominant_label(window_labels)
+        assert dominant is not None
         work[record_id] = _RecordWork(
             record_id=record_id,
             recording=rec,
             indices=np.asarray(kept, dtype=np.int64),
             labels=kept_labels,  # type: ignore[arg-type]
-            dominant=dominant_label(window_labels),  # type: ignore[arg-type]
+            dominant=dominant,
+            offset_hz=carrier_offset_hz(rec, dominant, exclude),
         )
 
     for note in skipped:
         console.print(f"[yellow]atlandı[/] {note}")
     if not work:
         excluded = ", ".join(sorted(exclude)) or "(yok)"
-        raise SigkitError(
+        raise IQForgeError(
             "Hiçbir kayıttan etiketli pencere çıkmadı. "
             f"Etiket kaynağı '{source}', dışlanan etiketler: {excluded}."
         )
 
-    plan = stratified_record_split({k: v.dominant for k, v in work.items()}, ratios, seed)
+    record_groups: dict[str, str] | None = None
+    if balance_by is not None:
+        missing: list[str] = []
+        record_groups = {}
+        for record_id, item in work.items():
+            value = annotation_field_value(item.recording, balance_by, item.dominant, exclude)
+            if value is None:
+                missing.append(record_id)
+            item.group = _group_key(value)
+            record_groups[record_id] = item.group
+        if missing:
+            console.print(
+                f"[yellow]uyarı[/] --balance-by '{balance_by}' şu kayıtlarda bulunamadı, "
+                f"'{_group_key(None)}' grubuna alındılar: {', '.join(sorted(missing))}"
+            )
+
+    plan = stratified_record_split(
+        {k: v.dominant for k, v in work.items()}, ratios, seed, record_groups
+    )
+    if balance_by is not None:
+        for warning in balance_warnings(plan, balance_by):
+            console.print(f"[yellow]uyarı[/] {warning}")
 
     all_labels = sorted({label for item in work.values() for label in item.labels})
     label_map = {label: i for i, label in enumerate(all_labels)}
@@ -420,6 +494,8 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
                     "id": record_id,
                     "label": work[record_id].dominant,
                     "windows": len(work[record_id].labels),
+                    "carrier_offset_hz": work[record_id].offset_hz,
+                    "balance_group": work[record_id].group,
                 }
                 for record_id in plan.records_in(name)
             ],
@@ -438,6 +514,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
             "split": list(ratios),
             "exclude_labels": sorted(exclude),
             "keep_unlabeled": keep_unlabeled,
+            "balance_by": balance_by,
         },
         label_map=label_map,
         source_files=[work[r].recording.meta_path.as_posix() for r in sorted(work)],
@@ -454,14 +531,44 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
     console.print(f"[green]yazıldı:[/] {output} ({dataset_size_bytes(output) / 1e6:.2f} MB)")
 
 
+def _render_offset_summary(manifest: dict[str, Any]) -> Table:
+    """Split başına taşıyıcı ofset dağılımını özetler.
+
+    Bir split'teki ofsetlerin tamamı aynı işaretteyse bu, sınıf etiketiyle
+    ilgisiz ama split'ler arasında sistematik olarak değişen bir değişken
+    demektir — yani dağılım kayması. Tablo bunu gözle görülür kılar.
+    """
+    table = Table(title="Taşıyıcı ofset dağılımı", title_style="bold")
+    table.add_column("Split", style="cyan", no_wrap=True)
+    table.add_column("Ofsetler (kHz)", style="magenta")
+    table.add_column("Negatif / Pozitif", justify="right")
+
+    for name in SPLIT_NAMES:
+        listed = manifest["splits"][name].get("records", [])
+        offsets = [e.get("carrier_offset_hz") for e in listed]
+        known = [o for o in offsets if o is not None]
+        if not known:
+            table.add_row(name, "[dim]—[/]", "—")
+            continue
+        negative = sum(1 for o in known if o < 0)
+        positive = len(known) - negative
+        skew = "[red]" if (negative == 0 or positive == 0) and len(known) > 1 else ""
+        table.add_row(
+            name,
+            ", ".join(f"{o / 1e3:+.0f}" for o in sorted(known)),
+            f"{skew}{negative} / {positive}",
+        )
+    return table
+
+
 @app.command()
 def stats(
-    dataset_dir: Annotated[Path, typer.Argument(help="sigkit build ile üretilmiş klasör")],
+    dataset_dir: Annotated[Path, typer.Argument(help="iqforge build ile üretilmiş klasör")],
 ) -> None:
     """Kurulmuş veri setinin özetini yazdırır."""
     try:
         manifest = read_manifest(dataset_dir)
-    except SigkitError as exc:
+    except IQForgeError as exc:
         err_console.print(f"[bold red]Hata:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
@@ -471,7 +578,7 @@ def stats(
     overview = Table(title=str(dataset_dir), title_style="bold", show_header=False)
     overview.add_column("Alan", style="cyan", no_wrap=True)
     overview.add_column("Değer")
-    overview.add_row("sigkit sürümü", manifest["sigkit_version"])
+    overview.add_row("iqforge sürümü", manifest["iqforge_version"])
     overview.add_row("oluşturma", manifest["created"])
     overview.add_row("kaynak kayıt", str(len(manifest["source_files"])))
     overview.add_row("pencere / adım", f"{config['window']} / {config['stride']}")
@@ -502,27 +609,40 @@ def stats(
         )
     console.print(distribution)
 
+    balanced = config.get("balance_by")
     records = Table(title="Split başına kayıt dosyaları", title_style="bold")
     records.add_column("Split", style="cyan", no_wrap=True)
     records.add_column("Kayıt", style="white")
     records.add_column("Etiket", style="green")
+    records.add_column("Taşıyıcı", justify="right", style="magenta")
     records.add_column("Pencere", justify="right")
+    if balanced:
+        records.add_column(f"Grup ({balanced})", style="yellow")
+
     for name in SPLIT_NAMES:
         listed = manifest["splits"][name].get("records", [])
         if not listed:
-            records.add_row(name, "[dim]— boş —[/]", "", "0")
+            records.add_row(name, "[dim]— boş —[/]", "", "", "0", *([""] if balanced else []))
             continue
         for i, entry in enumerate(listed):
-            records.add_row(
-                name if i == 0 else "", entry["id"], entry["label"], str(entry["windows"])
-            )
+            row = [
+                name if i == 0 else "",
+                entry["id"],
+                entry["label"],
+                _format_offset(entry.get("carrier_offset_hz")),
+                str(entry["windows"]),
+            ]
+            if balanced:
+                row.append(entry.get("balance_group") or "—")
+            records.add_row(*row)
     console.print(records)
+    console.print(_render_offset_summary(manifest))
 
 
 @app.command()
 def version() -> None:
-    """sigkit sürümünü yazdırır."""
-    console.print(f"sigkit {__version__}")
+    """iqforge sürümünü yazdırır."""
+    console.print(f"iqforge {__version__}")
 
 
 if __name__ == "__main__":

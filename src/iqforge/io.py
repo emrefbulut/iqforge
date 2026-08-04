@@ -7,8 +7,10 @@ yalnızca ham örnek verisini `complex64` olarak, bellek dostu biçimde sunar.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -25,8 +27,8 @@ META_EXT = ".sigmf-meta"
 DATA_EXT = ".sigmf-data"
 
 
-class SigkitError(Exception):
-    """sigkit'in kullanıcıya gösterilebilir hataları."""
+class IQForgeError(Exception):
+    """iqforge'in kullanıcıya gösterilebilir hataları."""
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class Annotation:
         freq_lower_edge: Alt frekans sınırı (Hz); yoksa None.
         freq_upper_edge: Üst frekans sınırı (Hz); yoksa None.
         description: `core:description` alanı; yoksa None.
+        raw: Annotation'ın ham SigMF sözlüğü. Yukarıda ayrıştırılmayan alanlara
+            (uzantı anahtarları dahil) erişmek için; `--balance-by` bunu kullanır.
     """
 
     sample_start: int
@@ -48,6 +52,7 @@ class Annotation:
     freq_lower_edge: float | None = None
     freq_upper_edge: float | None = None
     description: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict)
 
     @property
     def sample_end(self) -> int:
@@ -88,10 +93,10 @@ class Recording:
             `complex64` tipinde tek boyutlu dizi.
 
         Raises:
-            SigkitError: `start` kayıt sınırlarının dışındaysa.
+            IQForgeError: `start` kayıt sınırlarının dışındaysa.
         """
         if start < 0 or start > self.num_samples:
-            raise SigkitError(
+            raise IQForgeError(
                 f"Başlangıç indisi {start} kayıt sınırlarının dışında. "
                 f"Geçerli aralık: 0..{self.num_samples}."
             )
@@ -125,13 +130,13 @@ def _resolve_paths(path: str | Path) -> tuple[Path, Path]:
         meta = Path(str(p) + META_EXT)
 
     if not meta.exists():
-        raise SigkitError(
+        raise IQForgeError(
             f"SigMF metadata dosyası bulunamadı: {meta}. "
             f"Bir '{META_EXT}' dosyası veya uzantısız kayıt adı verin."
         )
     data = meta.with_suffix(DATA_EXT)
     if not data.exists():
-        raise SigkitError(
+        raise IQForgeError(
             f"SigMF veri dosyası bulunamadı: {data}. "
             f"'{meta.name}' ile aynı klasörde '{data.name}' bulunmalı."
         )
@@ -148,7 +153,7 @@ def load(path: str | Path) -> Recording:
         Açılmış `Recording`.
 
     Raises:
-        SigkitError: Dosya yoksa, veri tipi desteklenmiyorsa veya zorunlu
+        IQForgeError: Dosya yoksa, veri tipi desteklenmiyorsa veya zorunlu
             metadata alanları eksikse.
     """
     meta_path, data_path = _resolve_paths(path)
@@ -156,7 +161,7 @@ def load(path: str | Path) -> Recording:
     try:
         raw = json.loads(meta_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise SigkitError(
+        raise IQForgeError(
             f"'{meta_path.name}' geçerli JSON değil: {exc}. "
             "SigMF metadata dosyası UTF-8 kodlu bir JSON nesnesi olmalı."
         ) from exc
@@ -166,25 +171,25 @@ def load(path: str | Path) -> Recording:
     try:
         handle = SigMFFile(metadata=raw)
     except Exception as exc:  # sigmf çeşitli hata tipleri fırlatabilir
-        raise SigkitError(f"SigMF metadata okunamadı ({meta_path}): {exc}") from exc
+        raise IQForgeError(f"SigMF metadata okunamadı ({meta_path}): {exc}") from exc
 
     global_info = dict(handle.get_global_info())
 
     datatype = global_info.get("core:datatype")
     if datatype is None:
-        raise SigkitError(
+        raise IQForgeError(
             f"'{meta_path.name}' içinde zorunlu 'core:datatype' alanı yok. "
             f"Desteklenenler: {', '.join(SUPPORTED_DATATYPES)}."
         )
     if datatype not in SUPPORTED_DATATYPES:
-        raise SigkitError(
+        raise IQForgeError(
             f"Desteklenmeyen veri tipi '{datatype}'. "
             f"Desteklenenler: {', '.join(SUPPORTED_DATATYPES)}."
         )
 
     sample_rate = global_info.get("core:sample_rate")
     if sample_rate is None:
-        raise SigkitError(
+        raise IQForgeError(
             f"'{meta_path.name}' içinde 'core:sample_rate' yok. "
             "Örnekleme hızı olmadan zaman/frekans ekseni hesaplanamaz; "
             "metadata'ya bu alanı ekleyin."
@@ -194,7 +199,7 @@ def load(path: str | Path) -> Recording:
     bytes_per_sample = 2 * np.dtype(np_dtype).itemsize
     file_bytes = data_path.stat().st_size
     if file_bytes % bytes_per_sample != 0:
-        raise SigkitError(
+        raise IQForgeError(
             f"'{data_path.name}' boyutu ({file_bytes} bayt) '{datatype}' için örnek "
             f"başına {bytes_per_sample} bayta tam bölünmüyor. Dosya bozuk olabilir."
         )
@@ -214,6 +219,7 @@ def load(path: str | Path) -> Recording:
             freq_lower_edge=a.get("core:freq_lower_edge"),
             freq_upper_edge=a.get("core:freq_upper_edge"),
             description=a.get("core:description"),
+            raw=MappingProxyType(dict(a)),
         )
         for a in handle.get_annotations()
     ]

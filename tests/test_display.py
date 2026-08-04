@@ -1,4 +1,4 @@
-"""sigkit.display testleri. Sentetik veriyle çalışır, ağ erişimi gerektirmez."""
+"""iqforge.display testleri. Sentetik veriyle çalışır, ağ erişimi gerektirmez."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from rich.style import Style
 
-from sigkit.display import (
+from iqforge.display import (
     UPPER_HALF_BLOCK,
     VIRIDIS,
     _pool_max,

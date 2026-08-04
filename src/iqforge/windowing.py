@@ -6,7 +6,7 @@ from collections.abc import Iterator
 
 import numpy as np
 
-from sigkit.io import Recording, SigkitError
+from iqforge.io import IQForgeError, Recording
 
 #: Desteklenen temsil biçimleri (`--repr`).
 REPRESENTATIONS = ("iq2ch", "complex", "magphase")
@@ -42,12 +42,12 @@ def validate_window_params(window: int, stride: int) -> None:
     """Pencere parametrelerini doğrular.
 
     Raises:
-        SigkitError: Pencere veya adım pozitif değilse.
+        IQForgeError: Pencere veya adım pozitif değilse.
     """
     if window <= 0:
-        raise SigkitError(f"--window pozitif olmalı, {window} verildi.")
+        raise IQForgeError(f"--window pozitif olmalı, {window} verildi.")
     if stride <= 0:
-        raise SigkitError(f"--stride pozitif olmalı, {stride} verildi.")
+        raise IQForgeError(f"--stride pozitif olmalı, {stride} verildi.")
 
 
 def normalize_windows(windows: np.ndarray) -> np.ndarray:
@@ -79,7 +79,7 @@ def to_representation(windows: np.ndarray, representation: str) -> np.ndarray:
         `complex` için `(n, window)` complex64.
 
     Raises:
-        SigkitError: Temsil tanınmıyorsa.
+        IQForgeError: Temsil tanınmıyorsa.
     """
     if representation == "complex":
         return windows.astype(np.complex64)
@@ -87,7 +87,7 @@ def to_representation(windows: np.ndarray, representation: str) -> np.ndarray:
         return np.stack([windows.real, windows.imag], axis=1).astype(np.float32)
     if representation == "magphase":
         return np.stack([np.abs(windows), np.angle(windows)], axis=1).astype(np.float32)
-    raise SigkitError(
+    raise IQForgeError(
         f"Bilinmeyen temsil '{representation}'. Desteklenenler: {', '.join(REPRESENTATIONS)}."
     )
 

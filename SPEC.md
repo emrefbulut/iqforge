@@ -1,4 +1,4 @@
-# sigkit — Proje Spesifikasyonu
+# iqforge — Proje Spesifikasyonu
 
 Bu doküman Claude Code için yazılmıştır. Fazları sırayla uygula. Her fazın sonunda
 "Doğrulama" bölümündeki komutu çalıştır ve beklenen çıktıyı aldığından emin ol.
@@ -8,13 +8,13 @@ Bir faz doğrulanmadan bir sonrakine geçme.
 
 ## 1. Proje nedir
 
-`sigkit`, SDR ile yakalanmış ham RF kayıtlarını (SigMF formatı) makine öğrenmesinde
+`iqforge`, SDR ile yakalanmış ham RF kayıtlarını (SigMF formatı) makine öğrenmesinde
 kullanılabilir etiketli veri setlerine çeviren bir komut satırı aracıdır.
 
 **Çözdüğü problem:** Bugün RF alanında sentetik veri üreten araçlar (TorchSig) ve
 kayıt inceleyen araçlar (IQEngine) var, ama "elimdeki gerçek kaydı alıp PyTorch'ta
 eğitilebilir bir `Dataset` haline getir" adımını yapan bakımlı bir araç yok.
-sigkit bu boşluğu doldurur.
+iqforge bu boşluğu doldurur.
 
 **Tasarım ilkesi:** SigMF standardıyla tam uyumlu ol. Kendi format icat etme.
 Mevcut ekosistemle (IQEngine, GNU Radio, TorchSig) uyumluluk bu projenin en
@@ -59,44 +59,49 @@ Bunlar karar verilmiştir, değiştirme:
 | Terminal çıktısı | `rich` | tablo, renk, spektrogram |
 | SigMF I/O | `sigmf` (sigmf-python) | **kendi parser'ını yazma** |
 | Sayısal | `numpy`, `scipy` | STFT için `scipy.signal` |
-| ML | `torch` | **opsiyonel bağımlılık**: `sigkit[torch]` |
+| ML | `torch` | **opsiyonel bağımlılık**: `iqforge[torch]` |
 | Test | `pytest` | |
 | Lint/format | `ruff` | |
 
 `torch` opsiyonel olmalı. `build` ve `inspect` komutları torch kurulu olmadan
-çalışmalı; sadece `sigkit.SigkitDataset` ve `train` torch gerektirir.
+çalışmalı; sadece `iqforge.IQForgeDataset` ve `train` torch gerektirir.
 
 ---
 
 ## 4. Komut arayüzü
 
 ```
-sigkit info <path>
+iqforge info <path>
     SigMF kaydının metadata'sını okunabilir tablo olarak yazdırır.
     Örnekleme hızı, merkez frekans, veri tipi, örnek sayısı, süre,
     donanım bilgisi, annotation listesi.
 
-sigkit inspect <path> [--start N] [--samples N] [--nfft 1024]
+iqforge inspect <path> [--start N] [--samples N] [--nfft 1024]
     Terminalde spektrogram çizer. Ayrıca zaman ekseninde güç grafiği.
     --start: kaçıncı örnekten başlasın
     --samples: kaç örnek gösterilsin (varsayılan 262144)
 
-sigkit build <input> -o <output_dir>
+iqforge build <input> -o <output_dir>
               [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
               [--exclude-label <label>] [--split 0.7,0.15,0.15] [--seed 42]
+              [--balance-by <sigmf alanı>]
               [--repr {iq2ch,complex,magphase}] [--normalize/--no-normalize]
     --exclude-label: bu etikete sahip annotation'lar etiketleme sırasında hiç
               dikkate alınmaz. Yinelenebilir. Varsayılan: `ref_tone`. Ayrıntı 5.3.
+    --balance-by: adı verilen SigMF alanının değeri, sınıf katmanlaması
+              korunarak split'lere yayılır. Rahatsız edici değişkenin (nuisance
+              variable) split'ler arasında sistematik dağılmasını önler.
+              Ayrıntı 5.6.
     <input> tek bir .sigmf-meta dosyası VEYA içinde birden fazla kayıt olan
     bir klasör olabilir. Klasörse özyinelemeli tarar.
     Çıktı: <output_dir> içine shard dosyaları + manifest.json
 
-sigkit stats <dataset_dir>
+iqforge stats <dataset_dir>
     Kurulmuş veri setinin özeti: sınıf dağılımı, pencere sayısı,
     split boyutları, disk kullanımı.
 
-sigkit train <dataset_dir> [--epochs 10] [--batch-size 64]
+iqforge train <dataset_dir> [--epochs 10] [--batch-size 64]
     Basit bir baseline CNN eğitir. Amaç doğruluk rekoru değil,
     veri setinin gerçekten eğitilebilir olduğunu kanıtlamak.
 ```
@@ -214,6 +219,31 @@ bazlı bölmeye düşmek test doğruluğunu yapay olarak şişirir.
 `--split 1.0,0,0` boş val/test üretmek isteyen kullanıcı için açık bir kaçış
 yoludur; bu bilinçli bir seçim olduğu için hata verilmez.
 
+**Rahatsız edici değişken dengesi (`--balance-by`).**
+Sınıfa göre katmanlamak yeterli değildir. Sınıf hakkında hiçbir bilgi taşımayan
+bir değişken (taşıyıcı frekansı, alıcı donanımı, kayıt günü) split'ler arasında
+sistematik olarak dağılabilir; o zaman sınıf dağılımı kusursuz görünürken model
+eğitimde görmediği bir koşulda değerlendirilir ve sonuç yanıltıcı olur.
+
+`--balance-by <alan>` bir SigMF anahtarı alır. Değer sırayla kayda etiketini
+veren annotation'ın ham sözlüğünde, sonra `global` bölümünde aranır; böylece
+mekanizma sentetik veriye özel değil, herhangi bir SigMF alanı için çalışır
+(`core:freq_lower_edge`, `core:hw`, uzantı anahtarları…).
+
+Sınıf başına split kayıt sayıları değişmez — katmanlama bozulmaz. Değişen,
+hangi kaydın hangi split'e gittiğidir: kayıtlar grup grup dönüşümlü işlenir ve
+her kayıt kendi grubunun en az temsil edildiği split'e yerleştirilir. Grup
+sayaçları sınıflar arasında paylaşılır, böylece split'ler birbirini tamamlar.
+
+Dengeleme yapısal olarak tutmayabilir (grup sayısı en küçük split'ten fazlaysa,
+alan bazı kayıtlarda yoksa, ya da her kayıt ayrı bir gruba düşüyorsa). Bu
+durumda `build` **UYARI** basar ve devam eder — hata değildir, çünkü bölme yine
+de geçerli ve kayıt bazlıdır; kullanıcı kalan kaymayı bilerek kabul edebilir.
+
+Taşıyıcı ofseti her kayıt için `manifest.json` içinde `carrier_offset_hz`
+alanında saklanır ve `stats` çıktısında hem kayıt bazında hem split özeti
+olarak gösterilir; dengesizlik `--balance-by` kullanılmasa da görünür olur.
+
 ### 5.7 Disk formatı
 
 ```
@@ -229,7 +259,7 @@ Her shard en fazla 256 MB. `manifest.json` içeriği:
 
 ```json
 {
-  "sigkit_version": "0.1.0",
+  "iqforge_version": "0.1.0",
   "created": "ISO8601 zaman damgası",
   "config": { "window": 1024, "stride": 512, "repr": "iq2ch", "normalize": true, "seed": 42 },
   "label_map": { "device_a": 0, "device_b": 1 },
@@ -247,9 +277,9 @@ Etiketler manifest'te tutulur, ayrı dosyaya yazma.
 ### 5.8 PyTorch arayüzü
 
 ```python
-from sigkit import SigkitDataset
+from iqforge import IQForgeDataset
 
-train = SigkitDataset("out/", split="train")
+train = IQForgeDataset("out/", split="train")
 x, y = train[0]  # x: torch.Tensor (2, 1024) float32, y: int
 len(train)
 train.label_map  # {"device_a": 0, ...}
@@ -281,20 +311,20 @@ Kitty/iTerm grafik protokolü v0'da yok. Sonra eklenecek.
 ## 7. Dosya yapısı
 
 ```
-sigkit/
+iqforge/
   pyproject.toml
   README.md
   LICENSE                 (MIT)
   .github/workflows/ci.yml
-  src/sigkit/
-    __init__.py           SigkitDataset ve load() dışa aktarılır
+  src/iqforge/
+    __init__.py           IQForgeDataset ve load() dışa aktarılır
     cli.py                typer uygulaması
     io.py                 SigMF okuma, veri tipi dönüşümü
     windowing.py          pencereleme
     labeling.py           üç etiket kaynağı
     splitting.py          katmanlı bölme
     storage.py            shard yazma/okuma, manifest
-    dataset.py            SigkitDataset (torch)
+    dataset.py            IQForgeDataset (torch)
     display.py            terminal spektrogram
     models.py             baseline CNN
   tests/
@@ -328,7 +358,7 @@ Kur: `pyproject.toml`, paket yapısı, `io.py`, `cli.py` içinde sadece `info`.
 
 **Doğrulama:**
 ```
-uv run sigkit info examples/sample.sigmf-meta
+uv run iqforge info examples/sample.sigmf-meta
 ```
 Örnekleme hızı, merkez frekans, veri tipi ve örnek sayısı doğru görünmeli.
 `tests/test_io.py` geçmeli.
@@ -336,7 +366,7 @@ uv run sigkit info examples/sample.sigmf-meta
 ### Faz 2 — `inspect` terminal spektrogramı
 **Doğrulama:**
 ```
-uv run sigkit inspect examples/sample.sigmf-meta
+uv run iqforge inspect examples/sample.sigmf-meta
 ```
 Terminalde spektrogram görünmeli ve sentetik sinyalin bilinen frekans
 bileşenleri doğru yerde çıkmalı. Ayrıca aynı veriyi matplotlib ile PNG'ye
@@ -348,17 +378,27 @@ Pencereleme, etiketleme, bölme, shard yazma, manifest.
 
 **Doğrulama:**
 ```
-uv run sigkit build examples/sample.sigmf-meta -o /tmp/ds
-uv run sigkit stats /tmp/ds
+uv run iqforge build examples/ -o /tmp/ds --balance-by core:freq_lower_edge
+uv run iqforge stats /tmp/ds
 ```
 Sınıf dağılımı dengeli olmalı, pencere sayısı formülle hesaplananla eşleşmeli,
 `manifest.json` şemaya uymalı. Aynı `--seed` ile iki kez çalıştırıldığında
 birebir aynı bölme çıkmalı.
 
-### Faz 4 — `SigkitDataset` + `train`
+Girdi tek dosya değil `examples/` klasörüdür: §5.6 kayıt bazında bölme
+istiyor, tek dosyayla bu kural sınanamaz (ve `build` doğru şekilde hata verir).
+
+`--balance-by` neden gerekli: örnek kayıtlarda taşıyıcı ofseti sınıf hakkında
+bilgi taşımaz ama split'ler arasında sistematik olarak dağılabilir. Yalnızca
+sınıfa göre katmanlandığında `--seed 42` train'e dört pozitif ofseti, val ve
+test'e dört negatif ofseti veriyordu — sınıflar dengeli olduğu halde bir
+dağılım kayması. `stats` çıktısındaki "Taşıyıcı ofset dağılımı" tablosu bunu
+görünür kılar; her split'te negatif ve pozitif ofsetler birlikte bulunmalı.
+
+### Faz 4 — `IQForgeDataset` + `train`
 **Doğrulama:**
 ```
-uv run --extra torch sigkit train /tmp/ds --epochs 5
+uv run --extra torch iqforge train /tmp/ds --epochs 5
 ```
 Sentetik veride eğitim doğruluğu %90'ın üstüne çıkmalı. Çıkmıyorsa veri
 pipeline'ında hata var demektir — durup nedenini bul, hyperparameter oynama.
@@ -370,8 +410,8 @@ GitHub Actions CI (lint + test, Python 3.11 ve 3.12).
 **Doğrulama:**
 ```
 uv build
-pipx install dist/sigkit-0.1.0-py3-none-any.whl
-sigkit info examples/sample.sigmf-meta
+pipx install dist/iqforge-0.1.0-py3-none-any.whl
+iqforge info examples/sample.sigmf-meta
 ```
 Temiz bir ortamda kurulup çalışmalı.
 

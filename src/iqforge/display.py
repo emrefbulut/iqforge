@@ -14,7 +14,7 @@ from rich.style import Style
 from rich.text import Text
 from scipy import signal
 
-from sigkit.io import Recording
+from iqforge.io import Recording
 
 #: matplotlib'in viridis paletinden 32 noktada örneklenmiş RGB çapaları.
 #: Runtime'da matplotlib bağımlılığı olmasın diye gömülüdür.
@@ -242,7 +242,7 @@ def render_inspect(
     width: int,
     height: int,
 ) -> RenderableType:
-    """`sigkit inspect` çıktısının tamamını (başlık + spektrogram + güç) üretir.
+    """`iqforge inspect` çıktısının tamamını (başlık + spektrogram + güç) üretir.
 
     Args:
         rec: Açılmış kayıt.

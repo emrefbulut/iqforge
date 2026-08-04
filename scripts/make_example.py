@@ -233,13 +233,13 @@ def write_record(plan: RecordPlan, samples: np.ndarray, out_dir: Path) -> Path:
         global_info={
             sigmf.DATATYPE_KEY: "cf32_le",
             sigmf.SAMPLE_RATE_KEY: SAMPLE_RATE,
-            sigmf.AUTHOR_KEY: "sigkit",
+            sigmf.AUTHOR_KEY: "iqforge",
             sigmf.DESCRIPTION_KEY: (
-                f"sigkit sentetik örnek kaydı '{plan.name}'. Sürekli referans ton "
+                f"iqforge sentetik örnek kaydı '{plan.name}'. Sürekli referans ton "
                 f"(merkez +100 kHz), tek {plan.modulation.upper()} bursti, düşük seviyeli AWGN."
             ),
             sigmf.HW_KEY: "synthetic (scripts/make_example.py)",
-            sigmf.RECORDER_KEY: "sigkit scripts/make_example.py",
+            sigmf.RECORDER_KEY: "iqforge scripts/make_example.py",
             sigmf.VERSION_KEY: "1.0.0",
         },
     )

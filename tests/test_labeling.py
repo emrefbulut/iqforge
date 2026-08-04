@@ -1,4 +1,4 @@
-"""sigkit.labeling testleri."""
+"""iqforge.labeling testleri."""
 
 from __future__ import annotations
 
@@ -8,10 +8,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from sigkit.io import Recording, SigkitError
-from sigkit.labeling import (
+from iqforge.io import IQForgeError, Recording
+from iqforge.labeling import (
     DEFAULT_EXCLUDE_LABELS,
     UNLABELED,
+    annotation_field_value,
+    carrier_offset_hz,
     dominant_label,
     label_from_annotations,
     label_from_csv,
@@ -19,7 +21,7 @@ from sigkit.labeling import (
     load_label_csv,
     resolve_exclude_labels,
 )
-from sigkit.windowing import window_starts
+from iqforge.windowing import window_starts
 
 WINDOW, STRIDE = 1024, 512
 
@@ -159,12 +161,12 @@ def test_csv_errors_are_actionable(
     tmp_path: Path, make_recording: Callable[..., Recording], noise: Callable[..., np.ndarray]
 ) -> None:
     """Eksik dosya, eksik sütun ve eksik kayıt için ayrı ayrı açık hata verilmeli."""
-    with pytest.raises(SigkitError, match="Etiket dosyası bulunamadı"):
+    with pytest.raises(IQForgeError, match="Etiket dosyası bulunamadı"):
         load_label_csv(tmp_path / "yok.csv")
 
     bad = tmp_path / "bad.csv"
     bad.write_text("dosya,etiket\na,b\n", encoding="utf-8")
-    with pytest.raises(SigkitError) as exc:
+    with pytest.raises(IQForgeError) as exc:
         load_label_csv(bad)
     assert "filename" in str(exc.value) and "label" in str(exc.value)
 
@@ -172,7 +174,7 @@ def test_csv_errors_are_actionable(
     good.write_text("filename,label\nbaska.sigmf-meta,wifi\n", encoding="utf-8")
     rec = make_recording(tmp_path, noise(4096, seed=2), name="capture_7")
     starts = window_starts(rec.num_samples, WINDOW, STRIDE)
-    with pytest.raises(SigkitError, match="etiket CSV'sinde yok"):
+    with pytest.raises(IQForgeError, match="etiket CSV'sinde yok"):
         label_from_csv(rec, starts, load_label_csv(good), frozenset())
 
 
@@ -182,6 +184,82 @@ def test_dominant_label_breaks_ties_deterministically() -> None:
     assert dominant_label(["b", "a"]) == "a"
     assert dominant_label(["z", "z", "a", "a"]) == "a"
     assert dominant_label([None, None]) is None
+
+
+def test_annotation_field_value_reads_arbitrary_sigmf_keys(
+    record: Callable[..., Recording],
+) -> None:
+    """--balance-by herhangi bir SigMF anahtarını okuyabilmeli, sabit alan listesi olmamalı."""
+    rec = record(
+        [
+            {
+                "core:sample_start": 0,
+                "core:sample_count": 4096,
+                "core:label": "bpsk",
+                "core:freq_lower_edge": 2_450_136_800.0,
+                "custom:antenna": "yagi",
+            }
+        ]
+    )
+
+    assert (
+        annotation_field_value(rec, "core:freq_lower_edge", "bpsk", frozenset()) == 2_450_136_800.0
+    )
+    assert annotation_field_value(rec, "custom:antenna", "bpsk", frozenset()) == "yagi"
+    assert annotation_field_value(rec, "core:datatype", "bpsk", frozenset()) == "cf32_le"
+    assert annotation_field_value(rec, "yok:alan", "bpsk", frozenset()) is None
+
+
+def test_annotation_field_skips_excluded_annotations(record: Callable[..., Recording]) -> None:
+    """Alan, kayda etiketini veren annotation'dan okunmalı; ref_tone'dan değil."""
+    rec = record(
+        [
+            {
+                "core:sample_start": 0,
+                "core:sample_count": 8192,
+                "core:label": "ref_tone",
+                "core:freq_lower_edge": 1.0,
+            },
+            {
+                "core:sample_start": 0,
+                "core:sample_count": 4096,
+                "core:label": "bpsk",
+                "core:freq_lower_edge": 2.0,
+            },
+        ]
+    )
+
+    value = annotation_field_value(rec, "core:freq_lower_edge", "bpsk", frozenset({"ref_tone"}))
+
+    assert value == 2.0
+
+
+def test_carrier_offset_is_centre_minus_capture_frequency(
+    record: Callable[..., Recording],
+) -> None:
+    """Taşıyıcı ofseti annotation bandının ortası eksi capture merkez frekansı."""
+    rec = record(
+        [
+            {
+                "core:sample_start": 0,
+                "core:sample_count": 4096,
+                "core:label": "bpsk",
+                "core:freq_lower_edge": 100_136_800.0,
+                "core:freq_upper_edge": 100_223_200.0,
+            }
+        ]
+    )
+
+    assert carrier_offset_hz(rec, "bpsk", frozenset()) == pytest.approx(180_000.0)
+
+
+def test_carrier_offset_is_none_without_frequency_edges(
+    record: Callable[..., Recording],
+) -> None:
+    """Frekans sınırları yoksa ofset uydurulmamalı."""
+    rec = record([_annotation(0, 4096, "bpsk")])
+
+    assert carrier_offset_hz(rec, "bpsk", frozenset()) is None
 
 
 def test_exclude_label_default_is_ref_tone() -> None:

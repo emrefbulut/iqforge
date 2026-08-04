@@ -1,6 +1,6 @@
 """Terminal spektrogramını matplotlib ile çizilmiş referansa karşı doğrular.
 
-`sigkit inspect` ile birebir aynı STFT'yi (`sigkit.display.compute_spectrogram`)
+`iqforge inspect` ile birebir aynı STFT'yi (`iqforge.display.compute_spectrogram`)
 kullanır, sonucu PNG'ye çizer ve iki çizim yolunun aynı yapıyı gösterdiğini
 sayısal olarak sınar:
 
@@ -29,13 +29,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
-from sigkit.display import (  # noqa: E402
+from iqforge.display import (  # noqa: E402
     CLIP_PERCENTILES,
     _pool_max,
     _pool_mean_axis,
     compute_spectrogram,
 )
-from sigkit.io import Recording, load  # noqa: E402
+from iqforge.io import Recording, load  # noqa: E402
 
 REF_TONE_HZ = 100_000.0
 #: Örnek kayıtlardaki burst kenar rampasının uzunluğu (scripts/make_example.py).

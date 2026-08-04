@@ -1,18 +1,38 @@
-"""sigkit.splitting testleri — SPEC §5.6'nın kayıt bazlı bölme kuralı."""
+"""iqforge.splitting testleri — SPEC §5.6'nın kayıt bazlı bölme kuralı."""
 
 from __future__ import annotations
 
 import pytest
 
-from sigkit.io import SigkitError
-from sigkit.splitting import SPLIT_NAMES, parse_ratios, stratified_record_split
+from iqforge.io import IQForgeError
+from iqforge.splitting import (
+    SPLIT_NAMES,
+    balance_warnings,
+    parse_ratios,
+    stratified_record_split,
+)
 
 DEFAULT = (0.7, 0.15, 0.15)
+
+#: Örnek veri setiyle aynı yapı: iki sınıf, dört taşıyıcı ofset grubu, her
+#: sınıf her grubu birer kez kullanıyor.
+OFFSET_GROUPS = ("-280", "-180", "+180", "+280")
 
 
 def _records(counts: dict[str, int]) -> dict[str, str]:
     """`{'bpsk': 4}` -> `{'bpsk_00': 'bpsk', ...}`"""
     return {f"{label}_{i:02d}": label for label, n in counts.items() for i in range(n)}
+
+
+def _offset_groups(records: dict[str, str]) -> dict[str, str]:
+    """Her kayda sırayla bir taşıyıcı ofset grubu atar."""
+    groups: dict[str, str] = {}
+    per_label: dict[str, int] = {}
+    for record_id, label in sorted(records.items()):
+        index = per_label.get(label, 0)
+        groups[record_id] = OFFSET_GROUPS[index % len(OFFSET_GROUPS)]
+        per_label[label] = index + 1
+    return groups
 
 
 def test_parse_ratios_accepts_valid_input() -> None:
@@ -32,7 +52,7 @@ def test_parse_ratios_accepts_valid_input() -> None:
 )
 def test_parse_ratios_rejects_invalid_input(text: str, fragment: str) -> None:
     """Bozuk oran dizgisi ne yapılacağını söyleyen hata vermeli."""
-    with pytest.raises(SigkitError, match=fragment):
+    with pytest.raises(IQForgeError, match=fragment):
         parse_ratios(text)
 
 
@@ -99,7 +119,7 @@ def test_record_order_does_not_affect_the_split() -> None:
 
 def test_too_few_records_raises_instead_of_falling_back() -> None:
     """Kayıt sayısı yetmiyorsa HATA verilmeli, pencere bazlı bölmeye düşülmemeli."""
-    with pytest.raises(SigkitError) as exc:
+    with pytest.raises(IQForgeError) as exc:
         stratified_record_split(_records({"bpsk": 1, "qpsk": 4}), DEFAULT, seed=42)
 
     message = str(exc.value)
@@ -111,7 +131,7 @@ def test_too_few_records_raises_instead_of_falling_back() -> None:
 
 def test_two_records_per_class_fails_for_three_way_split() -> None:
     """İki kayıt üç split'i dolduramaz."""
-    with pytest.raises(SigkitError, match="en az 3 gerekli"):
+    with pytest.raises(IQForgeError, match="en az 3 gerekli"):
         stratified_record_split(_records({"bpsk": 2, "qpsk": 2}), DEFAULT, seed=42)
 
 
@@ -133,7 +153,7 @@ def test_single_record_allowed_with_train_only_split() -> None:
 
 def test_empty_input_is_rejected() -> None:
     """Etiketlenebilir kayıt yoksa açık hata verilmeli."""
-    with pytest.raises(SigkitError, match="Bölünecek kayıt yok"):
+    with pytest.raises(IQForgeError, match="Bölünecek kayıt yok"):
         stratified_record_split({}, DEFAULT, seed=42)
 
 
@@ -155,6 +175,125 @@ def test_uneven_class_sizes_are_stratified_independently() -> None:
 
     assert bpsk_per_split == {"train": 7, "val": 2, "test": 1}
     assert qpsk_per_split == {"train": 2, "val": 1, "test": 1}
+
+
+def test_balancing_spreads_the_nuisance_variable_across_splits() -> None:
+    """--balance-by taşıyıcı ofsetini split'lere yaymalı.
+
+    Dengeleme olmadan seed 42, train'e yalnızca pozitif ofsetleri veriyordu;
+    bu bir dağılım kaymasıdır ve Faz 4 doğrulamasını geçersiz kılar.
+    """
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = _offset_groups(records)
+
+    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+
+    for name in SPLIT_NAMES:
+        signs = {groups[r][0] for r in plan.records_in(name)}
+        assert signs == {"-", "+"}, f"{name} split'i tek işaretli ofset içeriyor: {signs}"
+
+
+def test_balancing_covers_every_group_in_the_largest_split() -> None:
+    """En büyük split, kapasitesi yettiği ölçüde tüm grupları görmeli."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = _offset_groups(records)
+
+    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+
+    assert {groups[r] for r in plan.records_in("train")} == set(OFFSET_GROUPS)
+
+
+def test_balancing_preserves_class_stratification() -> None:
+    """Dengeleme sınıf başına split kayıt sayılarını değiştirmemeli."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = _offset_groups(records)
+
+    plain = stratified_record_split(records, DEFAULT, seed=42)
+    balanced = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+
+    for name in SPLIT_NAMES:
+        for label in ("bpsk", "qpsk"):
+            assert [records[r] for r in plain.records_in(name)].count(label) == [
+                records[r] for r in balanced.records_in(name)
+            ].count(label)
+
+
+def test_balancing_is_deterministic() -> None:
+    """Aynı seed dengeli bölmede de birebir aynı sonucu vermeli."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = _offset_groups(records)
+
+    first = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+    second = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+
+    assert first.assignment == second.assignment
+    assert first.groups == groups
+
+
+def test_balancing_keeps_the_record_level_guarantee() -> None:
+    """Dengeleme kayıt bazlı bölme kuralını bozmamalı."""
+    records = _records({"bpsk": 6, "qpsk": 6})
+    groups = _offset_groups(records)
+
+    plan = stratified_record_split(records, DEFAULT, seed=3, record_groups=groups)
+
+    placed = [r for name in SPLIT_NAMES for r in plan.records_in(name)]
+    assert sorted(placed) == sorted(records)
+    assert len(placed) == len(set(placed))
+
+
+def test_balance_warning_when_every_record_is_its_own_group() -> None:
+    """Her kayıt ayrı gruba düşerse dengeleme anlamsızdır, uyarı verilmeli."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = {r: f"grup_{r}" for r in records}
+
+    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+    warnings = balance_warnings(plan, "core:description")
+
+    assert any("her kayda ayrı bir grup" in w for w in warnings)
+
+
+def test_balance_warning_when_only_one_group_exists() -> None:
+    """Tek grup varsa dengeleme etkisizdir, uyarı verilmeli."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = dict.fromkeys(records, "tek")
+
+    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+    warnings = balance_warnings(plan, "core:hw")
+
+    assert any("dengeleme etkisiz" in w for w in warnings)
+
+
+def test_balance_warning_when_a_group_is_confined_to_one_split() -> None:
+    """Tek kayıtlık bir grup zorunlu olarak tek split'te kalır; bu uyarılmalı.
+
+    Uyarı gerekli çünkü o grup için split'ler arası karşılaştırma yapılamaz —
+    ama hata değil, çünkü bölme yine de geçerli ve kayıt bazlıdır.
+    """
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = {r: ("nadir" if r == "bpsk_00" else "yaygin") for r in records}
+
+    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+    warnings = balance_warnings(plan, "core:hw")
+
+    assert any("tek bir split'te kaldı" in w and "nadir" in w for w in warnings)
+
+
+def test_balance_warnings_are_empty_when_balancing_works() -> None:
+    """Dengeleme tuttuğunda uyarı üretilmemeli."""
+    records = _records({"bpsk": 4, "qpsk": 4})
+    groups = _offset_groups(records)
+
+    plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
+
+    assert balance_warnings(plan, "core:freq_lower_edge") == []
+
+
+def test_balance_warnings_empty_without_balancing() -> None:
+    """--balance-by kullanılmadıysa uyarı üretilmemeli."""
+    plan = stratified_record_split(_records({"bpsk": 4, "qpsk": 4}), DEFAULT, seed=42)
+
+    assert balance_warnings(plan, "core:hw") == []
 
 
 def test_minimum_guarantee_does_not_inflate_small_splits() -> None:

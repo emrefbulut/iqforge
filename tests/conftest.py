@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from helpers import write_record as _write_record
-from sigkit.io import Recording, load
+from iqforge.io import Recording, load
 
 
 @pytest.fixture
