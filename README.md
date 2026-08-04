@@ -141,6 +141,8 @@ Issues and pull requests are welcome, especially from people who work with real 
 data. If `iqforge` misreads a recording from your hardware, that's the most useful
 bug report you can file — please attach the `.sigmf-meta` if you can share it.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and scope.
+
 ## Development
 
 ```bash
