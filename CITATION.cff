@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "iqforge"
+abstract: >-
+  A command-line tool that turns SDR captures in SigMF format into labelled,
+  PyTorch-ready datasets. Windows are split at the recording level rather than
+  the window level, and the tool refuses to run instead of silently falling back
+  to a split that would inflate reported accuracy.
+type: software
+authors:
+  - family-names: "Bulut"
+    given-names: "Emre"
+repository-code: "https://github.com/emrefbulut/iqforge"
+url: "https://github.com/emrefbulut/iqforge"
+license: MIT
+version: "0.1.0"
+date-released: "2026-08-04"
+keywords:
+  - software-defined-radio
+  - sigmf
+  - rf-machine-learning
+  - signal-processing
+  - pytorch
+  - dataset

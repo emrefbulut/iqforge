@@ -1,0 +1,88 @@
+name: Bug report
+description: Something is wrong — especially if a recording from your hardware is misread
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing this. If `iqforge` misread a recording from real
+        hardware, that is the most useful report we can get — the integer
+        datatype paths (`ci16_le`, `ci8`) have only ever been tested against
+        synthetic data.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command you ran
+      description: The full `iqforge` command line.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: info-output
+    attributes:
+      label: "`iqforge info` output"
+      description: >-
+        Run `iqforge info <your-recording>.sigmf-meta` and paste the whole
+        table. This shows the sample rate, centre frequency, datatype, sample
+        count, and annotations we need to reproduce the problem.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: sigmf-meta
+    attributes:
+      label: SigMF metadata
+      description: >-
+        Paste the contents of the `.sigmf-meta` file, or attach it by dragging
+        it into this box. It is plain JSON and contains no signal samples, so
+        it is usually safe to share. Redact location or hardware serial fields
+        if you need to — but please say which ones you removed.
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Capture hardware
+      description: e.g. RTL-SDR Blog V4, HackRF One, USRP B210, PlutoSDR — or "unknown".
+    validations:
+      required: false
+
+  - type: input
+    id: recorder
+    attributes:
+      label: What wrote the file
+      description: e.g. GNU Radio 3.10, SDR++ 1.1.0, inspectrum, a custom script.
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `iqforge version`, your Python version, and your OS.
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I can share the `.sigmf-meta` (metadata only, no signal data)
+          required: false
+        - label: I can share the `.sigmf-data` if asked
+          required: false

@@ -119,7 +119,8 @@ visible whether or not you asked for balancing.
 - [x] Terminal spectrogram
 - [x] Windowing, labelling, recording-level splitting, sharded storage
 - [x] `torch.utils.data.Dataset` + baseline classifier
-- [ ] Packaging, PyPI release, CI
+- [x] Packaging (wheel + sdist), GitHub Actions CI
+- [ ] PyPI release
 - [ ] Live capture from RTL-SDR / HackRF / PlutoSDR
 - [ ] Kitty and iTerm graphics protocols for the inspector
 
@@ -143,7 +144,7 @@ bug report you can file — please attach the `.sigmf-meta` if you can share it.
 ## Development
 
 ```bash
-git clone https://github.com/USERNAME/iqforge
+git clone https://github.com/emrefbulut/iqforge
 cd iqforge
 uv sync
 uv run pytest

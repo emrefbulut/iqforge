@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    # torch olmadan: info/inspect/build/stats bu bağımlılık olmadan çalışmalı.
+    # torch gerektiren testler kendilerini atlar, bu yüzden koşu yeşil kalmalı.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --group dev
+      - run: uv run pytest -q
+      - name: torch kurulu değilken CLI çalışmalı
+        run: |
+          uv run iqforge info examples/bpsk_01.sigmf-meta
+          uv run iqforge build examples/ -o /tmp/ds --balance-by core:freq_lower_edge
+          uv run iqforge stats /tmp/ds
+
+  test-torch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev --extra torch
+      - run: uv run pytest -q
+      - name: Faz 4 doğrulaması
+        run: |
+          uv run iqforge build examples/ -o /tmp/ds --balance-by core:freq_lower_edge
+          uv run iqforge train /tmp/ds --epochs 20
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv build
+      - name: Wheel temiz ortamda kurulup çalışmalı
+        run: |
+          uv tool install --from dist/iqforge-*.whl iqforge
+          iqforge info examples/bpsk_01.sigmf-meta

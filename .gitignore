@@ -1,9 +1,38 @@
+# Python
 __pycache__/
 *.py[cod]
-.venv/
-.pytest_cache/
-.ruff_cache/
+*$py.class
+*.so
+.Python
+
+# Packaging
 dist/
 build/
 *.egg-info/
+.eggs/
+
+# uv / virtualenvs
+.venv/
+venv/
 uv.lock
+
+# Test and lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Scratch and generated dataset output
+/tmp/
+tmp/
+*.tmp
+dataset/
+/ds/
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
