@@ -45,7 +45,7 @@ from sigmf import SigMFFile
 BASE_SEED = 20240101
 SAMPLE_RATE = 1_024_000.0  # Hz
 CENTER_FREQ = 2_450_000_000.0  # Hz
-NUM_SAMPLES = 65_536  # kayıt başına 0.064 s
+NUM_SAMPLES = 32_768  # kayıt başına 0.032 s
 
 REF_TONE_OFFSET = 100_000.0  # Hz — bilinen referans sinyal
 REF_TONE_AMPLITUDE = 0.25
@@ -54,8 +54,14 @@ REF_TONE_AMPLITUDE = 0.25
 SYMBOL_RATE = 64_000.0  # Bd
 RRC_BETA = 0.35
 BURST_RMS = 0.22  # her burst bu ortalama güce normalize edilir
-BURST_COUNT = 40_960  # örnek — her kayıtta aynı
+BURST_COUNT = 20_480  # örnek — her kayıtta aynı; 1024/512 pencerede 40 etiketli
 BURST_RAMP = 512  # örnek — zarf yükselme/düşme süresi
+
+#: Her (sınıf, taşıyıcı ofset) çifti için kaç kayıt üretilecek.
+#: İKİ olması şart: bir ofsetin kayıtları train ile test arasında paylaşılabilsin
+#: diye. Tek kayıtla, split içi bağımsızlık garantisi (§5.6) o ofsetin tüm
+#: kayıtlarını aynı split'e zorlar ve model hep görülmemiş taşıyıcıda sınanır.
+RECORDS_PER_CELL = 2
 
 #: İşgal edilen bant genişliği (Hz); annotation frekans sınırları buradan gelir.
 OCCUPIED_BW = SYMBOL_RATE * (1.0 + RRC_BETA)
@@ -84,29 +90,39 @@ class RecordPlan:
     seed: int
 
 
+#: Taşıyıcı ofset havuzu. Her sınıf her ofseti `RECORDS_PER_CELL` kez kullanır,
+#: yani taşıyıcı frekansı sınıf hakkında hiçbir bilgi taşımaz.
+CARRIER_OFFSETS = (-280_000.0, -180_000.0, 180_000.0, 280_000.0)
+
+#: Burst başlangıç havuzu. Burst hep kaydın ilk yarısında başlar; böylece her
+#: kayıtta burst sonrasında en az 4096 örneklik sinyalsiz kuyruk kalır ve
+#: referans ton ölçümü (Faz 1/2 doğrulaması) temiz bir bölgede yapılabilir.
+BURST_STARTS = (1_024, 3_072, 5_120, 7_168)
+
+
 def _build_plans() -> list[RecordPlan]:
-    """Sekiz kaydın planını üretir.
+    """2 sınıf x 4 ofset x `RECORDS_PER_CELL` kayıt planı üretir.
 
-    İki sınıf aynı taşıyıcı ofset havuzunu ve aynı burst başlangıç havuzunu
-    kullanır; yalnızca eşleşmeleri farklıdır. Böylece ne taşıyıcı frekansı ne de
-    burst konumu sınıf hakkında bilgi taşır.
+    Burst başlangıcı hem ofsetten hem sınıftan bağımsız olacak şekilde
+    döndürülür: her sınıf her başlangıcı eşit sayıda kullanır, dolayısıyla
+    burst konumu da sınıf hakkında bilgi taşımaz.
     """
-    offsets = (-280_000.0, -180_000.0, 180_000.0, 280_000.0)
-    bpsk_starts = (4_096, 12_288, 8_192, 16_384)
-    qpsk_starts = (12_288, 4_096, 16_384, 8_192)
-
     plans: list[RecordPlan] = []
-    for modulation, starts in (("bpsk", bpsk_starts), ("qpsk", qpsk_starts)):
-        for i, (offset, start) in enumerate(zip(offsets, starts, strict=True), start=1):
-            plans.append(
-                RecordPlan(
-                    name=f"{modulation}_{i:02d}",
-                    modulation=modulation,
-                    carrier_offset=offset,
-                    burst_start=start,
-                    seed=BASE_SEED + len(plans),
+    for class_shift, modulation in enumerate(("bpsk", "qpsk")):
+        counter = 0
+        for offset_index, offset in enumerate(CARRIER_OFFSETS):
+            for repeat in range(RECORDS_PER_CELL):
+                counter += 1
+                start_index = (2 * offset_index + repeat + class_shift) % len(BURST_STARTS)
+                plans.append(
+                    RecordPlan(
+                        name=f"{modulation}_{counter:02d}",
+                        modulation=modulation,
+                        carrier_offset=offset,
+                        burst_start=BURST_STARTS[start_index],
+                        seed=BASE_SEED + len(plans),
+                    )
                 )
-            )
     return plans
 
 

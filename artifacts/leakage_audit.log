@@ -1,0 +1,54 @@
+1) KAYIT AYRIKLIĞI
+   toplam kayıt: 16
+   birden fazla split'te olan: YOK
+
+2) PENCERE İKİZLİĞİ (kosinüs benzerliği, mutlak)
+   val vs train : maks 0.8981  ortalama 0.5630  ikiz (>0.999): 0
+   test vs train : maks 0.8672  ortalama 0.5631  ikiz (>0.999): 0
+   train içi (örtüşen komşu pencereler): maks 0.9027
+   not: taban benzerlik yüksektir çünkü her pencere aynı +100 kHz referans
+        tonunu içerir; sızıntının imzası ~1.0 benzerlik ve ikiz sayısı > 0'dır.
+
+3) SINIF x TAŞIYICI OFSET
+    train (12 kayıt)
+           -280k     -180k     +180k     +280k    toplam
+      bpsk           1         2         2         1         6
+      qpsk           1         2         2         1         6
+      -> BAĞIMSIZ
+    val (2 kayıt)
+           +280k    toplam
+      bpsk           1         1
+      qpsk           1         1
+      -> BAĞIMSIZ
+    test (2 kayıt)
+           -280k    toplam
+      bpsk           1         1
+      qpsk           1         1
+      -> BAĞIMSIZ
+
+4) SINIF x BURST BAŞLANGICI
+    train (12 kayıt)
+            1024      3072      5120      7168    toplam
+      bpsk           1         2         2         1         6
+      qpsk           2         1         2         1         6
+      -> BAĞIMLI (sapma 0.50)
+    val (2 kayıt)
+            7168    toplam
+      bpsk           1         1
+      qpsk           1         1
+      -> BAĞIMSIZ
+    test (2 kayıt)
+            1024      3072    toplam
+      bpsk           1         0         1
+      qpsk           0         1         1
+      -> BAĞIMLI (sapma 0.50)
+
+ÖZET
+   kayıt sızıntısı          : YOK
+   ofset bağımsızlığı       : tam
+   burst konumu bağımsızlığı: sapma 0.50
+
+   Uyarı: sınıf başına tek kayıt içeren split'lerde (val/test) hiçbir
+   kayıt-düzeyi özniteliğin bağımsızlığı GÖSTERİLEMEZ — iki kaydı ayıran
+   her alan sınıfları da 'ayırmış' görünür. n=2'de kontenjans tablosu
+   dejenere olur; buradaki sapma sızıntı kanıtı değildir.

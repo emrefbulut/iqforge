@@ -111,9 +111,10 @@ def _assign_balanced(
     Her sınıfın split başına kayıt sayısı `_allocate` ile sabittir — katmanlama
     bozulmaz. Değişen yalnızca HANGİ kaydın hangi split'e gittiğidir.
 
-    Hedef: **bir split'in içinde grup ile etiket bağımsız olsun.** Bunun için bir
-    grubun tüm kayıtları, sınıf ayrımı olmaksızın aynı split'e yerleştirilir;
-    gruplar split'lere tur tur dağıtılır.
+    Hedef: **bir split'in içinde grup ile etiket bağımsız olsun.** Bunun için
+    atama "tur" birimiyle yapılır: bir tur = bir gruptan, her sınıftan birer
+    kayıt. Tur bütün olarak tek bir split'e gider, böylece o split içinde grup
+    etiketi ele veremez.
 
     Bu kural şart, çünkü tersi felakettir: gruplar sınıflar arasında
     tamamlayıcı dağıtılırsa (bpsk train'de pozitif ofsetleri, qpsk negatifleri
@@ -121,15 +122,21 @@ def _assign_balanced(
     öğrenir, eğitimde %100 yapar ve ilişki başka split'te tersine döndüğü için
     testte %0'a düşer — şans seviyesinin de altına.
 
-    Grup başına yalnızca bir sınıfın kaydı varsa bu garanti verilemez; kalan
-    kayıtlar kapasitesi en çok olan split'e konur ve `balance_warnings` durumu
-    bildirir.
+    Turlar gruplar arasında dönüşümlü işlenir ve her tur, hedefine göre EN ÇOK
+    AÇIĞI olan split'e verilir (mutlak kapasiteye değil orana bakılır). Mutlak
+    kapasite kullanılsaydı train tamamen dolana kadar hiçbir grup val/test'e
+    geçmez, dolayısıyla hiçbir grup train ile val/test arasında paylaşılmazdı;
+    o zaman değerlendirme her zaman görülmemiş gruplar üzerinde yapılırdı.
+
+    Grup başına yalnızca bir sınıfın kaydı varsa tur oluşturulamaz; kalanlar
+    etiket bazında en açık split'e konur ve `leakage_warnings` durumu bildirir.
     """
-    remaining: dict[tuple[str, int], int] = {}
+    targets: dict[tuple[str, int], int] = {}
     for label, records in by_label.items():
         counts = _allocate(len(records), ratios, active)
         for i in active:
-            remaining[(label, i)] = counts[i]
+            targets[(label, i)] = counts[i]
+    remaining = dict(targets)
 
     # cell[grup][etiket] = o gruptaki, o etikete sahip kayıtlar
     cell: dict[str, dict[str, list[str]]] = defaultdict(dict)
@@ -140,29 +147,38 @@ def _assign_balanced(
         for label in buckets:
             buckets[label] = _shuffled(buckets[label], rng)
 
+    def _deficit(split: int, labels: list[str]) -> float:
+        """Split'in hedefine göre doldurulmamış oranı."""
+        total = sum(targets[(label, split)] for label in labels)
+        left = sum(remaining[(label, split)] for label in labels)
+        return left / total if total else 0.0
+
     assignment: dict[str, str] = {}
-    for group in _shuffled(list(cell), rng):
-        buckets = cell[group]
-        while any(buckets.values()):
+    rotation = _shuffled(list(cell), rng)
+    while any(any(cell[group].values()) for group in rotation):
+        for group in rotation:
+            buckets = cell[group]
+            if not any(buckets.values()):
+                continue
             present = [label for label, records in buckets.items() if records]
-            # Bir "tur" = her etiketten bir kayıt. Turu bütün olarak alabilen
-            # split tercih edilir; böylece grup split içinde etiketi ele vermez.
             rounds = {i: min(remaining[(label, i)] for label in present) for i in active}
-            best = max(
-                active,
-                key=lambda i: (rounds[i], sum(remaining[(label, i)] for label in present), -i),
-            )
-            if rounds[best] > 0:
+            candidates = [i for i in active if rounds[i] > 0]
+
+            if candidates:
+                best = max(candidates, key=lambda i: (_deficit(i, present), rounds[i], -i))
                 for label in present:
                     record_id = buckets[label].pop()
                     assignment[record_id] = SPLIT_NAMES[best]
                     remaining[(label, best)] -= 1
                 continue
 
-            # Tam tur alınamıyor: kalanları etiket bazında en boş split'e koy.
+            # Tam tur oluşturulamıyor: kalanları etiket bazında en açık split'e koy.
             for label in present:
                 record_id = buckets[label].pop()
-                target = max(active, key=lambda i: (remaining[(label, i)], -i))
+                target = max(
+                    (i for i in active if remaining[(label, i)] > 0),
+                    key=lambda i: (remaining[(label, i)], -i),
+                )
                 assignment[record_id] = SPLIT_NAMES[target]
                 remaining[(label, target)] -= 1
 

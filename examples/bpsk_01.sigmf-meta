@@ -8,7 +8,7 @@
         "core:offset": 0,
         "core:recorder": "iqforge scripts/make_example.py",
         "core:sample_rate": 1024000.0,
-        "core:sha512": "1787ffa3d89215989a4fd6236dd2a2134dfdeed172763137257e911d169ce4fb3896f68ab6fc6793ee4bc45c0354245450b6c124f9387e4ea8a83d3321c19d87",
+        "core:sha512": "1dbf965c1a57935de13e63bcbdb31744a6e0a360b1ecd4d724717d43cdf0657c99c7a9faa830e4db1c1fc61e453745f3cdd7275d913a69890f88ced28762b89b",
         "core:version": "1.0.0"
     },
     "captures": [
@@ -24,7 +24,7 @@
             "core:freq_lower_edge": 2450099500.0,
             "core:freq_upper_edge": 2450100500.0,
             "core:label": "ref_tone",
-            "core:sample_count": 65536,
+            "core:sample_count": 32768,
             "core:sample_start": 0
         },
         {
@@ -32,8 +32,8 @@
             "core:freq_lower_edge": 2449676800.0,
             "core:freq_upper_edge": 2449763200.0,
             "core:label": "bpsk",
-            "core:sample_count": 40960,
-            "core:sample_start": 4096
+            "core:sample_count": 20480,
+            "core:sample_start": 1024
         }
     ]
 }

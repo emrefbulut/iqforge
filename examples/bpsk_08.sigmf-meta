@@ -2,13 +2,13 @@
     "global": {
         "core:author": "iqforge",
         "core:datatype": "cf32_le",
-        "core:description": "iqforge sentetik \u00f6rnek kayd\u0131 'qpsk_01'. S\u00fcrekli referans ton (merkez +100 kHz), tek QPSK bursti, d\u00fc\u015f\u00fck seviyeli AWGN.",
+        "core:description": "iqforge sentetik \u00f6rnek kayd\u0131 'bpsk_08'. S\u00fcrekli referans ton (merkez +100 kHz), tek BPSK bursti, d\u00fc\u015f\u00fck seviyeli AWGN.",
         "core:hw": "synthetic (scripts/make_example.py)",
         "core:num_channels": 1,
         "core:offset": 0,
         "core:recorder": "iqforge scripts/make_example.py",
         "core:sample_rate": 1024000.0,
-        "core:sha512": "9189d2b8b59eb3ed23243052167907a6f6de2cb0ea2ef06c485ba5bbb202f22bb3613c09e5e6308aeac48a1f0515c6443909e92d40dd7bf3acb256a304efdbff",
+        "core:sha512": "9bf3e682d4d1eacb9f34719bbaa311991ca7768ca95cf23b6c27f6f28e2d87dd6b00db83bac5cd28c6d1a914249280ecd9a2b53a4f1cfefe64200fad7ee0ff7d",
         "core:version": "1.0.0"
     },
     "captures": [
@@ -28,12 +28,12 @@
             "core:sample_start": 0
         },
         {
-            "core:comment": "QPSK, 64 kBd, RRC beta=0.35, bant geni\u015fli\u011fi 86.4 kHz, ortalama g\u00fc\u00e7 0.0484, ta\u015f\u0131y\u0131c\u0131 -280 kHz",
-            "core:freq_lower_edge": 2449676800.0,
-            "core:freq_upper_edge": 2449763200.0,
-            "core:label": "qpsk",
+            "core:comment": "BPSK, 64 kBd, RRC beta=0.35, bant geni\u015fli\u011fi 86.4 kHz, ortalama g\u00fc\u00e7 0.0484, ta\u015f\u0131y\u0131c\u0131 +280 kHz",
+            "core:freq_lower_edge": 2450236800.0,
+            "core:freq_upper_edge": 2450323200.0,
+            "core:label": "bpsk",
             "core:sample_count": 20480,
-            "core:sample_start": 3072
+            "core:sample_start": 7168
         }
     ]
 }

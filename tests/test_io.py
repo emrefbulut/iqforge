@@ -130,35 +130,52 @@ def test_annotations_are_parsed_and_sorted(tmp_path: Path, tone: np.ndarray) -> 
 
 
 @pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
-def test_example_set_has_eight_records_balanced_by_class() -> None:
-    """Örnek veri seti dört bpsk + dört qpsk kayıttan oluşmalı.
-
-    Kayıt sayısı SPEC §5.6'nın kayıt bazında bölme kuralı için kritiktir: sınıf
-    başına dört kayıt, 0.7/0.15/0.15 bölmesinin üç split'i de doldurmasına yeter.
-    """
+def test_example_set_has_sixteen_records_balanced_by_class() -> None:
+    """Örnek veri seti sekiz bpsk + sekiz qpsk kayıttan oluşmalı."""
     labels = [_burst(load(p)).label for p in EXAMPLES]
 
-    assert len(EXAMPLES) == 8
-    assert labels.count("bpsk") == 4
-    assert labels.count("qpsk") == 4
-    assert len({p.stem for p in EXAMPLES}) == 8, "kayıt adları benzersiz olmalı"
+    assert len(EXAMPLES) == 16
+    assert labels.count("bpsk") == 8
+    assert labels.count("qpsk") == 8
+    assert len({p.stem for p in EXAMPLES}) == 16, "kayıt adları benzersiz olmalı"
+
+
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+def test_every_class_offset_cell_has_two_records() -> None:
+    """Her (sınıf, taşıyıcı ofset) çifti için tam olarak İKİ kayıt olmalı.
+
+    Bu, Faz 4 doğrulama kapısının çalışabilmesinin ön koşuludur. Tek kayıt
+    olsaydı, split içi bağımsızlık garantisi (SPEC §5.6) o ofsetin tüm
+    kayıtlarını aynı split'e zorlardı; train ile test hiçbir ofseti
+    paylaşamaz ve model her zaman görülmemiş taşıyıcıda sınanırdı.
+    """
+    cells: dict[tuple[str, int], int] = {}
+    for path in EXAMPLES:
+        rec = load(path)
+        a = _burst(rec)
+        centre = round((a.freq_lower_edge + a.freq_upper_edge) / 2 - rec.center_frequency)
+        key = (a.label, centre)
+        cells[key] = cells.get(key, 0) + 1
+
+    assert len(cells) == 8, f"2 sınıf x 4 ofset bekleniyordu, {len(cells)} hücre var"
+    assert set(cells.values()) == {2}, f"her hücrede 2 kayıt olmalı: {cells}"
 
 
 @pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
 def test_example_records_share_metadata_and_fit_size_budget() -> None:
-    """Her kayıt aynı temel metadata'ya sahip ve toplam 5 MB'ın altında."""
+    """Her kayıt aynı temel metadata'ya sahip ve toplam 6 MB'ın altında."""
     total = 0
     for path in EXAMPLES:
         rec = load(path)
         assert rec.datatype == "cf32_le"
         assert rec.sample_rate == 1_024_000.0
         assert rec.center_frequency == 2_450_000_000.0
-        assert rec.num_samples == 65_536
-        assert rec.duration_seconds == pytest.approx(0.064)
+        assert rec.num_samples == 32_768
+        assert rec.duration_seconds == pytest.approx(0.032)
         assert {a.label for a in rec.annotations} == {"ref_tone", _burst(rec).label}
         total += rec.data_path.stat().st_size + rec.meta_path.stat().st_size
 
-    assert total < 5_000_000, f"örnek veri seti 5 MB'ı aşıyor: {total / 1e6:.2f} MB"
+    assert total < 6_000_000, f"örnek veri seti 6 MB'ı aşıyor: {total / 1e6:.2f} MB"
 
 
 @pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
@@ -172,7 +189,7 @@ def test_example_bursts_are_equal_in_bandwidth_and_duration() -> None:
     counts = {_burst(load(p)).sample_count for p in EXAMPLES}
 
     assert widths == {86_400.0}
-    assert counts == {40_960}
+    assert counts == {20_480}
 
 
 @pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
@@ -208,10 +225,11 @@ def test_example_reference_tone_is_exactly_plus_100_khz(path: Path) -> None:
     assert ref.sample_count == rec.num_samples
     assert (ref.freq_lower_edge + ref.freq_upper_edge) / 2 - rec.center_frequency == 100_000.0
 
-    # Burstün bittiği, yalnız tonun bulunduğu sessiz kuyruk.
+    # Burstün bittiği, yalnız tonun bulunduğu sessiz kuyruk. 4096 örnek,
+    # 250 Hz bin genişliği demek; +100 kHz'i çözmeye fazlasıyla yeter.
     quiet_start = _burst(rec).sample_end
     quiet = rec.read(start=quiet_start, count=rec.num_samples - quiet_start)
-    assert quiet.size >= 8192, "ton ölçümü için yeterli sessiz bölge yok"
+    assert quiet.size >= 4096, "ton ölçümü için yeterli sessiz bölge yok"
 
     spectrum = np.abs(np.fft.fftshift(np.fft.fft(quiet)))
     freqs = np.fft.fftshift(np.fft.fftfreq(quiet.size, d=1.0 / rec.sample_rate))

@@ -51,6 +51,61 @@ def build_dataset(source: Path, out_dir: Path, split_seed: int) -> None:
     )
 
 
+def contingency(dataset_dir: Path, split: str) -> tuple[list[str], list[float], dict, float]:
+    """Bir split için sınıf x taşıyıcı ofset kontenjans tablosunu çıkarır.
+
+    Returns:
+        `(etiketler, ofsetler, tablo, maks_sapma)`. `maks_sapma`, gözlenen
+        hücrelerin bağımsızlık altında beklenen değerlerden
+        (satır_toplamı * sütun_toplamı / n) en büyük mutlak sapmasıdır; 0 ise
+        ofset ile etiket o split içinde tam bağımsızdır.
+    """
+    manifest = json.loads((dataset_dir / "manifest.json").read_text(encoding="utf-8"))
+    records = manifest["splits"][split]["records"]
+    labels = sorted(manifest["label_map"])
+    offsets = sorted(
+        {
+            r["carrier_offset_hz"]
+            for s in ("train", "val", "test")
+            for r in manifest["splits"][s]["records"]
+        }
+    )
+
+    table = {(label, offset): 0 for label in labels for offset in offsets}
+    for record in records:
+        table[(record["label"], record["carrier_offset_hz"])] += 1
+
+    n = len(records)
+    if n == 0:
+        return labels, offsets, table, 0.0
+    deviation = 0.0
+    for label in labels:
+        row = sum(table[(label, o)] for o in offsets)
+        for offset in offsets:
+            column = sum(table[(lab, offset)] for lab in labels)
+            expected = row * column / n
+            deviation = max(deviation, abs(table[(label, offset)] - expected))
+    return labels, offsets, table, deviation
+
+
+def format_contingency(dataset_dir: Path, split: str) -> list[str]:
+    """Kontenjans tablosunu metin satırlarına çevirir."""
+    labels, offsets, table, deviation = contingency(dataset_dir, split)
+    total = sum(table.values())
+    lines = [
+        f"  {split} ({total} kayıt)",
+        "    " + "".join(f"{o / 1e3:>+9.0f}k" for o in offsets) + f"{'toplam':>10}",
+    ]
+    for label in labels:
+        row = "".join(f"{table[(label, o)]:>10d}" for o in offsets)
+        lines.append(f"    {label:<6}{row}{sum(table[(label, o)] for o in offsets):>10d}")
+    totals = "".join(f"{sum(table[(lab, o)] for lab in labels):>10d}" for o in offsets)
+    lines.append(f"    {'toplam':<6}{totals}{total:>10d}")
+    verdict = "BAĞIMSIZ" if deviation < 1e-9 else f"BAĞIMLI (maks sapma {deviation:.2f})"
+    lines.append(f"    -> ofset ile etiket: {verdict}")
+    return lines
+
+
 def split_layout(dataset_dir: Path) -> dict:
     """Manifest'ten split -> [(kayıt, etiket, ofset)] çıkarır."""
     manifest = json.loads((dataset_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -89,6 +144,7 @@ def main() -> None:
     emit("")
 
     rows: list[dict] = []
+    contingency_rows: list[dict] = []
     with tempfile.TemporaryDirectory() as tmp:
         for split_seed in SPLIT_SEEDS:
             dataset_dir = Path(tmp) / f"ds_{split_seed}"
@@ -99,6 +155,20 @@ def main() -> None:
             for split, records in layout.items():
                 shown = ", ".join(f"{n}({o / 1e3:+.0f}k)" for n, _, o in records) or "—"
                 emit(f"  {split:<6}: {shown}")
+
+            emit("  --- sınıf x ofset kontenjans tabloları ---")
+            deviations = {}
+            for split in ("train", "val", "test"):
+                for line in format_contingency(dataset_dir, split):
+                    emit(line)
+                deviations[split] = contingency(dataset_dir, split)[3]
+
+            train_offsets = {o for _, _, o in layout["train"]}
+            for split in ("val", "test"):
+                offsets = {o for _, _, o in layout[split]}
+                shared = sorted(o / 1e3 for o in (offsets & train_offsets))
+                emit(f"  train ile {split} paylaşılan ofsetler (kHz): {shared or 'YOK'}")
+            contingency_rows.append({"split_seed": split_seed, "deviations": deviations})
 
             for train_seed in TRAIN_SEEDS:
                 result = train_baseline(
@@ -174,6 +244,12 @@ def main() -> None:
         else "EĞİTİM tohumu"
     )
     emit(f"baskın saçılma kaynağı: {dominant}")
+
+    worst = max((d for row in contingency_rows for d in row["deviations"].values()), default=0.0)
+    emit(
+        f"ofset-etiket bağımsızlığı: tüm bölme tohumları ve split'lerde maks sapma "
+        f"{worst:.3f} ({'tam bağımsız' if worst < 1e-9 else 'BAĞIMLI — sızıntı riski'})"
+    )
 
     (args.output / "train_seed_grid.json").write_text(
         json.dumps(

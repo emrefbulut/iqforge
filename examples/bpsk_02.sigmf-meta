@@ -8,7 +8,7 @@
         "core:offset": 0,
         "core:recorder": "iqforge scripts/make_example.py",
         "core:sample_rate": 1024000.0,
-        "core:sha512": "cea0771cbef3002f20a0e1eec1ea56abc7dee230153799eab1a539ab68d0ba95b780fd0837d688186ad5724dde6ade1e18e6658d77e0d81b30daf410ad5d6a12",
+        "core:sha512": "9b7caa6531d46c2a5ea608234280498f609252c3f27c011623e47bc6d26b5d3ace5480097eaa705a2e929eb5957e18ca43cd8b254ab1cadf8b223c65260b47c9",
         "core:version": "1.0.0"
     },
     "captures": [
@@ -24,16 +24,16 @@
             "core:freq_lower_edge": 2450099500.0,
             "core:freq_upper_edge": 2450100500.0,
             "core:label": "ref_tone",
-            "core:sample_count": 65536,
+            "core:sample_count": 32768,
             "core:sample_start": 0
         },
         {
-            "core:comment": "BPSK, 64 kBd, RRC beta=0.35, bant geni\u015fli\u011fi 86.4 kHz, ortalama g\u00fc\u00e7 0.0484, ta\u015f\u0131y\u0131c\u0131 -180 kHz",
-            "core:freq_lower_edge": 2449776800.0,
-            "core:freq_upper_edge": 2449863200.0,
+            "core:comment": "BPSK, 64 kBd, RRC beta=0.35, bant geni\u015fli\u011fi 86.4 kHz, ortalama g\u00fc\u00e7 0.0484, ta\u015f\u0131y\u0131c\u0131 -280 kHz",
+            "core:freq_lower_edge": 2449676800.0,
+            "core:freq_upper_edge": 2449763200.0,
             "core:label": "bpsk",
-            "core:sample_count": 40960,
-            "core:sample_start": 12288
+            "core:sample_count": 20480,
+            "core:sample_start": 3072
         }
     ]
 }

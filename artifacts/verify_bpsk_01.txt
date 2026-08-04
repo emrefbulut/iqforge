@@ -1,5 +1,5 @@
 PNG yazıldı: artifacts\spectrogram_bpsk_01.png
-pencere: örnek 0…65536 (0.0005…0.0635 s), nfft=1024
+pencere: örnek 0…32768 (0.0005…0.0315 s), nfft=1024
 
 --- referans ton (+100 kHz) ---
   matplotlib (tam çözünürlük): tepe +100.000 kHz  (bin 1000 Hz)
@@ -8,17 +8,17 @@ pencere: örnek 0…65536 (0.0005…0.0635 s), nfft=1024
   TAMAM: terminal tepe satırı +100 kHz'i içeriyor
 
 --- burst zaman aralıkları ---
-  bpsk: annotation 0.0040…0.0440 s  (-323.2…-236.8 kHz)
-      matplotlib ölçümü : 0.0045…0.0435 s  (fark +0.5 / +0.5 ms)
-      terminal ölçümü   : 0.0045…0.0435 s
+  bpsk: annotation 0.0010…0.0210 s  (-323.2…-236.8 kHz)
+      matplotlib ölçümü : 0.0015…0.0205 s  (fark +0.5 / +0.5 ms)
+      terminal ölçümü   : 0.0010…0.0205 s
       TAMAM: 5 ms tolerans içinde
 
 --- güç eğrisi basamak kenarları vs annotation ---
-  annotation           : 0.00400…0.04400 s
+  annotation           : 0.00100…0.02100 s
   beklenen kayıklık    : +325.3 / -325.3 örnek — 512 örneklik Hann rampasının yarı-güç noktası
-  blok=512  (çizilen eğri): 0.00437…0.04361 s  fark +0.371 / -0.389 ms  (+380 / -398 örnek)
-  blok=32   (ince ızgara): 0.00435…0.04365 s  fark +0.349 / -0.352 ms  (+357 / -361 örnek)
-  blok ızgarası etkisi : 23 / 37 örnek — 512 örneklik blok 512 örneklik rampayı tek bloğa sıkıştırıp kenarı dışarı iter
+  blok=512  (çizilen eğri): 0.00136…0.02064 s  fark +0.355 / -0.359 ms  (+364 / -367 örnek)
+  blok=32   (ince ızgara): 0.00135…0.02064 s  fark +0.353 / -0.356 ms  (+362 / -365 örnek)
+  blok ızgarası etkisi : 2 / 3 örnek — 512 örneklik blok 512 örneklik rampayı tek bloğa sıkıştırıp kenarı dışarı iter
   TAMAM: ince ızgarada kayıklık rampanın yarı-güç noktasına yakınsıyor;
          kalan fark yalnızca blok ızgarası çözünürlüğü, sistematik hata yok
 

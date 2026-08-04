@@ -340,13 +340,32 @@ iqforge/
 ```
 
 `examples/` içindeki örnek kayıtları sen üret: her biri kısa, tek modülasyonlu,
-annotation'larıyla birlikte, toplamı 5 MB'ın altında. Bu dosyalar kritik —
+annotation'larıyla birlikte, toplamı 6 MB'ın altında. Bu dosyalar kritik —
 kullanıcı donanım olmadan aracı deneyebilmeli.
 
-**Neden tek dosya değil birden fazla:** §5.6 kayıt bazında bölme istiyor. Tek
-kayıt dosyası olsaydı bu kural örnek veriyle sınanamaz, `build` da sessizce
-pencere bazlı bölmeye düşebilirdi. Sınıf başına dört kayıt, 0.7/0.15/0.15
-bölmesinin her üç split'i de boş olmayacak şekilde doldurmasına yeter.
+**Yapı: 2 sınıf × 4 taşıyıcı ofset × 2 kayıt = 16 kayıt.** Her kayıt 32768
+örnek (0.032 s), toplam 4.19 MB, kayıt başına 40 etiketli pencere (1024/512
+pencerelemede), toplam 640.
+
+Üç sayı da zorunlu:
+
+- **Birden fazla dosya:** §5.6 kayıt bazında bölme istiyor. Tek dosyayla bu
+  kural örnek veriyle sınanamaz, `build` da sessizce pencere bazlı bölmeye
+  düşebilirdi.
+- **Sınıf başına en az 3 kayıt:** 0.7/0.15/0.15 bölmesinin üç split'i de boş
+  olmayacak şekilde dolabilmesi için.
+- **(sınıf, ofset) hücresi başına 2 kayıt:** §5.6'nın split içi bağımsızlık
+  garantisi, bir ofsetin kayıtlarını tur tur dağıtır. Hücrede tek kayıt olsaydı
+  tur oluşturulamaz, o ofsetin tüm kayıtları aynı split'e düşer ve train ile
+  test hiçbir ofseti paylaşamazdı; model her zaman görülmemiş taşıyıcıda
+  sınanır, doğruluk şans seviyesine çakılır ve Faz 4 doğrulama kapısı hiçbir
+  şey ölçemez. Bu durum ölçülmüştür: tek kayıtlı kurulumda 15 koşunun 12'si
+  tam %50 vermiştir.
+
+Kayıttan kayda değişenler: gürültü tohumu, sembol dizisi, burst zaman konumu,
+taşıyıcı ofseti. Sabit kalanlar: bant genişliği (86.4 kHz), burst süresi
+(20480 örnek), ortalama güç. Her sınıf her ofseti ve her burst başlangıcını
+eşit sayıda kullanır.
 
 ---
 
@@ -398,31 +417,43 @@ görünür kılar; her split'te negatif ve pozitif ofsetler birlikte bulunmalı.
 ### Faz 4 — `IQForgeDataset` + `train`
 **Doğrulama:**
 ```
-uv run --extra torch iqforge train /tmp/ds --epochs 5
+uv run --extra torch iqforge train /tmp/ds --epochs 20
 ```
 Sentetik veride eğitim doğruluğu %90'ın üstüne çıkmalı. Çıkmıyorsa veri
 pipeline'ında hata var demektir — durup nedenini bul, hyperparameter oynama.
 
-**Ölçülen sonuç.** 5 epoch'ta eğitim doğruluğu %81.25'te kalıyor; eğri
-monoton yükseliyor ve 20 epoch'ta %100'e ulaşıyor. Yani %90 eşiğinin altında
-kalmasının nedeni yakınsama hızı, boru hattı hatası değil.
+**Epoch sayısı neden 20.** Eğitim doğruluğu ölçülen değerlerle (bölme tohumu
+11, eğitim tohumu 0):
 
-**Test doğruluğu bu örnek veri setinde ~%50'dir ve bu beklenen sonuçtur.**
-`examples/` her (sınıf, taşıyıcı ofset) çifti için tek kayıt içerir. Split
-içinde ofsetin etiketi ele vermemesi için bir ofsetin tüm kayıtları aynı
-split'e gitmek zorundadır (§5.6), dolayısıyla train ile test hiçbir ofseti
-paylaşamaz ve model hiç görmediği taşıyıcı frekanslarında değerlendirilir.
-Model o koşulda sabit sınıf tahmin eder; sınıf bazında doğruluk 100%/0%
-biçiminde çıkar.
+| epoch | eğitim | val | test |
+|---|---|---|---|
+| 5  | %65.4 | %50.0 | %52.5 |
+| 10 | %84.0 | %81.2 | %67.5 |
+| 20 | %99.0 | %100  | %95.0 |
 
-Bunun bir boru hattı hatası OLMADIĞI kontrol deneyiyle gösterilmiştir
-(`scripts/control_shared_offsets.py`): taşıyıcı ofseti tüm kayıtlarda
-sabitlendiğinde, eğitimde hiç görülmemiş kayıtlar üzerinde test doğruluğu üç
-eğitim tohumunda da %100 çıkar. Etiketleme, pencereleme, kayıt bazlı bölme ve
-`IQForgeDataset` doğru çalışıyor demektir.
+Eğri monoton; 5 ve 10 epoch'ta model henüz yakınsamamıştır, bu bir boru hattı
+hatası değildir. %90 eşiği 20 epoch'ta karşılanır.
 
-Örnek veri setinin taşıyıcıya genelleme yeteneğini ölçebilmesi için ofset
-başına en az iki kayıt gerekir; bu v0 kapsamı dışındadır.
+**Beklenen test doğruluğu: %90–100.** Ölçülen (5 bölme × 3 eğitim tohumu,
+20 epoch): ortalama **%98.4 ± %2.8**, aralık %91.25–%100.
+
+Bu, kurulum sırasında hedeflenen %75–95 bandının üstündedir. Nedeni sızıntı
+değil, görevin kolay olmasıdır:
+
+- Bant içi SNR ≈ 18 dB (burst gücü 0.0484, gürültü gücü 0.0008).
+- Her pencere 1024 örnek = 64 sembol taşır; klasik bir BPSK/QPSK ayırıcısı da
+  bu koşulda ~%100 yapar.
+- Test kayıtları eğitimle aynı taşıyıcı ofsetini paylaşır (§7), yani ölçülen
+  şey modülasyon ayrımıdır, taşıyıcıya genelleme değil.
+
+Yüksek doğruluk `scripts/audit_leakage.py` ile denetlenmiştir: kayıt ayrıklığı
+sağlanıyor, split'ler arasında ikiz pencere yok (>0.999 benzerlikte 0 çift),
+taşıyıcı ofseti her split'te etiketten bağımsız (sapma 0).
+
+**Ölçüm çözünürlüğü sınırlıdır.** Test split'i 2 kayıt / 80 penceredir; bir
+pencere %1.25 eder ve sınıf başına tek kayıt olduğu için kayıt-düzeyi hiçbir
+özniteliğin bağımsızlığı istatistiksel olarak gösterilemez. Doğruluk farkları
+birkaç puanlık aralıkta anlamlı okunmamalıdır.
 
 **Tohum protokolü.** Bölme tohumu (`build --seed`) ile eğitim tohumu
 (`train --seed`) ayrıdır ve karıştırılmamalıdır: ilki veri setinin içeriğini,
