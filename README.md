@@ -28,9 +28,21 @@ and refuses to guess when it can't.
 
 ## Quickstart
 
+**From a clone** — works today, and brings the example recordings with it:
+
 ```bash
-pip install iqforge          # not published yet — see Roadmap
+git clone https://github.com/emrefbulut/iqforge && cd iqforge
+uv sync --extra torch
+alias iqforge='uv run iqforge'   # so the commands below work as written
 ```
+
+**From PyPI** — not published yet, see [Roadmap](#roadmap):
+
+```bash
+pip install 'iqforge[torch]'
+```
+
+Either way:
 
 ```bash
 iqforge info    examples/bpsk_01.sigmf-meta   # what's in this recording?
@@ -40,6 +52,7 @@ iqforge stats   dataset/                      # what did I just build?
 ```
 
 ```python
+# from a clone, run this with: uv run python
 from iqforge import IQForgeDataset
 
 train = IQForgeDataset("dataset/", split="train")
@@ -48,7 +61,8 @@ train.label_map  # {"bpsk": 0, "qpsk": 1}
 ```
 
 Sample recordings ship with the repo, so you can run all of the above without any
-hardware.
+hardware. `torch` is only needed for `IQForgeDataset` and `iqforge train`; drop
+`--extra torch` (or install plain `iqforge`) if you only want to build datasets.
 
 ## What it does
 
