@@ -172,14 +172,6 @@ uv run ruff check
 Plain `uv sync` also works, but it *removes* torch if you already installed it —
 and the tests that need it then skip rather than fail, so it is easy to miss.
 
-## AI usage disclosure
-
-Substantial parts of this codebase were written with AI assistance
-(Claude, Anthropic). Specification, methodology, review, and all design decisions
-about signal handling — windowing, normalization, and the recording-level split
-guarantee — were made and verified by the author. Correctness claims are backed by
-the test suite, including mutation tests on the I/Q reading path.
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
