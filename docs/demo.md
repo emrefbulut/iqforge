@@ -103,6 +103,12 @@ docs/demo.cast   # kaynak kayıt — GIF'i parametre değiştirip yeniden üretm
 docs/demo.gif    # README'de gösterilen dosya
 ```
 
+> **`docs/` içindeki diğer görseller.** `banner.svg` README'nin başlığıdır;
+> `banner.png` onun yedeğidir — SVG'nin render edilmediği ortamlar (bazı RSS
+> okuyucular, e-posta önizlemeleri, GitHub'ın sosyal medya kartı) için durur.
+> Referans verilmiyor diye ölü dosya sanılıp silinmesin. İkisi de
+> `make_banner.py` ile üretilir.
+
 README'ye eklemek için (banner'ın hemen altına):
 
 ```markdown
