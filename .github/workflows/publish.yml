@@ -7,19 +7,42 @@ on:
       - "v*"
 
 jobs:
-  publish:
+  verify:
+    # A tag must not reach PyPI unless the same checks CI runs pass here too.
+    # PyPI version numbers are permanent: a bad upload can be yanked, but the
+    # number can never be reused. There is no undo, so this gate is the undo.
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev --extra torch
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest -q
+
+      - name: Tag must match the version in pyproject.toml
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(uv run python -c 'import iqforge; print(iqforge.__version__)')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package version $pkg" >&2
+            exit 1
+          fi
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: pypi
     permissions:
+      # Trusted Publishing: PyPI verifies this workflow's OIDC identity, so
+      # there is no long-lived API token to store or leak. Configure the
+      # publisher on PyPI first — see docs/publishing.md.
       id-token: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
-
-      - name: Build package
-        run: uv build
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@release/v1

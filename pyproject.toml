@@ -1,6 +1,6 @@
 [project]
 name = "iqforge"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Turn SDR captures (SigMF) into PyTorch-ready labelled datasets"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -47,6 +47,11 @@ iqforge = "iqforge.cli:app"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# Single source of truth. The CLI reports __version__ and the manifest records
+# it, so a static duplicate here could drift and make the tool misreport itself.
+path = "src/iqforge/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/iqforge"]
