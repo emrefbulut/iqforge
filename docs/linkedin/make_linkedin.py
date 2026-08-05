@@ -109,9 +109,7 @@ def build_svg() -> str:
             for c in range(CELLS):
                 if r == REF_ROW:
                     lvl = 0.92 + rng.random() * 0.08
-                elif (k in BPSK_WINS and r in BPSK_ROWS) or (
-                    k in QPSK_WINS and r in QPSK_ROWS
-                ):
+                elif (k in BPSK_WINS and r in BPSK_ROWS) or (k in QPSK_WINS and r in QPSK_ROWS):
                     lvl = 0.62 + rng.random() * 0.20
                 else:
                     lvl = 0.08 + rng.random() * 0.15
@@ -227,9 +225,7 @@ def build_png(png_path: Path) -> bool:
             for c in range(CELLS):
                 if r == REF_ROW:
                     lvl = 0.92 + rng.random() * 0.08
-                elif (k in BPSK_WINS and r in BPSK_ROWS) or (
-                    k in QPSK_WINS and r in QPSK_ROWS
-                ):
+                elif (k in BPSK_WINS and r in BPSK_ROWS) or (k in QPSK_WINS and r in QPSK_ROWS):
                     lvl = 0.62 + rng.random() * 0.20
                 else:
                     lvl = 0.08 + rng.random() * 0.15
