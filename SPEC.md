@@ -314,28 +314,53 @@ Kitty/iTerm grafik protokolü v0'da yok. Sonra eklenecek.
 iqforge/
   pyproject.toml
   README.md
-  LICENSE                 (MIT)
-  .github/workflows/ci.yml
+  CONTRIBUTING.md
+  CITATION.cff
+  LICENSE                       (MIT)
+  SPEC.md                       (bu doküman)
+  .gitignore
+  .github/
+    workflows/ci.yml            lint + test (3.11, 3.12) + torch + wheel
+    ISSUE_TEMPLATE/bug_report.yml
   src/iqforge/
-    __init__.py           IQForgeDataset ve load() dışa aktarılır
-    cli.py                typer uygulaması
-    io.py                 SigMF okuma, veri tipi dönüşümü
-    windowing.py          pencereleme
-    labeling.py           üç etiket kaynağı
-    splitting.py          katmanlı bölme
-    storage.py            shard yazma/okuma, manifest
-    dataset.py            IQForgeDataset (torch)
-    display.py            terminal spektrogram
-    models.py             baseline CNN
+    __init__.py                 load() ve (tembel) IQForgeDataset dışa aktarılır
+    cli.py                      typer uygulaması: info/inspect/build/stats/train
+    io.py                       SigMF okuma, veri tipi dönüşümü
+    windowing.py                pencereleme, normalizasyon, temsiller
+    labeling.py                 üç etiket kaynağı, --balance-by alan okuma
+    splitting.py                katmanlı kayıt bazlı bölme, sızıntı uyarıları
+    storage.py                  shard yazma/okuma, manifest
+    dataset.py                  IQForgeDataset (torch)
+    training.py                 baseline eğitim döngüsü (torch)
+    display.py                  terminal spektrogram
+    models.py                   baseline CNN
   tests/
+    conftest.py                 paylaşılan fixture'lar
+    helpers.py                  sentetik SigMF kayıt üreticisi
     test_io.py
     test_windowing.py
     test_labeling.py
     test_splitting.py
     test_storage.py
-  examples/
-    bpsk_01.sigmf-meta    sekiz küçük sentetik kayıt: dört bpsk, dört qpsk
-    bpsk_01.sigmf-data    (bpsk_01…bpsk_04, qpsk_01…qpsk_04)
+    test_display.py
+    test_dataset.py             (torch yoksa atlanır)
+    test_models.py              (torch yoksa atlanır)
+  scripts/                      geliştirme araçları, pakete girmez — bkz. §2
+    make_example.py             örnek kayıtları üretir
+    verify_spectrogram.py       Faz 2 doğrulaması, PNG üretir
+    capture_terminal.py         inspect çıktısını renkleriyle kaydeder
+    run_seed_grid.py            Faz 4 tohum ızgarası
+    audit_leakage.py            sızıntı denetimi
+    demo.sh                     tanıtım kaydı komut dizisi
+  docs/
+    banner.svg                  README başlık görseli
+    banner.png                  SVG render olmazsa yedek
+    make_banner.py              banner üreticisi
+    demo.md                     asciinema/agg ile kayıt alma talimatları
+  artifacts/                    faz doğrulamalarının kalıcı çıktıları
+  examples/                     16 kayıt: bpsk_01…bpsk_08, qpsk_01…qpsk_08
+    bpsk_01.sigmf-meta
+    bpsk_01.sigmf-data
     ...
 ```
 
