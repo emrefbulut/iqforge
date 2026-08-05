@@ -1,0 +1,4 @@
+# Commits made from the GitHub web UI carry a different name and address than
+# local ones, so `git shortlog` counted one person as two contributors.
+Emre Bulut <167114807+emrefbulut@users.noreply.github.com> <emrebulutf@gmail.com>
+Emre Bulut <167114807+emrefbulut@users.noreply.github.com> Emre BULUT <167114807+emrefbulut@users.noreply.github.com>

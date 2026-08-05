@@ -31,7 +31,6 @@ dataset/
 /ds/
 
 # Editors and OS
-.claude/
 .idea/
 .vscode/
 *.swp
