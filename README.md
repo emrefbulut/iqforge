@@ -35,7 +35,7 @@ pip install iqforge          # not published yet — see Roadmap
 ```bash
 iqforge info    examples/bpsk_01.sigmf-meta   # what's in this recording?
 iqforge inspect examples/bpsk_01.sigmf-meta   # look at it, in your terminal
-iqforge build   examples/ -o dataset/         # cut, label, split, write
+iqforge build   examples/ -o dataset/ --balance-by core:freq_lower_edge
 iqforge stats   dataset/                      # what did I just build?
 ```
 
