@@ -10,12 +10,17 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
-from torch.utils.data import Dataset
 
-from iqforge.io import IQForgeError
-from iqforge.splitting import SPLIT_NAMES
-from iqforge.storage import read_manifest
+from iqforge import _require_torch
+
+_require_torch("IQForgeDataset")
+
+import torch  # noqa: E402
+from torch.utils.data import Dataset  # noqa: E402
+
+from iqforge.io import IQForgeError  # noqa: E402
+from iqforge.splitting import SPLIT_NAMES  # noqa: E402
+from iqforge.storage import read_manifest  # noqa: E402
 
 
 class IQForgeDataset(Dataset):

@@ -32,7 +32,7 @@ and refuses to guess when it can't.
 
 ```bash
 git clone https://github.com/emrefbulut/iqforge && cd iqforge
-uv sync --extra torch
+uv sync --extra torch            # pulls torch — expect a few minutes the first time
 alias iqforge='uv run iqforge'   # so the commands below work as written
 ```
 
@@ -162,10 +162,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests, and scope.
 ```bash
 git clone https://github.com/emrefbulut/iqforge
 cd iqforge
-uv sync
+uv sync --extra torch
 uv run pytest
 uv run ruff check
 ```
+
+Plain `uv sync` also works, but it *removes* torch if you already installed it —
+and the tests that need it then skip rather than fail, so it is easy to miss.
 
 ## AI usage disclosure
 

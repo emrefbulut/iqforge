@@ -7,8 +7,12 @@ accuracy comes from the data rather than from capacity.
 
 from __future__ import annotations
 
-import torch
-from torch import nn
+from iqforge import _require_torch
+
+_require_torch("the baseline model")
+
+import torch  # noqa: E402
+from torch import nn  # noqa: E402
 
 #: Parameter budget the model must not exceed.
 MAX_PARAMETERS = 50_000

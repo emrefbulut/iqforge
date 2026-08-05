@@ -15,13 +15,18 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-import torch
-from torch import nn
-from torch.utils.data import DataLoader
 
-from iqforge.dataset import IQForgeDataset
-from iqforge.io import IQForgeError
-from iqforge.models import MAX_PARAMETERS, BaselineCNN, count_parameters
+from iqforge import _require_torch
+
+_require_torch("`iqforge train`")
+
+import torch  # noqa: E402
+from torch import nn  # noqa: E402
+from torch.utils.data import DataLoader  # noqa: E402
+
+from iqforge.dataset import IQForgeDataset  # noqa: E402
+from iqforge.io import IQForgeError  # noqa: E402
+from iqforge.models import MAX_PARAMETERS, BaselineCNN, count_parameters  # noqa: E402
 
 
 @dataclass

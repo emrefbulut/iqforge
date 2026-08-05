@@ -9,10 +9,11 @@ from typing import Annotated, Any
 import numpy as np
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
 
-from iqforge import __version__
+from iqforge import TORCH_REQUIRED, __version__
 from iqforge.display import render_inspect
 from iqforge.io import META_EXT, IQForgeError, Recording, load
 from iqforge.labeling import (
@@ -59,6 +60,17 @@ console = Console()
 err_console = Console(stderr=True)
 
 
+def _fail(exc: Exception) -> typer.Exit:
+    """Print an error and build the exit to raise.
+
+    The message is escaped: it carries file names, labels and metadata field
+    values, and rich would otherwise read anything in square brackets as a
+    style tag and delete it.
+    """
+    err_console.print(f"[bold red]Error:[/] {escape(str(exc))}")
+    return typer.Exit(code=1)
+
+
 def _format_hz(value: float | None) -> str:
     """Format a value in Hz with a readable unit."""
     if value is None:
@@ -71,23 +83,23 @@ def _format_hz(value: float | None) -> str:
 
 def _render_overview(rec: Recording) -> Table:
     """Build a table of the recording's basic metadata."""
-    table = Table(title=rec.meta_path.name, title_style="bold", show_header=False)
+    table = Table(title=escape(rec.meta_path.name), title_style="bold", show_header=False)
     table.add_column("Field", style="cyan", no_wrap=True)
     table.add_column("Value", style="white")
 
     g = rec.global_info
     table.add_row("Sample rate", _format_hz(rec.sample_rate))
     table.add_row("Centre frequency", _format_hz(rec.center_frequency))
-    table.add_row("Datatype", rec.datatype)
+    table.add_row("Datatype", escape(rec.datatype))
     table.add_row("Samples", f"{rec.num_samples:,}".replace(",", " "))
     table.add_row("Duration", f"{rec.duration_seconds:.6g} s")
     table.add_row("Data file", f"{rec.data_path.stat().st_size / 1e6:.2f} MB")
-    table.add_row("Hardware", str(g.get("core:hw", "-")))
-    table.add_row("Author", str(g.get("core:author", "-")))
-    table.add_row("Recorder", str(g.get("core:recorder", "-")))
-    table.add_row("SigMF version", str(g.get("core:version", "-")))
+    table.add_row("Hardware", escape(str(g.get("core:hw", "-"))))
+    table.add_row("Author", escape(str(g.get("core:author", "-"))))
+    table.add_row("Recorder", escape(str(g.get("core:recorder", "-"))))
+    table.add_row("SigMF version", escape(str(g.get("core:version", "-"))))
     if g.get("core:description"):
-        table.add_row("Description", str(g["core:description"]))
+        table.add_row("Description", escape(str(g["core:description"])))
     return table
 
 
@@ -112,7 +124,7 @@ def _render_annotations(rec: Recording) -> Table:
             freq = "-"
         table.add_row(
             str(i),
-            a.label or "-",
+            escape(a.label or "-"),
             f"{a.sample_start:,}".replace(",", " "),
             f"{a.sample_count:,}".replace(",", " "),
             f"{t0:.4f} → {t1:.4f}",
@@ -129,8 +141,7 @@ def info(
     try:
         rec = load(path)
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Error:[/] {exc}")
-        raise typer.Exit(code=1) from exc
+        raise _fail(exc) from exc
 
     console.print(_render_overview(rec))
     if rec.annotations:
@@ -156,11 +167,9 @@ def inspect(
         rows = height if height is not None else max(8, min(24, console.size.height - 10))
         panel = render_inspect(rec, data, start, nfft, width=console.size.width, height=rows)
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Error:[/] {exc}")
-        raise typer.Exit(code=1) from exc
+        raise _fail(exc) from exc
     except ValueError as exc:
-        err_console.print(f"[bold red]Error:[/] {exc}")
-        raise typer.Exit(code=1) from exc
+        raise _fail(exc) from exc
 
     console.print(panel)
 
@@ -275,13 +284,13 @@ def _render_split_records(plan: SplitPlan, work: dict[str, _RecordWork]) -> Tabl
             item = work[record_id]
             row = [
                 split if i == 0 else "",
-                record_id,
-                item.dominant,
+                escape(record_id),
+                escape(item.dominant),
                 _format_offset(item.offset_hz),
                 str(len(item.labels)),
             ]
             if plan.groups:
-                row.append(item.group or "-")
+                row.append(escape(item.group or "-"))
             table.add_row(*row)
     return table
 
@@ -340,8 +349,7 @@ def build(  # noqa: PLR0913 — the CLI options are defined in SPEC §4
             normalize=normalize,
         )
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Error:[/] {exc}")
-        raise typer.Exit(code=1) from exc
+        raise _fail(exc) from exc
 
 
 def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
@@ -378,7 +386,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
     csv_table = load_label_csv(label_file) if source == "csv" else None
 
     metas, root = _collect_inputs(input_path)
-    console.print(f"[dim]found {len(metas)} recording(s):[/] {input_path}")
+    console.print(f"[dim]found {len(metas)} recording(s):[/] {escape(str(input_path))}")
 
     work: dict[str, _RecordWork] = {}
     totals = LabelingStats()
@@ -424,7 +432,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
         )
 
     for note in skipped:
-        console.print(f"[yellow]skipped[/] {note}")
+        console.print(f"[yellow]skipped[/] {escape(note)}")
     if not work:
         excluded = ", ".join(sorted(exclude)) or "(none)"
         raise IQForgeError(
@@ -444,9 +452,9 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             record_groups[record_id] = item.group
         if missing:
             console.print(
-                f"[yellow]warning[/] --balance-by '{balance_by}' was not found in these "
-                f"recordings, they went into the '{_group_key(None)}' group: "
-                f"{', '.join(sorted(missing))}"
+                f"[yellow]warning[/] --balance-by '{escape(balance_by)}' was not found "
+                f"in these recordings, they went into the '{escape(_group_key(None))}' "
+                f"group: {escape(', '.join(sorted(missing)))}"
             )
 
     plan = stratified_record_split(
@@ -454,9 +462,9 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
     )
     if balance_by is not None:
         for warning in balance_warnings(plan, balance_by):
-            console.print(f"[yellow]warning[/] {warning}")
+            console.print(f"[yellow]warning[/] {escape(warning)}")
         for warning in leakage_warnings(plan, {k: v.dominant for k, v in work.items()}, balance_by):
-            console.print(f"[bold yellow]warning[/] {warning}")
+            console.print(f"[bold yellow]warning[/] {escape(warning)}")
 
     all_labels = sorted({label for item in work.values() for label in item.labels})
     label_map = {label: i for i, label in enumerate(all_labels)}
@@ -532,8 +540,12 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
         f"{totals.unmatched} unmatched, {totals.ambiguous} ambiguous (overlapping annotations)"
     )
     if totals.excluded_labels:
-        console.print(f"[dim]excluded labels:[/] {', '.join(sorted(totals.excluded_labels))}")
-    console.print(f"[green]written:[/] {output} ({dataset_size_bytes(output) / 1e6:.2f} MB)")
+        console.print(
+            f"[dim]excluded labels:[/] {escape(', '.join(sorted(totals.excluded_labels)))}"
+        )
+    console.print(
+        f"[green]written:[/] {escape(str(output))} ({dataset_size_bytes(output) / 1e6:.2f} MB)"
+    )
 
 
 def _render_offset_summary(manifest: dict[str, Any]) -> Table:
@@ -574,22 +586,21 @@ def stats(
     try:
         manifest = read_manifest(dataset_dir)
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Error:[/] {exc}")
-        raise typer.Exit(code=1) from exc
+        raise _fail(exc) from exc
 
     label_map: dict[str, int] = manifest["label_map"]
     config = manifest["config"]
 
-    overview = Table(title=str(dataset_dir), title_style="bold", show_header=False)
+    overview = Table(title=escape(str(dataset_dir)), title_style="bold", show_header=False)
     overview.add_column("Field", style="cyan", no_wrap=True)
     overview.add_column("Value")
-    overview.add_row("iqforge version", manifest["iqforge_version"])
-    overview.add_row("created", manifest["created"])
+    overview.add_row("iqforge version", escape(str(manifest["iqforge_version"])))
+    overview.add_row("created", escape(str(manifest["created"])))
     overview.add_row("source recordings", str(len(manifest["source_files"])))
     overview.add_row("window / stride", f"{config['window']} / {config['stride']}")
     overview.add_row("representation", f"{config['repr']} (normalize={config['normalize']})")
-    overview.add_row("label source", str(config.get("labels", "-")))
-    overview.add_row("excluded labels", ", ".join(config.get("exclude_labels", [])) or "-")
+    overview.add_row("label source", escape(str(config.get("labels", "-"))))
+    overview.add_row("excluded labels", escape(", ".join(config.get("exclude_labels", [])) or "-"))
     overview.add_row("split / seed", f"{config.get('split', '-')} / {config['seed']}")
     overview.add_row("disk", f"{dataset_size_bytes(dataset_dir) / 1e6:.2f} MB")
     console.print(overview)
@@ -599,7 +610,7 @@ def stats(
     distribution.add_column("Recordings", justify="right")
     distribution.add_column("Windows", justify="right")
     for label in label_map:
-        distribution.add_column(label, justify="right", style="green")
+        distribution.add_column(escape(label), justify="right", style="green")
     distribution.add_column("Shards", justify="right")
 
     for name in SPLIT_NAMES:
@@ -622,7 +633,7 @@ def stats(
     records.add_column("Carrier", justify="right", style="magenta")
     records.add_column("Windows", justify="right")
     if balanced:
-        records.add_column(f"Group ({balanced})", style="yellow")
+        records.add_column(f"Group ({escape(str(balanced))})", style="yellow")
 
     for name in SPLIT_NAMES:
         listed = manifest["splits"][name].get("records", [])
@@ -632,13 +643,13 @@ def stats(
         for i, entry in enumerate(listed):
             row = [
                 name if i == 0 else "",
-                entry["id"],
-                entry["label"],
+                escape(str(entry["id"])),
+                escape(str(entry["label"])),
                 _format_offset(entry.get("carrier_offset_hz")),
                 str(entry["windows"]),
             ]
             if balanced:
-                row.append(entry.get("balance_group") or "-")
+                row.append(escape(str(entry.get("balance_group") or "-")))
             records.add_row(*row)
     console.print(records)
     console.print(_render_offset_summary(manifest))
@@ -667,8 +678,7 @@ def train(
         from iqforge.training import train_baseline
     except ImportError as exc:  # pragma: no cover - only when torch is absent
         err_console.print(
-            "[bold red]Error:[/] `train` requires torch. Install it with "
-            "`uv sync --extra torch` or `pip install 'iqforge[torch]'`."
+            f"[bold red]Error:[/] {escape(TORCH_REQUIRED.format(what='`iqforge train`'))}"
         )
         raise typer.Exit(code=1) from exc
 
@@ -691,8 +701,7 @@ def train(
             on_epoch=_report,
         )
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Error:[/] {exc}")
-        raise typer.Exit(code=1) from exc
+        raise _fail(exc) from exc
 
     console.print(
         f"[dim]model:[/] {result.parameters} trainable parameters "
@@ -704,7 +713,7 @@ def train(
 
     console.print(f"[bold]test accuracy: {result.test_accuracy:.2%}[/]")
     for name, accuracy in result.test_per_class.items():
-        console.print(f"[dim]  {name}:[/] {accuracy:.2%}")
+        console.print(f"[dim]  {escape(name)}:[/] {accuracy:.2%}")
 
 
 @app.command()
