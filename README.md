@@ -1,10 +1,12 @@
 <p align="center">
-  <img src="docs/banner.svg" alt="iqforge — turn SDR captures into PyTorch datasets" width="100%">
+  <em>Turn SDR captures into PyTorch datasets — without silently corrupting them.</em>
 </p>
 
 <p align="center">
-  <em>Turn SDR captures into PyTorch datasets — without silently corrupting them.</em>
+  <img src="docs/demo.gif" alt="iqforge demo: inspect a capture, build a dataset, train a baseline" width="100%">
 </p>
+
+---
 
 ---
 
