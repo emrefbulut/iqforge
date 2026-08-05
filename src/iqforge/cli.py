@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -56,6 +57,34 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Turn SigMF recordings into machine-learning-ready datasets.",
 )
+
+
+def _force_utf8_streams() -> None:
+    """Make stdout and stderr able to carry the characters we print.
+
+    Every command prints non-ASCII: the annotation table uses `→`, the split
+    error carries `§`, the inspector is built out of block-drawing characters.
+    When output goes to a console Python encodes as UTF-8 and all of that
+    survives. When it goes to a pipe or a file, Python falls back to the locale
+    codepage instead — cp1254 on a Turkish Windows install, cp1252 elsewhere —
+    and none of those characters exist there, so `iqforge info x > out.txt`
+    died with UnicodeEncodeError while the same command on screen was fine.
+
+    Streams replaced by a test harness may not be reconfigurable; those are
+    already text-mode objects that accept any string, so skipping them is safe.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):  # detached or already-closed stream
+            pass
+
+
+_force_utf8_streams()
+
 console = Console()
 err_console = Console(stderr=True)
 
