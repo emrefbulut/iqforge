@@ -103,18 +103,24 @@ CARRIER_OFFSETS = (-280_000.0, -180_000.0, 180_000.0, 280_000.0)
 BURST_STARTS = (1_024, 3_072, 5_120, 7_168)
 
 
-def _build_plans() -> list[RecordPlan]:
-    """Build the plan for 2 classes x 4 offsets x `RECORDS_PER_CELL` recordings.
+def _build_plans(records_per_cell: int = RECORDS_PER_CELL) -> list[RecordPlan]:
+    """Build the plan for 2 classes x 4 offsets x `records_per_cell` recordings.
 
     The burst start is rotated so that it is independent of both the offset and
     the class: each class uses each start the same number of times, so the burst
     position carries no class information either.
+
+    Args:
+        records_per_cell: Recordings per (class, offset) pair. The default is
+            what `examples/` was generated with and must not change. The leakage
+            experiment asks for more so that each offset group has enough
+            recordings to be shared across splits.
     """
     plans: list[RecordPlan] = []
     for class_shift, modulation in enumerate(("bpsk", "qpsk")):
         counter = 0
         for offset_index, offset in enumerate(CARRIER_OFFSETS):
-            for repeat in range(RECORDS_PER_CELL):
+            for repeat in range(records_per_cell):
                 counter += 1
                 start_index = (2 * offset_index + repeat + class_shift) % len(BURST_STARTS)
                 plans.append(
@@ -209,8 +215,17 @@ def _symbols(modulation: str, count: int, rng: np.random.Generator) -> np.ndarra
     raise ValueError(f"Unknown modulation '{modulation}'. Supported: bpsk, qpsk.")
 
 
-def build_signal(plan: RecordPlan) -> np.ndarray:
-    """Generate the complex samples of one recording."""
+def build_signal(plan: RecordPlan, noise_sigma: float = NOISE_SIGMA) -> np.ndarray:
+    """Generate the complex samples of one recording.
+
+    Args:
+        plan: The recording's parameters.
+        noise_sigma: Standard deviation per quadrature of the additive complex
+            Gaussian noise. The default is what `examples/` was generated with
+            and must not change — those files are frozen. The leakage
+            experiment overrides it to sweep SNR, which is why this is a
+            parameter rather than a constant read from the module.
+    """
     rng = np.random.default_rng(plan.seed)
     t = np.arange(NUM_SAMPLES, dtype=np.float64) / SAMPLE_RATE
     x = np.zeros(NUM_SAMPLES, dtype=np.complex128)
@@ -223,7 +238,7 @@ def build_signal(plan: RecordPlan) -> np.ndarray:
     seg = slice(plan.burst_start, plan.burst_start + BURST_COUNT)
     x[seg] += burst * np.exp(2j * np.pi * plan.carrier_offset * t[seg])
 
-    x += NOISE_SIGMA * (rng.standard_normal(NUM_SAMPLES) + 1j * rng.standard_normal(NUM_SAMPLES))
+    x += noise_sigma * (rng.standard_normal(NUM_SAMPLES) + 1j * rng.standard_normal(NUM_SAMPLES))
     return x.astype(np.complex64)
 
 

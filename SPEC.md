@@ -195,6 +195,8 @@ Per-class split recording counts do not change — stratification is preserved. 
 
 Balancing may not hold structurally (if group count exceeds the smallest split, if the field is missing on some recordings, or if every recording falls into a separate group). In that case `build` prints a **WARNING** and continues — not an error, because the split is still valid and recording-based; the user can knowingly accept the remaining skew.
 
+**The ratios decide whether balancing is possible at all.** This is not obvious and is worth stating: when a split's recording count is an exact multiple of a group's size, whole groups land in a single split and no group is shared. With 48 recordings in 4 offset groups of 12, a `0.5/0.25/0.25` split (24/12/12) gives `val` and `test` one whole group each — for every seed. The within-split invariant still holds (a constant group cannot predict the label), so `--balance-by` has not failed; what remains is a *cross-split* problem, and `leakage_warnings` is what reports it. Move to `0.6/0.2/0.2` (28/10/10) and all four groups are shared, silently and for every seed. Measured, not assumed: `scripts/leakage_experiment.py` asserts the property directly from the manifest rather than trusting the absence of a warning, because a partially confounded split does not warn.
+
 Carrier offset per recording is stored in `manifest.json` in the `carrier_offset_hz` field and shown in `stats` output both per recording and as a split summary; imbalance is visible even without `--balance-by`.
 
 ### 5.7 Disk format
