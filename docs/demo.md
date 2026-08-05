@@ -1,42 +1,42 @@
-# Tanıtım kaydı nasıl alınır
+# How to record the demo
 
-`scripts/demo.sh` kesme istemez, baştan sona kendi akar. Kayıt yaklaşık
-**40 saniye** sürer.
+`scripts/demo.sh` needs no manual input — it runs start to finish on its own. The
+recording takes about **40 seconds**.
 
-## Gereksinimler
+## Requirements
 
-**UTF-8 terminal.** Spektrogram yarım blok karakteri (`▀`), tablolar kutu çizim
-karakterleri kullanır. Terminal UTF-8 değilse kayıt bozuk çıkar:
+**UTF-8 terminal.** The spectrogram uses half-block characters (`▀`) and tables use
+box-drawing characters. If the terminal is not UTF-8, the recording will look broken:
 
 ```bash
-locale        # LANG ve LC_ALL içinde UTF-8 görünmeli
+locale        # LANG and LC_ALL should show UTF-8
 ```
 
-**asciinema** — terminal kaydı alır:
+**asciinema** — records terminal sessions:
 
 ```bash
 # Debian/Ubuntu
 sudo apt install asciinema
 # macOS
 brew install asciinema
-# her yerde
+# anywhere
 pipx install asciinema
 ```
 
-**agg** — kaydı GIF'e çevirir (asciinema'nın resmi aracı, Rust):
+**agg** — converts the recording to GIF (asciinema's official tool, Rust):
 
 ```bash
 # macOS
 brew install agg
-# Rust kuruluysa
+# with Rust installed
 cargo install --git https://github.com/asciinema/agg
 ```
 
-Hazır ikili dosyalar: <https://github.com/asciinema/agg/releases>
+Prebuilt binaries: <https://github.com/asciinema/agg/releases>
 
-## 1. Kaydı al
+## 1. Record
 
-Depo kökünden:
+From the repository root:
 
 ```bash
 asciinema rec \
@@ -46,23 +46,24 @@ asciinema rec \
   docs/demo.cast
 ```
 
-- `--cols 100` — script `COLUMNS=100` ihraç eder, ama asciinema'nın da aynı
-  genişlikte kaydetmesi gerekir; yoksa oynatımda satırlar sarar.
-- `--rows 34` — spektrogram 24 satır + tablolar için yeterli yükseklik.
-- `--idle-time-limit 2` — 2 saniyeden uzun boşluklar kısaltılır. `train`
-  adımının 14 saniyelik sessiz bekleyişi böylece kaydı şişirmez.
-- `--command` — kayıt bittiğinde kabuk otomatik kapanır, "exit" yazman gerekmez.
+- `--cols 100` — the script exports `COLUMNS=100`, but asciinema must record at
+  the same width; otherwise lines wrap during playback.
+- `--rows 34` — enough height for the 24-row spectrogram plus tables.
+- `--idle-time-limit 2` — pauses longer than 2 seconds are shortened. This keeps
+  the 14-second silent wait during `train` from bloating the recording.
+- `--command` — the shell closes automatically when the recording ends; no need to
+  type "exit".
 
-Kaydı gözden geçir:
+Review the recording:
 
 ```bash
 asciinema play docs/demo.cast
 ```
 
-Beğenmediysen `docs/demo.cast` dosyasını sil ve tekrar al. Script idempotenttir,
-`/tmp/ds` ve `/tmp/ds-single` her çalıştırmada baştan temizlenir.
+If you are not happy with it, delete `docs/demo.cast` and record again. The script
+is idempotent; `/tmp/ds` and `/tmp/ds-single` are cleaned at the start of each run.
 
-## 2. GIF'e çevir
+## 2. Convert to GIF
 
 ```bash
 agg \
@@ -75,41 +76,40 @@ agg \
   docs/demo.cast docs/demo.gif
 ```
 
-- `--speed 1.2` — 40 saniyeyi ~33 saniyeye indirir; okunabilirliği bozmaz.
-- `--fps-cap 12` — dosya boyutunu belirleyen ana parametre. 30 fps'te GIF
-  birkaç on MB olabilir; 12 fps'te birkaç MB'a iner ve terminal kaydında
-  fark edilmez.
-- `--last-frame-duration 3` — son kare (split hata mesajı) ekranda kalsın,
-  GIF başa sarmadan önce okunabilsin.
-- `--font-size 16` — GitHub'da README genişliğinde okunaklı.
+- `--speed 1.2` — brings 40 seconds down to ~33; still readable.
+- `--fps-cap 12` — the main parameter for file size. At 30 fps the GIF can reach
+  tens of MB; at 12 fps it drops to a few MB with no visible loss for terminal
+  recordings.
+- `--last-frame-duration 3` — keeps the final frame (split error message) on screen
+  long enough to read before the GIF loops.
+- `--font-size 16` — readable at README width on GitHub.
 
-Tüm seçenekler için `agg --help`; sürümler arasında değişebiliyor.
+See `agg --help` for all options; they vary between versions.
 
-Boyutu kontrol et:
+Check the size:
 
 ```bash
 ls -lh docs/demo.gif
 ```
 
-**5 MB'ı geçiyorsa** `--fps-cap 10` veya `--font-size 14` dene. GitHub README'de
-10 MB üstü GIF'ler yavaş yükleniyor.
+**If it exceeds 5 MB**, try `--fps-cap 10` or `--font-size 14`. GIFs over 10 MB
+load slowly on GitHub README pages.
 
-## 3. Nereye konacak
+## 3. Where to put the files
 
-Her ikisini de depoya al:
+Commit both to the repository:
 
 ```
-docs/demo.cast   # kaynak kayıt — GIF'i parametre değiştirip yeniden üretmeye yarar
-docs/demo.gif    # README'de gösterilen dosya
+docs/demo.cast   # source recording — regenerate the GIF with different parameters
+docs/demo.gif    # file shown in the README
 ```
 
-> **`docs/` içindeki diğer görseller.** `banner.svg` README'nin başlığıdır;
-> `banner.png` onun yedeğidir — SVG'nin render edilmediği ortamlar (bazı RSS
-> okuyucular, e-posta önizlemeleri, GitHub'ın sosyal medya kartı) için durur.
-> Referans verilmiyor diye ölü dosya sanılıp silinmesin. İkisi de
-> `make_banner.py` ile üretilir.
+> **Other visuals in `docs/`.** `banner.svg` is the README header; `banner.png` is
+> its fallback for environments that do not render SVG (some RSS readers, email
+> previews, GitHub social cards). Do not delete them just because nothing links to
+> the PNG directly. Both are generated by `make_banner.py`.
 
-README'ye eklemek için (banner'ın hemen altına):
+To add to the README (just below the banner):
 
 ```markdown
 <p align="center">
@@ -117,15 +117,16 @@ README'ye eklemek için (banner'ın hemen altına):
 </p>
 ```
 
-## Kayıtta ne görünüyor
+## What the recording shows
 
-| Adım | Komut | Ne gösteriyor |
+| Step | Command | What it demonstrates |
 |---|---|---|
-| 1 | `info` | Kayıtta ne var: örnekleme hızı, merkez frekans, veri tipi, annotation'lar |
-| 2 | `inspect` | Terminalde spektrogram — +100 kHz referans ton ve BPSK bursti |
-| 3 | `build` | Pencereleme, etiketleme, kayıt bazlı bölme, shard yazma |
-| 4 | `stats` | Sınıf dağılımı, split başına kayıtlar, taşıyıcı ofset dağılımı |
-| 5 | `train` | Baseline CNN, 20 epoch, test doğruluğu |
-| 6 | `build` (tek kayıt) | **Asıl mesele:** kayıt bazlı bölme yapılamayınca hata verip durur |
+| 1 | `info` | What's in the recording: sample rate, centre frequency, datatype, annotations |
+| 2 | `inspect` | Terminal spectrogram — +100 kHz reference tone and BPSK burst |
+| 3 | `build` | Windowing, labelling, recording-level split, shard export |
+| 4 | `stats` | Class distribution, recordings per split, carrier offset distribution |
+| 5 | `train` | Baseline CNN, 20 epochs, test accuracy |
+| 6 | `build` (single recording) | **The key point:** errors and stops when recording-level split is impossible |
 
-Son adım kasıtlıdır ve çıkış kodu 1'dir; script bunu yutar, kayıt hatasız biter.
+The last step is intentional and exits with code 1; the script catches it so the
+recording ends cleanly.

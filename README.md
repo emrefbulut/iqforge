@@ -10,9 +10,9 @@
 
 ---
 
-> **Status: pre-release.** The capture → dataset pipeline works end to end and is
-> covered by tests. Live SDR capture, baseline training, and PyPI packaging are not
-> done yet. See [Roadmap](#roadmap). Interfaces may change before `0.1.0`.
+> **Status: v0.1.0 alpha.** The capture → dataset pipeline works end to end and is
+> covered by tests. PyPI is not published yet — see [docs/publishing.md](docs/publishing.md).
+> See also [Roadmap](#roadmap).
 
 ## The problem
 
@@ -38,10 +38,10 @@ uv sync --extra torch            # pulls torch — expect a few minutes the firs
 alias iqforge='uv run iqforge'   # so the commands below work as written
 ```
 
-**From PyPI** — not published yet, see [Roadmap](#roadmap):
+**From PyPI** — not published yet; see [docs/publishing.md](docs/publishing.md):
 
 ```bash
-pip install 'iqforge[torch]'
+pip install 'iqforge[torch]'   # coming soon
 ```
 
 Either way:

@@ -15,8 +15,8 @@ jobs:
       - run: uv run ruff format --check .
 
   test:
-    # torch olmadan: info/inspect/build/stats bu bağımlılık olmadan çalışmalı.
-    # torch gerektiren testler kendilerini atlar, bu yüzden koşu yeşil kalmalı.
+    # Without torch: info/inspect/build/stats must work without this dependency.
+    # Tests that need torch skip themselves, so the run should stay green.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -29,7 +29,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --group dev
       - run: uv run pytest -q
-      - name: torch kurulu değilken CLI çalışmalı
+      - name: CLI must work without torch installed
         run: |
           uv run iqforge info examples/bpsk_01.sigmf-meta
           uv run iqforge build examples/ -o /tmp/ds --balance-by core:freq_lower_edge
@@ -44,7 +44,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --group dev --extra torch
       - run: uv run pytest -q
-      - name: Faz 4 doğrulaması
+      - name: Phase 4 verification
         run: |
           uv run iqforge build examples/ -o /tmp/ds --balance-by core:freq_lower_edge
           uv run iqforge train /tmp/ds --epochs 20
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv build
-      - name: Wheel temiz ortamda kurulup çalışmalı
+      - name: Wheel must install and run in a clean environment
         run: |
           uv tool install --from dist/iqforge-*.whl iqforge
           iqforge info examples/bpsk_01.sigmf-meta
