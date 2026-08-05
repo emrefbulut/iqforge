@@ -7,6 +7,24 @@ requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Emre Bulut" }]
+keywords = [
+    "software-defined-radio",
+    "sigmf",
+    "rf-machine-learning",
+    "signal-processing",
+    "pytorch",
+    "dataset",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "typer>=0.12",
     "rich>=13.7",
@@ -17,6 +35,11 @@ dependencies = [
 
 [project.optional-dependencies]
 torch = ["torch>=2.2"]
+
+[project.urls]
+Homepage = "https://github.com/emrefbulut/iqforge"
+Repository = "https://github.com/emrefbulut/iqforge"
+Issues = "https://github.com/emrefbulut/iqforge/issues"
 
 [project.scripts]
 iqforge = "iqforge.cli:app"
