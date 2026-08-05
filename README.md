@@ -8,11 +8,10 @@
 
 ---
 
----
-
-> **Status: v0.1.0 alpha.** The capture → dataset pipeline works end to end and is
-> covered by tests. PyPI is not published yet — see [docs/publishing.md](docs/publishing.md).
-> See also [Roadmap](#roadmap).
+> **Status: pre-release.** The capture → dataset pipeline works end to end and is
+> covered by tests. `0.1.0` is not tagged or on PyPI yet — see
+> [docs/publishing.md](docs/publishing.md) and the [Roadmap](#roadmap).
+> Interfaces may change before `0.1.0`.
 
 ## The problem
 
