@@ -1,10 +1,10 @@
-"""Baseline eğitim döngüsü.
+"""The baseline training loop.
 
-Bu modül `torch` gerektirir; `cli.py` yalnızca `train` komutu çağrıldığında
-import eder.
+This module needs `torch`; `cli.py` imports it only when the `train` command
+actually runs.
 
-Kapsam bilerek dar: checkpoint yönetimi, learning-rate zamanlaması,
-hyperparameter arama yok. Amaç veri setinin eğitilebilir olduğunu göstermek.
+The scope is deliberately narrow: no checkpointing, no learning-rate schedule,
+no hyperparameter search. The goal is to show the dataset is trainable.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from iqforge.models import MAX_PARAMETERS, BaselineCNN, count_parameters
 
 @dataclass
 class EpochResult:
-    """Tek bir epoch'un sonucu."""
+    """The result of a single epoch."""
 
     epoch: int
     train_loss: float
@@ -36,14 +36,14 @@ class EpochResult:
 
 @dataclass
 class TrainingResult:
-    """Bir eğitim koşusunun tüm sonuçları.
+    """Everything one training run produced.
 
     Attributes:
-        parameters: Modelin eğitilebilir parametre sayısı.
-        epochs: Epoch bazında sonuçlar.
-        test_accuracy: Test split'i doğruluğu; split boşsa None.
-        test_per_class: Test split'inde sınıf bazında doğruluk.
-        classes: Etiket adları, tamsayı sırasına göre.
+        parameters: The model's trainable parameter count.
+        epochs: Per-epoch results.
+        test_accuracy: Accuracy on the test split, or None if it is empty.
+        test_per_class: Per-class accuracy on the test split.
+        classes: Label names, in integer order.
     """
 
     parameters: int
@@ -54,15 +54,15 @@ class TrainingResult:
 
     @property
     def final_train_accuracy(self) -> float:
-        """Son epoch'un eğitim doğruluğu."""
+        """Training accuracy of the last epoch."""
         return self.epochs[-1].train_accuracy if self.epochs else 0.0
 
 
 def seed_everything(seed: int) -> None:
-    """Ağırlık ilklendirme ve batch sırası için tüm RNG'leri sabitler.
+    """Fix every RNG that affects weight initialisation and batch order.
 
-    Bölme tohumundan (`build --seed`) ayrıdır: bu tohum yalnızca eğitimi
-    etkiler, veri setinin içeriğini değil.
+    Separate from the split seed (`build --seed`): this one only affects
+    training, never the contents of the dataset.
     """
     random.seed(seed)
     np.random.seed(seed)
@@ -71,7 +71,7 @@ def seed_everything(seed: int) -> None:
 
 
 def _accuracy(model: nn.Module, loader: DataLoader, device: torch.device) -> float:
-    """Bir yükleyici üzerinde doğruluk hesaplar."""
+    """Compute accuracy over a loader."""
     model.eval()
     correct = total = 0
     with torch.no_grad():
@@ -85,7 +85,7 @@ def _accuracy(model: nn.Module, loader: DataLoader, device: torch.device) -> flo
 def _per_class_accuracy(
     model: nn.Module, loader: DataLoader, device: torch.device, classes: list[str]
 ) -> dict[str, float]:
-    """Sınıf bazında doğruluk hesaplar."""
+    """Compute per-class accuracy."""
     model.eval()
     correct = np.zeros(len(classes), dtype=np.int64)
     total = np.zeros(len(classes), dtype=np.int64)
@@ -111,22 +111,23 @@ def train_baseline(
     learning_rate: float = 1e-3,
     on_epoch: Callable[[EpochResult], None] | None = None,
 ) -> TrainingResult:
-    """Baseline CNN'i eğitir ve test doğruluğunu ölçer.
+    """Train the baseline CNN and measure test accuracy.
 
     Args:
-        dataset_dir: `iqforge build` çıktısı.
-        epochs: Epoch sayısı.
-        batch_size: Batch boyutu.
-        seed: EĞİTİM tohumu (ağırlık init + batch sırası). Bölme tohumundan ayrı.
-        learning_rate: Adam öğrenme oranı.
-        on_epoch: Her epoch sonunda çağrılan geri çağırım.
+        dataset_dir: Output of `iqforge build`.
+        epochs: Number of epochs.
+        batch_size: Batch size.
+        seed: TRAINING seed (weight init + batch order). Separate from the split
+            seed.
+        learning_rate: Adam learning rate.
+        on_epoch: Callback invoked at the end of every epoch.
 
     Returns:
-        Koşunun sonuçları.
+        The results of the run.
 
     Raises:
-        IQForgeError: Veri seti torch ile kullanılamaz biçimdeyse veya model
-            parametre bütçesini aşıyorsa.
+        IQForgeError: If the dataset is in a form torch cannot use, or the model
+            exceeds the parameter budget.
     """
     seed_everything(seed)
     device = torch.device("cpu")
@@ -134,8 +135,8 @@ def train_baseline(
     train_set = IQForgeDataset(dataset_dir, split="train")
     if train_set[0][0].is_complex():
         raise IQForgeError(
-            "Baseline model kompleks girdiyle çalışmaz. Veri setini "
-            "--repr iq2ch (varsayılan) veya --repr magphase ile kurun."
+            "The baseline model does not accept complex input. Build the dataset "
+            "with --repr iq2ch (the default) or --repr magphase."
         )
 
     def _loader(split: str, shuffle: bool) -> DataLoader | None:
@@ -160,8 +161,8 @@ def train_baseline(
     parameters = count_parameters(model)
     if parameters > MAX_PARAMETERS:
         raise IQForgeError(
-            f"Baseline model {parameters} parametre içeriyor, bütçe {MAX_PARAMETERS}. "
-            "models.py içindeki kanal sayılarını küçültün."
+            f"The baseline model has {parameters} parameters, budget is {MAX_PARAMETERS}. "
+            "Reduce the channel counts in models.py."
         )
 
     optimiser = torch.optim.Adam(model.parameters(), lr=learning_rate)

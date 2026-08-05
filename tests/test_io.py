@@ -1,4 +1,4 @@
-"""iqforge.io testleri. Tümü sentetik veriyle çalışır, ağ erişimi gerektirmez."""
+"""Tests for iqforge.io. All synthetic, no network access."""
 
 from __future__ import annotations
 
@@ -15,22 +15,22 @@ EXAMPLES = sorted(EXAMPLES_DIR.glob("*.sigmf-meta"))
 
 
 def _burst(rec: Recording) -> Annotation:
-    """Kaydın tek modülasyonlu burst annotation'ını verir (ref_tone hariç)."""
+    """Return the recording's single modulated burst annotation (not ref_tone)."""
     bursts = [a for a in rec.annotations if a.label != "ref_tone"]
-    assert len(bursts) == 1, f"{rec.meta_path.name}: tam olarak bir burst bekleniyordu"
+    assert len(bursts) == 1, f"{rec.meta_path.name}: expected exactly one burst"
     return bursts[0]
 
 
 @pytest.fixture
 def tone() -> np.ndarray:
-    """Küçük, deterministik bir kompleks test sinyali."""
+    """A small deterministic complex test signal."""
     n = np.arange(4096)
     return (0.5 * np.exp(2j * np.pi * 0.05 * n)).astype(np.complex64)
 
 
 @pytest.mark.parametrize("datatype", ["cf32_le", "ci16_le", "ci8"])
 def test_roundtrip_all_supported_datatypes(tmp_path: Path, tone: np.ndarray, datatype: str) -> None:
-    """Desteklenen üç veri tipi de complex64 olarak doğru ölçekte geri okunur."""
+    """All three supported datatypes read back as correctly scaled complex64."""
     meta = write_record(tmp_path, tone, datatype)
     rec = load(meta)
 
@@ -43,7 +43,7 @@ def test_roundtrip_all_supported_datatypes(tmp_path: Path, tone: np.ndarray, dat
 
 
 def test_metadata_fields(tmp_path: Path, tone: np.ndarray) -> None:
-    """Örnekleme hızı, merkez frekans, örnek sayısı ve süre doğru okunur."""
+    """Sample rate, centre frequency, sample count and duration read correctly."""
     meta = write_record(tmp_path, tone, sample_rate=2_000_000.0, center_freq=915e6)
     rec = load(meta)
 
@@ -54,7 +54,7 @@ def test_metadata_fields(tmp_path: Path, tone: np.ndarray) -> None:
 
 
 def test_partial_read(tmp_path: Path, tone: np.ndarray) -> None:
-    """start/count ile kısmi okuma doğru dilimi verir ve sınırı aşmaz."""
+    """start/count returns the right slice and never runs past the end."""
     meta = write_record(tmp_path, tone)
     rec = load(meta)
 
@@ -65,12 +65,12 @@ def test_partial_read(tmp_path: Path, tone: np.ndarray) -> None:
     assert rec.read(start=4000, count=10_000).size == 96
     assert rec.read(start=rec.num_samples).size == 0
 
-    with pytest.raises(IQForgeError, match="sınırlarının dışında"):
+    with pytest.raises(IQForgeError, match="outside the recording"):
         rec.read(start=-1)
 
 
 def test_unsupported_datatype_is_explicit(tmp_path: Path, tone: np.ndarray) -> None:
-    """Desteklenmeyen veri tipi sessizce tahmin edilmez; mesaj eylem içerir."""
+    """An unsupported datatype is never guessed; the message is actionable."""
     meta = write_record(tmp_path, tone, datatype="cf64_le")
     with pytest.raises(IQForgeError) as exc:
         load(meta)
@@ -80,34 +80,34 @@ def test_unsupported_datatype_is_explicit(tmp_path: Path, tone: np.ndarray) -> N
 
 
 def test_missing_sample_rate_is_an_error(tmp_path: Path, tone: np.ndarray) -> None:
-    """Örnekleme hızı yoksa varsayılan uydurulmaz, hata verilir."""
+    """A missing sample rate raises rather than defaulting to something."""
     meta = write_record(tmp_path, tone, sample_rate=None)
     with pytest.raises(IQForgeError, match="core:sample_rate"):
         load(meta)
 
 
 def test_missing_files_are_reported(tmp_path: Path, tone: np.ndarray) -> None:
-    """Eksik meta/veri dosyaları için ayrı ayrı açık hata verilir."""
-    with pytest.raises(IQForgeError, match="metadata dosyası bulunamadı"):
-        load(tmp_path / "yok.sigmf-meta")
+    """Missing metadata and data files each raise their own clear error."""
+    with pytest.raises(IQForgeError, match="metadata file not found"):
+        load(tmp_path / "missing.sigmf-meta")
 
     meta = write_record(tmp_path, tone)
     meta.with_suffix(".sigmf-data").unlink()
-    with pytest.raises(IQForgeError, match="veri dosyası bulunamadı"):
+    with pytest.raises(IQForgeError, match="data file not found"):
         load(meta)
 
 
 def test_truncated_data_file_is_rejected(tmp_path: Path, tone: np.ndarray) -> None:
-    """Örnek boyutuna bölünmeyen veri dosyası bozuk sayılır."""
+    """A data file that is not a whole number of samples counts as corrupt."""
     meta = write_record(tmp_path, tone)
     data = meta.with_suffix(".sigmf-data")
     data.write_bytes(data.read_bytes()[:-3])
-    with pytest.raises(IQForgeError, match="bozuk"):
+    with pytest.raises(IQForgeError, match="may be corrupt"):
         load(meta)
 
 
 def test_annotations_are_parsed_and_sorted(tmp_path: Path, tone: np.ndarray) -> None:
-    """Annotation'lar okunur ve başlangıç indisine göre sıralanır."""
+    """Annotations are read and sorted by their start index."""
     meta = write_record(
         tmp_path,
         tone,
@@ -129,25 +129,26 @@ def test_annotations_are_parsed_and_sorted(tmp_path: Path, tone: np.ndarray) -> 
     assert rec.annotations[0].freq_upper_edge == 101e6
 
 
-@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ recordings have not been generated")
 def test_example_set_has_sixteen_records_balanced_by_class() -> None:
-    """Örnek veri seti sekiz bpsk + sekiz qpsk kayıttan oluşmalı."""
+    """The example dataset is eight bpsk plus eight qpsk recordings."""
     labels = [_burst(load(p)).label for p in EXAMPLES]
 
     assert len(EXAMPLES) == 16
     assert labels.count("bpsk") == 8
     assert labels.count("qpsk") == 8
-    assert len({p.stem for p in EXAMPLES}) == 16, "kayıt adları benzersiz olmalı"
+    assert len({p.stem for p in EXAMPLES}) == 16, "recording names must be unique"
 
 
-@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ recordings have not been generated")
 def test_every_class_offset_cell_has_two_records() -> None:
-    """Her (sınıf, taşıyıcı ofset) çifti için tam olarak İKİ kayıt olmalı.
+    """Every (class, carrier offset) pair must have exactly TWO recordings.
 
-    Bu, Faz 4 doğrulama kapısının çalışabilmesinin ön koşuludur. Tek kayıt
-    olsaydı, split içi bağımsızlık garantisi (SPEC §5.6) o ofsetin tüm
-    kayıtlarını aynı split'e zorlardı; train ile test hiçbir ofseti
-    paylaşamaz ve model her zaman görülmemiş taşıyıcıda sınanırdı.
+    This is the precondition for the Phase 4 verification gate to work. With a
+    single recording, the within-split independence guarantee (SPEC §5.6) would
+    force every recording at that offset into the same split; train and test
+    could not share an offset and the model would always be evaluated on an
+    unseen carrier.
     """
     cells: dict[tuple[str, int], int] = {}
     for path in EXAMPLES:
@@ -157,13 +158,13 @@ def test_every_class_offset_cell_has_two_records() -> None:
         key = (a.label, centre)
         cells[key] = cells.get(key, 0) + 1
 
-    assert len(cells) == 8, f"2 sınıf x 4 ofset bekleniyordu, {len(cells)} hücre var"
-    assert set(cells.values()) == {2}, f"her hücrede 2 kayıt olmalı: {cells}"
+    assert len(cells) == 8, f"expected 2 classes x 4 offsets, found {len(cells)} cells"
+    assert set(cells.values()) == {2}, f"every cell must hold 2 recordings: {cells}"
 
 
-@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ recordings have not been generated")
 def test_example_records_share_metadata_and_fit_size_budget() -> None:
-    """Her kayıt aynı temel metadata'ya sahip ve toplam 6 MB'ın altında."""
+    """Every recording shares the same basic metadata and the set fits in 6 MB."""
     total = 0
     for path in EXAMPLES:
         rec = load(path)
@@ -175,15 +176,15 @@ def test_example_records_share_metadata_and_fit_size_budget() -> None:
         assert {a.label for a in rec.annotations} == {"ref_tone", _burst(rec).label}
         total += rec.data_path.stat().st_size + rec.meta_path.stat().st_size
 
-    assert total < 6_000_000, f"örnek veri seti 6 MB'ı aşıyor: {total / 1e6:.2f} MB"
+    assert total < 6_000_000, f"the example dataset exceeds 6 MB: {total / 1e6:.2f} MB"
 
 
-@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ recordings have not been generated")
 def test_example_bursts_are_equal_in_bandwidth_and_duration() -> None:
-    """Tüm burstler aynı bant genişliğinde ve aynı sürede olmalı.
+    """All bursts share the same bandwidth and the same duration.
 
-    Sınıflar yalnızca modülasyonla ayrışmalı; bant genişliği veya süre farkı
-    sınıflandırıcıya kısayol verir.
+    The classes must differ only by modulation; a difference in bandwidth or
+    duration would hand the classifier a shortcut.
     """
     widths = {_burst(load(p)).freq_upper_edge - _burst(load(p)).freq_lower_edge for p in EXAMPLES}
     counts = {_burst(load(p)).sample_count for p in EXAMPLES}
@@ -192,12 +193,12 @@ def test_example_bursts_are_equal_in_bandwidth_and_duration() -> None:
     assert counts == {20_480}
 
 
-@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ recordings have not been generated")
 def test_carrier_offset_carries_no_class_information() -> None:
-    """İki sınıf aynı taşıyıcı ofset havuzunu kullanmalı.
+    """Both classes must draw from the same pool of carrier offsets.
 
-    Aksi halde ağ modülasyonu değil taşıyıcı frekansını öğrenir ve Faz 4'teki
-    doğruluk ölçümü anlamsızlaşır.
+    Otherwise the network learns the carrier frequency rather than the
+    modulation, and the Phase 4 accuracy measurement means nothing.
     """
     by_class: dict[str, set[float]] = {}
     for path in EXAMPLES:
@@ -207,17 +208,17 @@ def test_carrier_offset_carries_no_class_information() -> None:
         by_class.setdefault(a.label, set()).add(round(centre))
 
     assert by_class["bpsk"] == by_class["qpsk"], (
-        f"taşıyıcı ofsetleri sınıflar arasında farklı: {by_class}"
+        f"carrier offsets differ between classes: {by_class}"
     )
     assert len(by_class["bpsk"]) == 4
 
 
-@pytest.mark.skipif(not EXAMPLES, reason="examples/ kayıtları üretilmemiş")
+@pytest.mark.skipif(not EXAMPLES, reason="examples/ recordings have not been generated")
 @pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.stem)
 def test_example_reference_tone_is_exactly_plus_100_khz(path: Path) -> None:
-    """Her kayıtta referans ton merkez frekanstan tam +100 kHz'te olmalı.
+    """In every recording the reference tone sits exactly +100 kHz from centre.
 
-    Sonraki fazların (özellikle spektrogram doğrulamasının) dayandığı sabit budur.
+    Later phases — the spectrogram verification in particular — rest on this.
     """
     rec = load(path)
     ref = next(a for a in rec.annotations if a.label == "ref_tone")
@@ -225,26 +226,27 @@ def test_example_reference_tone_is_exactly_plus_100_khz(path: Path) -> None:
     assert ref.sample_count == rec.num_samples
     assert (ref.freq_lower_edge + ref.freq_upper_edge) / 2 - rec.center_frequency == 100_000.0
 
-    # Burstün bittiği, yalnız tonun bulunduğu sessiz kuyruk. 4096 örnek,
-    # 250 Hz bin genişliği demek; +100 kHz'i çözmeye fazlasıyla yeter.
+    # The quiet tail after the burst, holding the tone alone. 4096 samples means
+    # a 250 Hz bin width, far more than enough to resolve +100 kHz.
     quiet_start = _burst(rec).sample_end
     quiet = rec.read(start=quiet_start, count=rec.num_samples - quiet_start)
-    assert quiet.size >= 4096, "ton ölçümü için yeterli sessiz bölge yok"
+    assert quiet.size >= 4096, "not enough quiet signal to measure the tone"
 
     spectrum = np.abs(np.fft.fftshift(np.fft.fft(quiet)))
     freqs = np.fft.fftshift(np.fft.fftfreq(quiet.size, d=1.0 / rec.sample_rate))
     bin_width = rec.sample_rate / quiet.size
 
-    # Tepe İŞARETLİ olarak +100 kHz'te olmalı. I/Q yer değiştirirse (x -> j*conj(x))
-    # ton -100 kHz'e taşınır; bu yüzden |frekans| değil, işaretli frekans kontrol edilir.
+    # The peak must be at +100 kHz WITH ITS SIGN. Swapping I and Q
+    # (x -> j*conj(x)) moves the tone to -100 kHz, so the signed frequency is
+    # checked rather than |frequency|.
     peak_offset = freqs[int(np.argmax(spectrum))]
     assert peak_offset == pytest.approx(100_000.0, abs=bin_width)
-    assert peak_offset > 0, f"Referans ton negatif frekansta bulundu ({peak_offset:.0f} Hz)"
+    assert peak_offset > 0, f"reference tone found at a negative frequency ({peak_offset:.0f} Hz)"
 
-    # Ayna bin (-100 kHz) belirgin biçimde zayıf olmalı: I/Q takasına karşı
-    # tek başına yeterli olan asıl kontrol budur.
+    # The mirror bin at -100 kHz must be clearly weaker: on its own this is the
+    # check that catches an I/Q swap.
     power_plus = spectrum[int(np.argmin(np.abs(freqs - 100_000.0)))]
     power_minus = spectrum[int(np.argmin(np.abs(freqs + 100_000.0)))]
     assert power_plus > 100.0 * power_minus, (
-        f"+100 kHz / -100 kHz güç oranı yetersiz: {power_plus / power_minus:.1f}x"
+        f"+100 kHz / -100 kHz power ratio too low: {power_plus / power_minus:.1f}x"
     )

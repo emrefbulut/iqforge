@@ -2,7 +2,7 @@
     "global": {
         "core:author": "iqforge",
         "core:datatype": "cf32_le",
-        "core:description": "iqforge sentetik \u00f6rnek kayd\u0131 'bpsk_05'. S\u00fcrekli referans ton (merkez +100 kHz), tek BPSK bursti, d\u00fc\u015f\u00fck seviyeli AWGN.",
+        "core:description": "iqforge synthetic example recording 'bpsk_05'. Continuous reference tone (+100 kHz from centre), one BPSK burst, low-level AWGN.",
         "core:hw": "synthetic (scripts/make_example.py)",
         "core:num_channels": 1,
         "core:offset": 0,
@@ -20,7 +20,7 @@
     ],
     "annotations": [
         {
-            "core:comment": "Bilinen referans sinyal: merkez frekanstan tam +100000 Hz kaym\u0131\u015f saf ton, kayd\u0131n tamam\u0131 boyunca s\u00fcrekli. Spektrogram do\u011frulamas\u0131 bunu kullan\u0131r. Bir s\u0131n\u0131f de\u011fil \u00f6l\u00e7\u00fcm referans\u0131d\u0131r; etiketlemede --exclude-label ile d\u0131\u015flan\u0131r.",
+            "core:comment": "Known reference signal: a pure tone exactly +100000 Hz from the centre frequency, continuous for the whole recording. The spectrogram verification uses it. It is a measurement reference rather than a class, and is excluded from labelling by --exclude-label.",
             "core:freq_lower_edge": 2450099500.0,
             "core:freq_upper_edge": 2450100500.0,
             "core:label": "ref_tone",
@@ -28,7 +28,7 @@
             "core:sample_start": 0
         },
         {
-            "core:comment": "BPSK, 64 kBd, RRC beta=0.35, bant geni\u015fli\u011fi 86.4 kHz, ortalama g\u00fc\u00e7 0.0484, ta\u015f\u0131y\u0131c\u0131 +180 kHz",
+            "core:comment": "BPSK, 64 kBd, RRC beta=0.35, bandwidth 86.4 kHz, mean power 0.0484, carrier +180 kHz",
             "core:freq_lower_edge": 2450136800.0,
             "core:freq_upper_edge": 2450223200.0,
             "core:label": "bpsk",

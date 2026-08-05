@@ -1,4 +1,4 @@
-"""Testler arası paylaşılan fixture'lar."""
+"""Fixtures shared across the test suite."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from iqforge.io import Recording, load
 
 @pytest.fixture
 def make_recording() -> Callable[..., Recording]:
-    """Sentetik bir kayıt yazıp açılmış `Recording` olarak döndüren fabrika."""
+    """Factory that writes a synthetic recording and returns it opened."""
 
     def _make(directory: Path, samples: np.ndarray, **kwargs) -> Recording:
         return load(_write_record(directory, samples, **kwargs))
@@ -24,7 +24,7 @@ def make_recording() -> Callable[..., Recording]:
 
 @pytest.fixture
 def noise() -> Callable[..., np.ndarray]:
-    """Deterministik kompleks gürültü üreten fabrika."""
+    """Factory producing deterministic complex noise."""
 
     def _make(n: int, seed: int = 0) -> np.ndarray:
         rng = np.random.default_rng(seed)

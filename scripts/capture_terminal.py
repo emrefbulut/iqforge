@@ -1,14 +1,15 @@
-"""`iqforge inspect` çıktısını renkleriyle birlikte artifacts/ altına kaydeder.
+"""Save `iqforge inspect` output, colours included, under artifacts/.
 
-Terminal spektrogramı bilgisini tamamen renkte taşır; çıktı bir dosyaya
-yönlendirildiğinde `rich` renkleri kapatır ve geriye tekdüze bir `▀` bloğu
-kalır. Bu script konsolu `force_terminal=True` ile kurar ve iki biçimde yazar:
+The terminal spectrogram carries all of its information in colour; when the
+output is redirected to a file `rich` turns colour off and all that remains is a
+uniform block of `▀`. This script builds the console with `force_terminal=True`
+and writes two formats:
 
-  * `.ansi.txt` — ANSI kaçış dizileriyle; `cat` ile terminalde görüntülenir.
-  * `.svg`      — tarayıcıda açılabilen, renkleri gömülü vektör görüntü.
+  * `.ansi.txt` - with ANSI escape sequences; view it with `cat` in a terminal.
+  * `.svg`      - a vector image with the colours embedded, viewable in a browser.
 
-Kullanım:
-    python scripts/capture_terminal.py --samples 262144 -o artifacts/inspect_default
+Usage:
+    python scripts/capture_terminal.py --samples 32768 -o artifacts/inspect_bpsk_01
 """
 
 from __future__ import annotations
@@ -23,10 +24,10 @@ from iqforge.io import load
 
 
 def main() -> None:
-    """Belirtilen pencereyi render edip ANSI metin ve SVG olarak kaydeder."""
+    """Render the requested window and save it as ANSI text and SVG."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("path", nargs="?", default="examples/sample.sigmf-meta")
-    parser.add_argument("-o", "--output", required=True, help="uzantısız çıktı yolu")
+    parser.add_argument("path", nargs="?", default="examples/bpsk_01.sigmf-meta")
+    parser.add_argument("-o", "--output", required=True, help="output path without extension")
     parser.add_argument("--start", type=int, default=0)
     parser.add_argument("--samples", type=int, default=262_144)
     parser.add_argument("--nfft", type=int, default=1024)
@@ -44,12 +45,12 @@ def main() -> None:
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
-    # clear=False şart: varsayılan davranış kayıt tamponunu boşaltır ve ardından
-    # gelen save_svg boş bir SVG üretir.
+    # clear=False is required: the default empties the record buffer and the
+    # save_svg that follows would produce an empty SVG.
     console.save_text(str(out.with_suffix(".ansi.txt")), styles=True, clear=False)
-    console.save_svg(str(out.with_suffix(".svg")), title=f"iqforge inspect — {rec.meta_path.name}")
-    print(f"yazıldı: {out.with_suffix('.ansi.txt')}")
-    print(f"yazıldı: {out.with_suffix('.svg')}")
+    console.save_svg(str(out.with_suffix(".svg")), title=f"iqforge inspect - {rec.meta_path.name}")
+    print(f"written: {out.with_suffix('.ansi.txt')}")
+    print(f"written: {out.with_suffix('.svg')}")
 
 
 if __name__ == "__main__":

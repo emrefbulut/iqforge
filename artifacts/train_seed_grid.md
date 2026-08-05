@@ -1,11 +1,11 @@
-# Faz 4 — tohum ızgarası sonuçları
+# Phase 4 - seed grid results
 
-- kaynak: `examples`  ·  epoch: 20  ·  batch: 64
-- `--balance-by core:freq_lower_edge`  ·  model: 13490 parametre
+- source: `examples`  ·  epochs: 20  ·  batch: 64
+- `--balance-by core:freq_lower_edge`  ·  model: 13490 parameters
 
-## Test doğruluğu
+## Test accuracy
 
-| bölme tohumu | eğitim 0 | eğitim 1 | eğitim 2 | ortalama | std |
+| split seed | train 0 | train 1 | train 2 | mean | std |
 |---|---|---|---|---|---|
 | 11 | 95.00% | 100.00% | 100.00% | **98.33%** | 2.89% |
 | 22 | 100.00% | 100.00% | 100.00% | **100.00%** | 0.00% |
@@ -13,11 +13,11 @@
 | 44 | 100.00% | 100.00% | 93.75% | **97.92%** | 3.61% |
 | 55 | 100.00% | 100.00% | 91.25% | **97.08%** | 5.05% |
 
-## Saçılma
+## Spread
 
-| kaynak | değer |
+| source | value |
 |---|---|
-| tüm koşular | 98.42% ± 2.81% (min 91.25%, maks 100.00%) |
-| bölme tohumları arası | 98.42% ± 1.08% |
-| eğitim tohumları arası (sabit bölmede) | ortalama std 2.56%, en büyük 5.05% |
-| baskın kaynak | EĞİTİM tohumu |
+| all runs | 98.42% ± 2.81% (min 91.25%, max 100.00%) |
+| across split seeds | 98.42% ± 1.08% |
+| across training seeds (fixed split) | mean std 2.56%, largest 5.05% |
+| dominant source | the TRAINING seed |

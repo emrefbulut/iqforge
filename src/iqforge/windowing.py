@@ -1,4 +1,4 @@
-"""Kaydı sabit uzunlukta kayan pencerelere bölme ve temsil dönüşümleri."""
+"""Cutting a recording into fixed-length sliding windows, and representations."""
 
 from __future__ import annotations
 
@@ -8,25 +8,25 @@ import numpy as np
 
 from iqforge.io import IQForgeError, Recording
 
-#: Desteklenen temsil biçimleri (`--repr`).
+#: Supported representations (`--repr`).
 REPRESENTATIONS = ("iq2ch", "complex", "magphase")
 
-#: Tek seferde belleğe alınacak pencere sayısı.
+#: How many windows to hold in memory at once.
 DEFAULT_BATCH_WINDOWS = 512
 
 
 def window_count(num_samples: int, window: int, stride: int) -> int:
-    """Kaydın kaç tam pencereye bölüneceğini verir.
+    """Return how many whole windows a recording yields.
 
-    Sondaki eksik pencere atılır; padding yapılmaz.
+    The trailing partial window is dropped; nothing is padded.
 
     Args:
-        num_samples: Kayıttaki toplam örnek sayısı.
-        window: Pencere uzunluğu (örnek).
-        stride: Pencereler arası adım (örnek).
+        num_samples: Total samples in the recording.
+        window: Window length in samples.
+        stride: Step between consecutive windows, in samples.
 
     Returns:
-        `floor((num_samples - window) / stride) + 1`, negatifse 0.
+        `floor((num_samples - window) / stride) + 1`, or 0 if negative.
     """
     if num_samples < window:
         return 0
@@ -34,33 +34,33 @@ def window_count(num_samples: int, window: int, stride: int) -> int:
 
 
 def window_starts(num_samples: int, window: int, stride: int) -> np.ndarray:
-    """Pencerelerin başlangıç örnek indislerini verir."""
+    """Return the starting sample index of every window."""
     return np.arange(window_count(num_samples, window, stride), dtype=np.int64) * stride
 
 
 def validate_window_params(window: int, stride: int) -> None:
-    """Pencere parametrelerini doğrular.
+    """Validate the windowing parameters.
 
     Raises:
-        IQForgeError: Pencere veya adım pozitif değilse.
+        IQForgeError: If window or stride is not positive.
     """
     if window <= 0:
-        raise IQForgeError(f"--window pozitif olmalı, {window} verildi.")
+        raise IQForgeError(f"--window must be positive, got {window}.")
     if stride <= 0:
-        raise IQForgeError(f"--stride pozitif olmalı, {stride} verildi.")
+        raise IQForgeError(f"--stride must be positive, got {stride}.")
 
 
 def normalize_windows(windows: np.ndarray) -> np.ndarray:
-    """Her pencereyi ayrı ayrı birim güce normalize eder.
+    """Normalize each window separately to unit power.
 
-    `x = x / sqrt(mean(|x|^2))`. Sıfır güçlü pencerelerde bölme yapılmaz,
-    pencere sıfır olarak döner.
+    `x = x / sqrt(mean(|x|^2))`. Zero-power windows are not divided; they are
+    returned as zeros.
 
     Args:
-        windows: `(n, window)` complex64 dizi.
+        windows: An `(n, window)` complex64 array.
 
     Returns:
-        Aynı şekilde normalize edilmiş dizi.
+        The normalized array, same shape.
     """
     rms = np.sqrt(np.mean(np.abs(windows) ** 2, axis=1, keepdims=True))
     scale = np.divide(1.0, rms, out=np.zeros_like(rms), where=rms > 0)
@@ -68,18 +68,18 @@ def normalize_windows(windows: np.ndarray) -> np.ndarray:
 
 
 def to_representation(windows: np.ndarray, representation: str) -> np.ndarray:
-    """Kompleks pencereleri istenen temsile çevirir.
+    """Convert complex windows into the requested representation.
 
     Args:
-        windows: `(n, window)` complex64 dizi.
-        representation: `iq2ch`, `complex` veya `magphase`.
+        windows: An `(n, window)` complex64 array.
+        representation: One of `iq2ch`, `complex`, `magphase`.
 
     Returns:
-        `iq2ch` ve `magphase` için `(n, 2, window)` float32,
-        `complex` için `(n, window)` complex64.
+        `(n, 2, window)` float32 for `iq2ch` and `magphase`,
+        `(n, window)` complex64 for `complex`.
 
     Raises:
-        IQForgeError: Temsil tanınmıyorsa.
+        IQForgeError: If the representation is not recognised.
     """
     if representation == "complex":
         return windows.astype(np.complex64)
@@ -88,7 +88,7 @@ def to_representation(windows: np.ndarray, representation: str) -> np.ndarray:
     if representation == "magphase":
         return np.stack([np.abs(windows), np.angle(windows)], axis=1).astype(np.float32)
     raise IQForgeError(
-        f"Bilinmeyen temsil '{representation}'. Desteklenenler: {', '.join(REPRESENTATIONS)}."
+        f"Unknown representation '{representation}'. Supported: {', '.join(REPRESENTATIONS)}."
     )
 
 
@@ -99,20 +99,21 @@ def iter_window_batches(
     indices: np.ndarray | None = None,
     batch_windows: int = DEFAULT_BATCH_WINDOWS,
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-    """Kaydı pencereler halinde, parça parça okur.
+    """Read a recording window by window, in batches.
 
-    Kaydın tamamı belleğe alınmaz: her partide yalnızca o partinin kapsadığı
-    örnek aralığı okunur.
+    The whole recording is never loaded at once: each batch reads only the
+    sample range it covers.
 
     Args:
-        rec: Açılmış kayıt.
-        window: Pencere uzunluğu.
-        stride: Adım.
-        indices: Yalnızca bu pencere indisleri üretilsin (None ise tümü).
-        batch_windows: Parti başına pencere sayısı.
+        rec: The opened recording.
+        window: Window length.
+        stride: Step between windows.
+        indices: Only produce these window indices (None means all of them).
+        batch_windows: Windows per batch.
 
     Yields:
-        `(idx, batch)` — `idx` pencere indisleri, `batch` `(k, window)` complex64.
+        `(idx, batch)` where `idx` holds the window indices and `batch` is a
+        `(k, window)` complex64 array.
     """
     starts = window_starts(rec.num_samples, window, stride)
     selected = np.arange(starts.size) if indices is None else np.asarray(indices, dtype=np.int64)

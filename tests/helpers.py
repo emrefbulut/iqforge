@@ -1,4 +1,4 @@
-"""Testlerin paylaştığı SigMF kayıt üretme yardımcısı."""
+"""Shared helper for building SigMF recordings in tests."""
 
 from __future__ import annotations
 
@@ -20,20 +20,20 @@ def write_record(
     center_freq: float | None = 100_000_000.0,
     annotations: list[dict] | None = None,
 ) -> Path:
-    """Testler için elle bir SigMF kayıt çifti yazar ve meta yolunu döndürür.
+    """Write a SigMF recording pair by hand and return the metadata path.
 
     Args:
-        directory: Yazılacak klasör; yoksa oluşturulur.
-        samples: Kompleks örnekler.
-        datatype: `core:datatype` değeri. Desteklenmeyen bir değer verilebilir;
-            hata yollarını sınamak için veri `cf32_le` gibi yazılır.
-        name: Uzantısız dosya adı.
-        sample_rate: `core:sample_rate`; None ise alan hiç yazılmaz.
-        center_freq: `core:frequency`; None ise alan hiç yazılmaz.
-        annotations: Ham annotation sözlükleri.
+        directory: Target directory; created if missing.
+        samples: Complex samples.
+        datatype: The `core:datatype` value. An unsupported value may be passed
+            to exercise error paths; the data is then written as `cf32_le`.
+        name: File name without extension.
+        sample_rate: `core:sample_rate`; the field is omitted when None.
+        center_freq: `core:frequency`; the field is omitted when None.
+        annotations: Raw annotation dictionaries.
 
     Returns:
-        Yazılan `.sigmf-meta` yolu.
+        Path of the written `.sigmf-meta` file.
     """
     directory.mkdir(parents=True, exist_ok=True)
     np_dtype, full_scale = SUPPORTED_DATATYPES.get(datatype, ("<f4", 1.0))

@@ -1,4 +1,4 @@
-"""iqforge — SigMF kayıtlarından ML'e hazır veri setleri."""
+"""iqforge - turn SigMF recordings into ML-ready datasets."""
 
 from typing import TYPE_CHECKING, Any
 
@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str) -> Any:
-    """`IQForgeDataset`'i tembel yükler.
+    """Load `IQForgeDataset` lazily.
 
-    `torch` opsiyonel bir bağımlılıktır: `info`, `inspect`, `build` ve `stats`
-    torch kurulu olmadan çalışmalı. Modül seviyesinde import edilseydi
-    `import iqforge` torch'u zorunlu kılardı.
+    `torch` is an optional dependency: `info`, `inspect`, `build` and `stats`
+    must work without it. Importing at module level would make `import iqforge`
+    require torch.
     """
     if name == "IQForgeDataset":
         from iqforge.dataset import IQForgeDataset

@@ -86,11 +86,11 @@ does not fall back to window-level splitting, because a tool that silently produ
 an inflated accuracy number is worse than one that refuses to run.
 
 ```
-Error: cannot stratify by recording: class 'bpsk' has only 1 recording,
-but a 0.7/0.15/0.15 split needs at least 3.
+Error: Cannot stratify by recording: class 'bpsk' has only 1 recording, but a
+0.7/0.15/0.15 split needs at least 3 (train=0.7, val=0.15, test=0.15).
 
-Windows from one recording must not appear in more than one split; falling
-back to window-level splitting inflates test accuracy.
+Windows from one recording must not appear in more than one split (SPEC §5.6);
+falling back to window-level splitting inflates test accuracy.
 
 Options:
   - provide more recordings per class (pass a directory)

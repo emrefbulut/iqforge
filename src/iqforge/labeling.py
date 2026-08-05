@@ -1,4 +1,4 @@
-"""Pencere etiketleme: SigMF annotation, klasör adı ve CSV kaynakları."""
+"""Window labelling from three sources: SigMF annotations, directory name, CSV."""
 
 from __future__ import annotations
 
@@ -12,28 +12,29 @@ import numpy as np
 
 from iqforge.io import Annotation, IQForgeError, Recording
 
-#: Desteklenen etiket kaynakları (`--labels`).
+#: Supported label sources (`--labels`).
 LABEL_SOURCES = ("annotations", "dirname", "csv")
 
-#: `--exclude-label` verilmezse dışlanan etiketler. Örnek kayıtlardaki `ref_tone`
-#: bir sınıf değil ölçüm referansıdır ve kaydın tamamını kapsadığı için her
-#: pencereyle çakışır; ayrıntı SPEC §5.3.
+#: Labels excluded when `--exclude-label` is not given. In the bundled example
+#: recordings `ref_tone` is a measurement reference rather than a class, and it
+#: spans the whole recording so it overlaps every window; see SPEC §5.3.
 DEFAULT_EXCLUDE_LABELS = ("ref_tone",)
 
-#: `--keep-unlabeled` verildiğinde etiketsiz pencerelere verilen etiket.
+#: Label given to unmatched windows when `--keep-unlabeled` is set.
 UNLABELED = "unlabeled"
 
 
 @dataclass
 class LabelingStats:
-    """Bir kaydın etiketlenmesinde ne olduğunu özetler.
+    """Summary of what happened while labelling one recording.
 
     Attributes:
-        total: Kayıttaki toplam pencere sayısı.
-        labeled: Etiket alan pencere sayısı.
-        unmatched: Hiçbir annotation aralığına düşmediği için atılan pencereler.
-        ambiguous: Dışlamadan sonra birden fazla aralığa düştüğü için atılanlar.
-        excluded_labels: Bu kayıtta fiilen dışlanan etiketler.
+        total: Total windows in the recording.
+        labeled: Windows that received a label.
+        unmatched: Windows dropped because they fell in no annotation range.
+        ambiguous: Windows dropped because, after exclusions, they still fell in
+            more than one range.
+        excluded_labels: Labels actually excluded in this recording.
     """
 
     total: int = 0
@@ -43,7 +44,7 @@ class LabelingStats:
     excluded_labels: set[str] = field(default_factory=set)
 
     def merge(self, other: LabelingStats) -> None:
-        """Başka bir kaydın istatistiklerini bu nesneye ekler."""
+        """Fold another recording's statistics into this one."""
         self.total += other.total
         self.labeled += other.labeled
         self.unmatched += other.unmatched
@@ -58,24 +59,24 @@ def label_from_annotations(
     exclude_labels: frozenset[str],
     keep_unlabeled: bool,
 ) -> tuple[list[str | None], LabelingStats]:
-    """Pencereleri SigMF annotation'larına göre etiketler.
+    """Label windows from the recording's SigMF annotations.
 
-    Bir pencerenin etiketi, pencere MERKEZİNİN hangi annotation aralığına
-    düştüğüyle belirlenir. `exclude_labels` içindeki annotation'lar hiç dikkate
-    alınmaz — çakışma sayımına da girmezler.
+    A window's label is decided by which annotation range its CENTRE falls in.
+    Annotations in `exclude_labels` are ignored entirely — they do not even
+    count towards overlap.
 
-    Dışlamadan sonra bir pencere hâlâ birden fazla aralığa düşüyorsa
-    etiketlenemez sayılır ve atılır; sessizce biri seçilmez (SPEC §5.3).
+    If a window still falls in more than one range after exclusion it is treated
+    as unlabelled and dropped; one is never picked silently (SPEC §5.3).
 
     Args:
-        rec: Açılmış kayıt.
-        starts: Pencere başlangıç indisleri.
-        window: Pencere uzunluğu.
-        exclude_labels: Dikkate alınmayacak etiketler.
-        keep_unlabeled: True ise eşleşmeyen pencereler `UNLABELED` etiketi alır.
+        rec: The opened recording.
+        starts: Window start indices.
+        window: Window length.
+        exclude_labels: Labels to ignore.
+        keep_unlabeled: If True, unmatched windows get the `UNLABELED` label.
 
     Returns:
-        `(labels, stats)` — `labels` her pencere için etiket veya None.
+        `(labels, stats)` where `labels` holds a label or None per window.
     """
     usable = [
         a
@@ -109,7 +110,7 @@ def label_from_annotations(
 def label_from_dirname(
     rec: Recording, starts: np.ndarray, exclude_labels: frozenset[str]
 ) -> tuple[list[str | None], LabelingStats]:
-    """Kaydın bulunduğu klasörün adını tüm pencerelere etiket olarak verir."""
+    """Use the name of the recording's parent directory as the label."""
     name = rec.meta_path.resolve().parent.name
     stats = LabelingStats(total=starts.size)
     if name in exclude_labels:
@@ -121,23 +122,24 @@ def label_from_dirname(
 
 
 def load_label_csv(path: Path) -> dict[str, str]:
-    """`filename,label` sütunlu CSV'yi okur.
+    """Read a CSV with `filename,label` columns.
 
-    `filename` alanı yol ayracı içerebilir; eşleştirme dosya adına göre yapılır.
+    The `filename` field may contain path separators; matching is done on the
+    file name alone.
 
     Raises:
-        IQForgeError: Dosya yoksa veya beklenen sütunlar eksikse.
+        IQForgeError: If the file is missing or the expected columns are absent.
     """
     if not path.exists():
-        raise IQForgeError(f"Etiket dosyası bulunamadı: {path}")
+        raise IQForgeError(f"Label file not found: {path}")
 
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         fields = set(reader.fieldnames or ())
         if not {"filename", "label"} <= fields:
             raise IQForgeError(
-                f"'{path.name}' içinde 'filename' ve 'label' sütunları olmalı. "
-                f"Bulunan sütunlar: {', '.join(sorted(fields)) or '(yok)'}."
+                f"'{path.name}' must have 'filename' and 'label' columns. "
+                f"Columns found: {', '.join(sorted(fields)) or '(none)'}."
             )
         return {Path(row["filename"]).name: row["label"] for row in reader if row.get("filename")}
 
@@ -148,17 +150,17 @@ def label_from_csv(
     table: dict[str, str],
     exclude_labels: frozenset[str],
 ) -> tuple[list[str | None], LabelingStats]:
-    """CSV tablosundan kaydın etiketini bulup tüm pencerelere verir.
+    """Look the recording up in the CSV table and label every window with it.
 
     Raises:
-        IQForgeError: Kayıt CSV'de yoksa.
+        IQForgeError: If the recording is not listed in the CSV.
     """
     candidates = (rec.meta_path.name, rec.meta_path.stem, rec.data_path.name)
     label = next((table[c] for c in candidates if c in table), None)
     if label is None:
         raise IQForgeError(
-            f"'{rec.meta_path.name}' etiket CSV'sinde yok. "
-            f"CSV'nin 'filename' sütununda şunlardan biri bulunmalı: {', '.join(candidates)}."
+            f"'{rec.meta_path.name}' is not in the label CSV. The 'filename' column must "
+            f"contain one of: {', '.join(candidates)}."
         )
 
     stats = LabelingStats(total=starts.size)
@@ -171,11 +173,11 @@ def label_from_csv(
 
 
 def dominant_label(labels: list[str | None]) -> str | None:
-    """Bir kaydın baskın etiketini verir (en çok pencereye sahip etiket).
+    """Return a recording's dominant label — the one with the most windows.
 
-    Katmanlı bölme kayıt bazında yapılır; birden fazla etiket içeren kayıtlar
-    için hangi katmana ait olduğunu bu belirler. Eşitlikte alfabetik olarak ilk
-    etiket seçilir, böylece sonuç deterministiktir.
+    Stratified splitting works at the recording level, so this decides which
+    stratum a recording holding several labels belongs to. Ties are broken
+    alphabetically, which keeps the result deterministic.
     """
     counts = Counter(label for label in labels if label is not None)
     if not counts:
@@ -187,14 +189,15 @@ def dominant_label(labels: list[str | None]) -> str | None:
 def labelled_annotation(
     rec: Recording, label: str, exclude_labels: frozenset[str]
 ) -> Annotation | None:
-    """Kayda etiketini veren annotation'ı bulur.
+    """Find the annotation that gave the recording its label.
 
-    Önce `core:label` alanı `label` ile eşleşen annotation aranır (annotations
-    kaynağı). Bulunamazsa — `dirname`/`csv` kaynaklarında etiket annotation'dan
-    gelmez — dışlanmamış tek bir annotation varsa o kullanılır.
+    First looks for an annotation whose `core:label` matches `label` (the
+    annotations source). Failing that — with the `dirname` and `csv` sources the
+    label does not come from an annotation — it uses the single non-excluded
+    annotation, if there is exactly one.
 
     Returns:
-        Bulunan `Annotation` veya None.
+        The matching `Annotation`, or None.
     """
     for annotation in rec.annotations:
         if annotation.label == label:
@@ -204,20 +207,20 @@ def labelled_annotation(
 
 
 def annotation_field_value(rec: Recording, field: str, label: str, exclude: frozenset[str]) -> Any:
-    """Bir kayıttan, dengeleme için kullanılacak metadata alanının değerini okur.
+    """Read the metadata field used for balancing from a recording.
 
-    Alan sırayla şuralarda aranır:
-      1. Kayda etiketini veren annotation'ın ham SigMF sözlüğü.
-      2. `global` bölümü (`core:hw` gibi kayıt geneli alanlar için).
+    The field is looked up, in order, in:
+      1. the raw SigMF dictionary of the annotation that gave the label,
+      2. the `global` section, for recording-wide fields such as `core:hw`.
 
     Args:
-        rec: Açılmış kayıt.
-        field: SigMF anahtarı, ör. `core:freq_lower_edge` veya `core:hw`.
-        label: Kaydın baskın etiketi.
-        exclude: Etiketlemede dışlanan etiketler.
+        rec: The opened recording.
+        field: A SigMF key, e.g. `core:freq_lower_edge` or `core:hw`.
+        label: The recording's dominant label.
+        exclude: Labels excluded during labelling.
 
     Returns:
-        Alanın değeri; hiçbir yerde bulunamazsa None.
+        The field's value, or None if it is not found anywhere.
     """
     annotation = labelled_annotation(rec, label, exclude)
     if annotation is not None and field in annotation.raw:
@@ -226,10 +229,10 @@ def annotation_field_value(rec: Recording, field: str, label: str, exclude: froz
 
 
 def carrier_offset_hz(rec: Recording, label: str, exclude: frozenset[str]) -> float | None:
-    """Kaydın burst'ünün merkez frekansa göre taşıyıcı ofsetini verir (Hz).
+    """Return the burst's carrier offset from the centre frequency, in Hz.
 
-    Annotation'ın frekans sınırlarının ortası ile capture merkez frekansının
-    farkıdır. Sınırlar veya merkez frekans yoksa None döner.
+    This is the midpoint of the annotation's frequency edges minus the capture
+    centre frequency. Returns None if either is missing.
     """
     annotation = labelled_annotation(rec, label, exclude)
     if annotation is None or rec.center_frequency is None:
@@ -241,7 +244,7 @@ def carrier_offset_hz(rec: Recording, label: str, exclude: frozenset[str]) -> fl
 
 
 def resolve_exclude_labels(values: list[str] | None) -> frozenset[str]:
-    """`--exclude-label` değerlerini çözer; verilmemişse varsayılanı kullanır."""
+    """Resolve `--exclude-label` values, falling back to the default."""
     if values is None or not values:
         return frozenset(DEFAULT_EXCLUDE_LABELS)
     return frozenset(values)

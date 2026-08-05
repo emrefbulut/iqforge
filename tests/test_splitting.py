@@ -1,4 +1,4 @@
-"""iqforge.splitting testleri — SPEC §5.6'nın kayıt bazlı bölme kuralı."""
+"""Tests for iqforge.splitting - the recording-level split rule of SPEC §5.6."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from iqforge.splitting import (
 
 DEFAULT = (0.7, 0.15, 0.15)
 
-#: Örnek veri setiyle aynı yapı: iki sınıf, dört taşıyıcı ofset grubu, her
-#: sınıf her grubu birer kez kullanıyor.
+#: Same shape as the example dataset: two classes, four carrier-offset groups,
+#: each class using each group once.
 OFFSET_GROUPS = ("-280", "-180", "+180", "+280")
 
 
@@ -26,7 +26,7 @@ def _records(counts: dict[str, int]) -> dict[str, str]:
 
 
 def _offset_groups(records: dict[str, str]) -> dict[str, str]:
-    """Her kayda sırayla bir taşıyıcı ofset grubu atar."""
+    """Assign each recording a carrier-offset group, round robin."""
     groups: dict[str, str] = {}
     per_label: dict[str, int] = {}
     for record_id, label in sorted(records.items()):
@@ -37,7 +37,7 @@ def _offset_groups(records: dict[str, str]) -> dict[str, str]:
 
 
 def test_parse_ratios_accepts_valid_input() -> None:
-    """Geçerli oran dizgisi üç float olarak çözülmeli."""
+    """A valid ratio string parses into three floats."""
     assert parse_ratios("0.7,0.15,0.15") == (0.7, 0.15, 0.15)
     assert parse_ratios(" 1.0 , 0 , 0 ") == (1.0, 0.0, 0.0)
 
@@ -45,48 +45,48 @@ def test_parse_ratios_accepts_valid_input() -> None:
 @pytest.mark.parametrize(
     ("text", "fragment"),
     [
-        ("0.7,0.3", "üç değer"),
-        ("a,b,c", "sayısal"),
-        ("0.5,0.5,0.5", "toplamı 1"),
-        ("1.5,-0.5,0", "negatif"),
+        ("0.7,0.3", "three values"),
+        ("a,b,c", "numeric"),
+        ("0.5,0.5,0.5", "sum to 1"),
+        ("1.5,-0.5,0", "negative"),
     ],
 )
 def test_parse_ratios_rejects_invalid_input(text: str, fragment: str) -> None:
-    """Bozuk oran dizgisi ne yapılacağını söyleyen hata vermeli."""
+    """A malformed ratio string raises an error that says what to do."""
     with pytest.raises(IQForgeError, match=fragment):
         parse_ratios(text)
 
 
 def test_every_record_lands_in_exactly_one_split() -> None:
-    """Bir kayıt tek bir split'e gitmeli — bölmenin temel kuralı."""
+    """A recording goes to exactly one split - the fundamental rule."""
     records = _records({"bpsk": 4, "qpsk": 4})
     plan = stratified_record_split(records, DEFAULT, seed=42)
 
     assert set(plan.assignment) == set(records)
     placed = [r for name in SPLIT_NAMES for r in plan.records_in(name)]
     assert sorted(placed) == sorted(records)
-    assert len(placed) == len(set(placed)), "bir kayıt birden fazla split'te"
+    assert len(placed) == len(set(placed)), "a recording appears in more than one split"
 
 
 def test_each_class_is_present_in_every_split() -> None:
-    """Katmanlı bölme her sınıfı her split'te temsil etmeli."""
+    """Stratified splitting represents every class in every split."""
     records = _records({"bpsk": 4, "qpsk": 4})
     plan = stratified_record_split(records, DEFAULT, seed=42)
 
     for name in SPLIT_NAMES:
         labels = {records[r] for r in plan.records_in(name)}
-        assert labels == {"bpsk", "qpsk"}, f"{name} split'inde eksik sınıf: {labels}"
+        assert labels == {"bpsk", "qpsk"}, f"class missing from the {name} split: {labels}"
 
 
 def test_split_sizes_follow_ratios_as_closely_as_possible() -> None:
-    """Sınıf başına 4 kayıt, 0.7/0.15/0.15 için 2/1/1 vermeli."""
+    """Four recordings per class and 0.7/0.15/0.15 gives 2/1/1."""
     plan = stratified_record_split(_records({"bpsk": 4, "qpsk": 4}), DEFAULT, seed=42)
 
     assert [len(plan.records_in(n)) for n in SPLIT_NAMES] == [4, 2, 2]
 
 
 def test_same_seed_gives_identical_split() -> None:
-    """Aynı seed birebir aynı bölmeyi vermeli (SPEC §5.6 determinizm)."""
+    """The same seed reproduces the split exactly (SPEC §5.6 determinism)."""
     records = _records({"bpsk": 4, "qpsk": 4})
 
     first = stratified_record_split(records, DEFAULT, seed=42)
@@ -96,7 +96,7 @@ def test_same_seed_gives_identical_split() -> None:
 
 
 def test_different_seed_changes_the_split() -> None:
-    """Farklı seed farklı bölme vermeli, aksi halde tohum işe yaramıyordur."""
+    """A different seed gives a different split, otherwise the seed does nothing."""
     records = _records({"bpsk": 4, "qpsk": 4})
 
     assignments = {
@@ -108,7 +108,7 @@ def test_different_seed_changes_the_split() -> None:
 
 
 def test_record_order_does_not_affect_the_split() -> None:
-    """Girdi sözlüğünün sırası sonucu değiştirmemeli."""
+    """The ordering of the input dictionary must not change the result."""
     records = _records({"bpsk": 4, "qpsk": 4})
     reversed_records = dict(reversed(list(records.items())))
 
@@ -119,32 +119,32 @@ def test_record_order_does_not_affect_the_split() -> None:
 
 
 def test_too_few_records_raises_instead_of_falling_back() -> None:
-    """Kayıt sayısı yetmiyorsa HATA verilmeli, pencere bazlı bölmeye düşülmemeli."""
+    """Too few recordings must RAISE, never fall back to window-level splitting."""
     with pytest.raises(IQForgeError) as exc:
         stratified_record_split(_records({"bpsk": 1, "qpsk": 4}), DEFAULT, seed=42)
 
     message = str(exc.value)
-    assert "'bpsk' sınıfında yalnızca 1 kayıt" in message
-    assert "en az 3 gerekli" in message
-    assert "--split 1.0,0,0" in message, "hata mesajı çözüm yolunu söylemeli"
-    assert "şişirir" in message, "hata mesajı nedeni söylemeli"
+    assert "class 'bpsk' has only 1 recording" in message
+    assert "needs at least 3" in message
+    assert "--split 1.0,0,0" in message, "the error must offer a way out"
+    assert "inflates" in message, "the error must say why"
 
 
 def test_two_records_per_class_fails_for_three_way_split() -> None:
-    """İki kayıt üç split'i dolduramaz."""
-    with pytest.raises(IQForgeError, match="en az 3 gerekli"):
+    """Two recordings cannot fill three splits."""
+    with pytest.raises(IQForgeError, match="needs at least 3"):
         stratified_record_split(_records({"bpsk": 2, "qpsk": 2}), DEFAULT, seed=42)
 
 
 def test_two_way_split_needs_only_two_records() -> None:
-    """Sıfır oranlı split'ler zorunluluk saymamalı."""
+    """Splits with a zero ratio do not count towards the minimum."""
     plan = stratified_record_split(_records({"bpsk": 2, "qpsk": 2}), (0.5, 0.5, 0.0), seed=42)
 
     assert [len(plan.records_in(n)) for n in SPLIT_NAMES] == [2, 2, 0]
 
 
 def test_single_record_allowed_with_train_only_split() -> None:
-    """--split 1.0,0,0 tek kayıtla açık kaçış yolu olmalı."""
+    """`--split 1.0,0,0` is the explicit escape hatch for a single recording."""
     plan = stratified_record_split({"solo": "bpsk"}, (1.0, 0.0, 0.0), seed=42)
 
     assert plan.records_in("train") == ["solo"]
@@ -153,16 +153,17 @@ def test_single_record_allowed_with_train_only_split() -> None:
 
 
 def test_empty_input_is_rejected() -> None:
-    """Etiketlenebilir kayıt yoksa açık hata verilmeli."""
-    with pytest.raises(IQForgeError, match="Bölünecek kayıt yok"):
+    """With no labellable recording the error must be explicit."""
+    with pytest.raises(IQForgeError, match="Nothing to split"):
         stratified_record_split({}, DEFAULT, seed=42)
 
 
 def test_uneven_class_sizes_are_stratified_independently() -> None:
-    """Farklı büyüklükteki sınıflar kendi içlerinde oranlanmalı.
+    """Classes of different sizes are apportioned within themselves.
 
-    10 kayıt için 0.7/0.15/0.15 -> 7.0/1.5/1.5, en-büyük-kalan ile 7/2/1.
-    4 kayıt için 2.8/0.6/0.6 -> 3/1/0, minimum garantisiyle 2/1/1.
+    10 recordings and 0.7/0.15/0.15 gives 7.0/1.5/1.5, so 7/2/1 by largest
+    remainder. 4 recordings gives 2.8/0.6/0.6 -> 3/1/0, then 2/1/1 once the
+    minimum is enforced.
     """
     records = _records({"bpsk": 10, "qpsk": 4})
     plan = stratified_record_split(records, DEFAULT, seed=42)
@@ -180,13 +181,14 @@ def test_uneven_class_sizes_are_stratified_independently() -> None:
 
 @pytest.mark.parametrize("seed", range(8))
 def test_group_never_predicts_the_label_within_a_split(seed: int) -> None:
-    """Bir split'in İÇİNDE grup, etiketi tahmin edebilir olmamalı.
+    """Inside a split, the group must not be able to predict the label.
 
-    Bu dengelemenin asıl amacı. İhlal edilirse felaket olur: gruplar sınıflar
-    arasında tamamlayıcı dağıtılırsa (train'de bpsk pozitif ofsetleri, qpsk
-    negatifleri alırsa) model kestirmeyi öğrenir, eğitimde %100 yapar ve ilişki
-    başka split'te ters döndüğü için testte %0'a düşer — şansın da altına.
-    Bu gerileme gerçekten yaşandı; test onu kilitliyor.
+    This is the whole point of balancing. Violating it is a disaster: if groups
+    are handed out complementarily between classes (bpsk taking the positive
+    offsets in train, qpsk the negative ones), the model learns the shortcut,
+    scores 100% on training, and drops to 0% on a test split where the
+    relationship is reversed — below chance. That regression actually happened;
+    this test locks it out.
     """
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
@@ -201,15 +203,15 @@ def test_group_never_predicts_the_label_within_a_split(seed: int) -> None:
         for record_id in in_split:
             by_label.setdefault(records[record_id], set()).add(groups[record_id])
         assert set.intersection(*by_label.values()), (
-            f"seed {seed}, '{name}': grup etiketi ele veriyor -> {by_label}"
+            f"seed {seed}, '{name}': the group gives the label away -> {by_label}"
         )
 
 
 def test_each_group_stays_in_a_single_split_when_it_has_one_record_per_class() -> None:
-    """Grup başına sınıfta tek kayıt varsa grup bölünemez, bütün olarak yerleşir.
+    """With one recording per class per group, a group cannot be divided.
 
-    Bu, yukarıdaki bağımsızlık garantisinin bedelidir: train ile test aynı grubu
-    paylaşamaz. `leakage_warnings` bunu dışdeğerleme uyarısı olarak bildirir.
+    That is the price of the independence guarantee above: train and test cannot
+    share a group. `leakage_warnings` reports it as an extrapolation warning.
     """
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
@@ -223,7 +225,7 @@ def test_each_group_stays_in_a_single_split_when_it_has_one_record_per_class() -
 
 
 def test_balancing_preserves_class_stratification() -> None:
-    """Dengeleme sınıf başına split kayıt sayılarını değiştirmemeli."""
+    """Balancing must not change the per-class recording counts of a split."""
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
 
@@ -238,7 +240,7 @@ def test_balancing_preserves_class_stratification() -> None:
 
 
 def test_balancing_is_deterministic() -> None:
-    """Aynı seed dengeli bölmede de birebir aynı sonucu vermeli."""
+    """The same seed reproduces a balanced split exactly too."""
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
 
@@ -250,7 +252,7 @@ def test_balancing_is_deterministic() -> None:
 
 
 def test_balancing_keeps_the_record_level_guarantee() -> None:
-    """Dengeleme kayıt bazlı bölme kuralını bozmamalı."""
+    """Balancing must not break the recording-level rule."""
     records = _records({"bpsk": 6, "qpsk": 6})
     groups = _offset_groups(records)
 
@@ -262,56 +264,56 @@ def test_balancing_keeps_the_record_level_guarantee() -> None:
 
 
 def test_balance_warning_when_every_record_is_its_own_group() -> None:
-    """Her kayıt ayrı gruba düşerse dengeleme anlamsızdır, uyarı verilmeli."""
+    """One group per recording makes balancing meaningless; warn about it."""
     records = _records({"bpsk": 4, "qpsk": 4})
-    groups = {r: f"grup_{r}" for r in records}
+    groups = {r: f"group_{r}" for r in records}
 
     plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
     warnings = balance_warnings(plan, "core:description")
 
-    assert any("her kayda ayrı bir grup" in w for w in warnings)
+    assert any("own group" in w for w in warnings)
 
 
 def test_balance_warning_when_only_one_group_exists() -> None:
-    """Tek grup varsa dengeleme etkisizdir, uyarı verilmeli."""
+    """A single group means balancing did nothing; warn about it."""
     records = _records({"bpsk": 4, "qpsk": 4})
-    groups = dict.fromkeys(records, "tek")
+    groups = dict.fromkeys(records, "single")
 
     plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
     warnings = balance_warnings(plan, "core:hw")
 
-    assert any("dengeleme etkisiz" in w for w in warnings)
+    assert any("no effect" in w for w in warnings)
 
 
 def test_leakage_warning_when_group_separates_classes_within_a_split() -> None:
-    """Grup bir split'te sınıfları ayırıyorsa yüksek sesle uyarılmalı.
+    """A group that separates the classes inside a split must warn loudly.
 
-    Dengeleme kullanılmadığında (ya da alan sınıfla ilişkiliyse) bu olabilir;
-    kullanıcı doğruluk sayılarına güvenmeden önce bilmeli.
+    This can happen without balancing, or when the chosen field correlates with
+    the class. The user must know before trusting the accuracy numbers.
     """
     records = _records({"bpsk": 2, "qpsk": 2})
-    # Grup etiketle birebir örtüşüyor: en kötü durum.
+    # The group coincides exactly with the label: the worst case.
     groups = {r: ("g_bpsk" if records[r] == "bpsk" else "g_qpsk") for r in records}
 
     plan = stratified_record_split(records, (0.5, 0.5, 0.0), seed=42, record_groups=groups)
     warnings = leakage_warnings(plan, records, "core:hw")
 
-    assert any("SIZINTI RİSKİ" in w for w in warnings)
+    assert any("LEAKAGE RISK" in w for w in warnings)
 
 
 def test_leakage_warning_when_evaluation_groups_are_unseen_in_training() -> None:
-    """Test grubu eğitimde hiç görülmediyse bu dışdeğerlemedir, bildirilmeli."""
+    """Evaluating on groups never seen in training is extrapolation; report it."""
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
 
     plan = stratified_record_split(records, DEFAULT, seed=42, record_groups=groups)
     warnings = leakage_warnings(plan, records, "core:freq_lower_edge")
 
-    assert any("eğitimde hiç" in w and "test" in w for w in warnings)
+    assert any("never seen during training" in w and "test" in w for w in warnings)
 
 
 def test_no_leakage_warning_without_balancing() -> None:
-    """--balance-by kullanılmadıysa sızıntı denetimi sessiz kalmalı."""
+    """Without `--balance-by` the leakage check stays quiet."""
     records = _records({"bpsk": 4, "qpsk": 4})
     plan = stratified_record_split(records, DEFAULT, seed=42)
 
@@ -319,7 +321,7 @@ def test_no_leakage_warning_without_balancing() -> None:
 
 
 def test_balance_warnings_are_empty_when_balancing_works() -> None:
-    """Dengeleme tuttuğunda uyarı üretilmemeli."""
+    """No warnings when balancing does its job."""
     records = _records({"bpsk": 4, "qpsk": 4})
     groups = _offset_groups(records)
 
@@ -329,17 +331,17 @@ def test_balance_warnings_are_empty_when_balancing_works() -> None:
 
 
 def test_balance_warnings_empty_without_balancing() -> None:
-    """--balance-by kullanılmadıysa uyarı üretilmemeli."""
+    """No warnings when `--balance-by` was not used."""
     plan = stratified_record_split(_records({"bpsk": 4, "qpsk": 4}), DEFAULT, seed=42)
 
     assert balance_warnings(plan, "core:hw") == []
 
 
 def test_minimum_guarantee_does_not_inflate_small_splits() -> None:
-    """Minimum garantisi büyük split'ten çalmalı, oranları baştan bozmamalı.
+    """The minimum must steal from the largest split, not skew the ratios up front.
 
-    Baştan her split'e birer kayıt ayrılan (hatalı) yaklaşım 10 kayıt için
-    6/2/2 verir; doğrusu 7/2/1.
+    Reserving one recording per split first (the wrong approach) gives 6/2/2 for
+    10 recordings; the correct answer is 7/2/1.
     """
     plan = stratified_record_split(_records({"bpsk": 10}), DEFAULT, seed=42)
 

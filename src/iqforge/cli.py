@@ -1,4 +1,4 @@
-"""iqforge komut satırı arayüzü."""
+"""iqforge command-line interface."""
 
 from __future__ import annotations
 
@@ -53,16 +53,16 @@ from iqforge.windowing import (
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
-    help="SigMF kayıtlarını makine öğrenmesine hazır veri setlerine çevirir.",
+    help="Turn SigMF recordings into machine-learning-ready datasets.",
 )
 console = Console()
 err_console = Console(stderr=True)
 
 
 def _format_hz(value: float | None) -> str:
-    """Hz değerini okunabilir birimle biçimlendirir."""
+    """Format a value in Hz with a readable unit."""
     if value is None:
-        return "—"
+        return "-"
     for unit, scale in (("GHz", 1e9), ("MHz", 1e6), ("kHz", 1e3)):
         if abs(value) >= scale:
             return f"{value / scale:.6g} {unit} ({value:.0f} Hz)"
@@ -70,36 +70,36 @@ def _format_hz(value: float | None) -> str:
 
 
 def _render_overview(rec: Recording) -> Table:
-    """Kaydın temel metadata'sını tablo olarak hazırlar."""
+    """Build a table of the recording's basic metadata."""
     table = Table(title=rec.meta_path.name, title_style="bold", show_header=False)
-    table.add_column("Alan", style="cyan", no_wrap=True)
-    table.add_column("Değer", style="white")
+    table.add_column("Field", style="cyan", no_wrap=True)
+    table.add_column("Value", style="white")
 
     g = rec.global_info
-    table.add_row("Örnekleme hızı", _format_hz(rec.sample_rate))
-    table.add_row("Merkez frekans", _format_hz(rec.center_frequency))
-    table.add_row("Veri tipi", rec.datatype)
-    table.add_row("Örnek sayısı", f"{rec.num_samples:,}".replace(",", " "))
-    table.add_row("Süre", f"{rec.duration_seconds:.6g} s")
-    table.add_row("Veri dosyası", f"{rec.data_path.stat().st_size / 1e6:.2f} MB")
-    table.add_row("Donanım", str(g.get("core:hw", "—")))
-    table.add_row("Yazar", str(g.get("core:author", "—")))
-    table.add_row("Kaydeden", str(g.get("core:recorder", "—")))
-    table.add_row("SigMF sürümü", str(g.get("core:version", "—")))
+    table.add_row("Sample rate", _format_hz(rec.sample_rate))
+    table.add_row("Centre frequency", _format_hz(rec.center_frequency))
+    table.add_row("Datatype", rec.datatype)
+    table.add_row("Samples", f"{rec.num_samples:,}".replace(",", " "))
+    table.add_row("Duration", f"{rec.duration_seconds:.6g} s")
+    table.add_row("Data file", f"{rec.data_path.stat().st_size / 1e6:.2f} MB")
+    table.add_row("Hardware", str(g.get("core:hw", "-")))
+    table.add_row("Author", str(g.get("core:author", "-")))
+    table.add_row("Recorder", str(g.get("core:recorder", "-")))
+    table.add_row("SigMF version", str(g.get("core:version", "-")))
     if g.get("core:description"):
-        table.add_row("Açıklama", str(g["core:description"]))
+        table.add_row("Description", str(g["core:description"]))
     return table
 
 
 def _render_annotations(rec: Recording) -> Table:
-    """Annotation listesini tablo olarak hazırlar."""
-    table = Table(title=f"Annotation'lar ({len(rec.annotations)})", title_style="bold")
+    """Build a table of the recording's annotations."""
+    table = Table(title=f"Annotations ({len(rec.annotations)})", title_style="bold")
     table.add_column("#", justify="right", style="dim")
-    table.add_column("Etiket", style="green")
-    table.add_column("Başlangıç", justify="right")
-    table.add_column("Örnek", justify="right")
-    table.add_column("Zaman (s)", justify="right")
-    table.add_column("Frekans aralığı")
+    table.add_column("Label", style="green")
+    table.add_column("Start", justify="right")
+    table.add_column("Samples", justify="right")
+    table.add_column("Time (s)", justify="right")
+    table.add_column("Frequency range")
 
     for i, a in enumerate(rec.annotations):
         t0 = a.sample_start / rec.sample_rate
@@ -107,12 +107,12 @@ def _render_annotations(rec: Recording) -> Table:
         if a.freq_lower_edge is not None and a.freq_upper_edge is not None:
             lo = (a.freq_lower_edge - (rec.center_frequency or 0.0)) / 1e3
             hi = (a.freq_upper_edge - (rec.center_frequency or 0.0)) / 1e3
-            freq = f"merkez {lo:+.1f} … {hi:+.1f} kHz"
+            freq = f"centre {lo:+.1f} … {hi:+.1f} kHz"
         else:
-            freq = "—"
+            freq = "-"
         table.add_row(
             str(i),
-            a.label or "—",
+            a.label or "-",
             f"{a.sample_start:,}".replace(",", " "),
             f"{a.sample_count:,}".replace(",", " "),
             f"{t0:.4f} → {t1:.4f}",
@@ -123,43 +123,43 @@ def _render_annotations(rec: Recording) -> Table:
 
 @app.command()
 def info(
-    path: Annotated[Path, typer.Argument(help="SigMF kaydı (.sigmf-meta veya kayıt adı)")],
+    path: Annotated[Path, typer.Argument(help="SigMF recording (.sigmf-meta or recording name)")],
 ) -> None:
-    """SigMF kaydının metadata'sını okunabilir tablo olarak yazdırır."""
+    """Print a SigMF recording's metadata as a readable table."""
     try:
         rec = load(path)
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Hata:[/] {exc}")
+        err_console.print(f"[bold red]Error:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
     console.print(_render_overview(rec))
     if rec.annotations:
         console.print(_render_annotations(rec))
     else:
-        console.print("[dim]Kayıtta annotation yok.[/]")
+        console.print("[dim]The recording has no annotations.[/]")
 
 
 @app.command()
 def inspect(
-    path: Annotated[Path, typer.Argument(help="SigMF kaydı (.sigmf-meta veya kayıt adı)")],
-    start: Annotated[int, typer.Option("--start", help="Kaçıncı örnekten başlasın")] = 0,
-    samples: Annotated[int, typer.Option("--samples", help="Kaç örnek gösterilsin")] = 262_144,
-    nfft: Annotated[int, typer.Option("--nfft", help="FFT uzunluğu")] = 1024,
+    path: Annotated[Path, typer.Argument(help="SigMF recording (.sigmf-meta or recording name)")],
+    start: Annotated[int, typer.Option("--start", help="Sample index to start at")] = 0,
+    samples: Annotated[int, typer.Option("--samples", help="How many samples to show")] = 262_144,
+    nfft: Annotated[int, typer.Option("--nfft", help="FFT length")] = 1024,
     height: Annotated[
-        int | None, typer.Option("--height", help="Spektrogram yüksekliği (karakter satırı)")
+        int | None, typer.Option("--height", help="Spectrogram height in character rows")
     ] = None,
 ) -> None:
-    """Terminalde spektrogram ve zaman ekseninde güç grafiği çizer."""
+    """Draw a spectrogram and a power-over-time plot in the terminal."""
     try:
         rec = load(path)
         data = rec.read(start=start, count=samples)
         rows = height if height is not None else max(8, min(24, console.size.height - 10))
         panel = render_inspect(rec, data, start, nfft, width=console.size.width, height=rows)
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Hata:[/] {exc}")
+        err_console.print(f"[bold red]Error:[/] {exc}")
         raise typer.Exit(code=1) from exc
     except ValueError as exc:
-        err_console.print(f"[bold red]Hata:[/] {exc}")
+        err_console.print(f"[bold red]Error:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
     console.print(panel)
@@ -167,14 +167,16 @@ def inspect(
 
 @dataclass
 class _RecordWork:
-    """Tek bir kaydın build sırasında taşınan durumu.
+    """State carried for one recording during a build.
 
     Attributes:
-        record_id: Kaydın veri seti içindeki benzersiz kimliği (göreli yol).
-        recording: Açılmış kayıt.
-        indices: Etiket alan pencerelerin indisleri.
-        labels: `indices` ile aynı sırada etiketler.
-        dominant: Kaydın baskın etiketi; katmanlı bölme bunu kullanır.
+        record_id: The recording's unique id in the dataset (a relative path).
+        recording: The opened recording.
+        indices: Indices of the windows that received a label.
+        labels: Labels in the same order as `indices`.
+        dominant: The recording's dominant label; stratified splitting uses it.
+        offset_hz: Carrier offset from the centre frequency, if derivable.
+        group: The `--balance-by` group key, if balancing was requested.
     """
 
     record_id: str
@@ -187,22 +189,22 @@ class _RecordWork:
 
 
 def _collect_inputs(path: Path) -> tuple[list[Path], Path]:
-    """Girdi yolundan `.sigmf-meta` dosyalarını toplar.
+    """Collect the `.sigmf-meta` files under an input path.
 
     Returns:
-        `(meta_yolları, kök_klasör)` — kök, kayıt kimliklerinin göreli
-        hesaplanacağı klasördür.
+        `(meta_paths, root)` where `root` is the directory recording ids are
+        made relative to.
 
     Raises:
-        IQForgeError: Yol yoksa veya hiç kayıt bulunamazsa.
+        IQForgeError: If the path does not exist or holds no recordings.
     """
     if not path.exists():
-        raise IQForgeError(f"Girdi bulunamadı: {path}")
+        raise IQForgeError(f"Input not found: {path}")
     if path.is_dir():
         metas = sorted(path.rglob(f"*{META_EXT}"))
         if not metas:
             raise IQForgeError(
-                f"'{path}' içinde (alt klasörler dahil) hiç '*{META_EXT}' dosyası yok."
+                f"No '*{META_EXT}' files found under '{path}' (subdirectories included)."
             )
         return metas, path
     return [path], path.parent
@@ -218,29 +220,27 @@ def _label_one(
     keep_unlabeled: bool,
     csv_table: dict[str, str] | None,
 ) -> tuple[list[str | None], LabelingStats]:
-    """Seçilen kaynağa göre bir kaydın pencerelerini etiketler."""
+    """Label one recording's windows using the selected source."""
     if source == "annotations":
         return label_from_annotations(rec, starts, window, exclude, keep_unlabeled)
     if source == "dirname":
         return label_from_dirname(rec, starts, exclude)
     if source == "csv":
-        assert csv_table is not None  # CLI tarafında doğrulanıyor
+        assert csv_table is not None  # validated on the CLI side
         return label_from_csv(rec, starts, csv_table, exclude)
-    raise IQForgeError(
-        f"Bilinmeyen etiket kaynağı '{source}'. Desteklenenler: {', '.join(LABEL_SOURCES)}."
-    )
+    raise IQForgeError(f"Unknown label source '{source}'. Supported: {', '.join(LABEL_SOURCES)}.")
 
 
 def _group_key(value: Any) -> str:
-    """Dengeleme alanının değerini kararlı bir grup anahtarına çevirir.
+    """Turn a balancing field's value into a stable group key.
 
-    Sayısal değerler 12 anlamlı basamağa yazılır: kayan nokta gürültüsünü
-    (0.1+0.2 gibi) normalize etmeye yeter ama gerçek farkları silmez. Daha az
-    basamak tehlikelidir — 2.45 GHz'lik bir taşıyıcıda 6 basamak yalnızca
-    ~10 kHz çözünürlük verir ve yakın ofsetler sessizce aynı gruba düşer.
+    Numeric values are written with 12 significant digits: enough to normalise
+    floating-point noise (0.1+0.2 and friends) without erasing real differences.
+    Fewer digits is dangerous — on a 2.45 GHz carrier, 6 digits gives only about
+    10 kHz of resolution and nearby offsets silently collapse into one group.
     """
     if value is None:
-        return "(yok)"
+        return "(none)"
     if isinstance(value, bool):
         return str(value)
     if isinstance(value, (int, float)):
@@ -249,27 +249,27 @@ def _group_key(value: Any) -> str:
 
 
 def _format_offset(offset_hz: float | None) -> str:
-    """Taşıyıcı ofsetini okunabilir biçimde verir."""
+    """Format a carrier offset for display."""
     if offset_hz is None:
-        return "—"
+        return "-"
     return f"{offset_hz / 1e3:+.1f} kHz"
 
 
 def _render_split_records(plan: SplitPlan, work: dict[str, _RecordWork]) -> Table:
-    """Hangi kaydın hangi split'e düştüğünü isim isim tablolar."""
-    table = Table(title="Kayıt bazında bölme (SPEC §5.6)", title_style="bold", show_lines=False)
+    """Tabulate which recording landed in which split, by name."""
+    table = Table(title="Recording-level split (SPEC §5.6)", title_style="bold", show_lines=False)
     table.add_column("Split", style="cyan", no_wrap=True)
-    table.add_column("Kayıt", style="white")
-    table.add_column("Etiket", style="green")
-    table.add_column("Taşıyıcı", justify="right", style="magenta")
-    table.add_column("Pencere", justify="right")
+    table.add_column("Recording", style="white")
+    table.add_column("Label", style="green")
+    table.add_column("Carrier", justify="right", style="magenta")
+    table.add_column("Windows", justify="right")
     if plan.groups:
-        table.add_column("Grup", style="yellow")
+        table.add_column("Group", style="yellow")
 
     for split in SPLIT_NAMES:
         records = plan.records_in(split)
         if not records:
-            table.add_row(split, "[dim]— boş —[/]", "", "", "0", *([""] if plan.groups else []))
+            table.add_row(split, "[dim]- empty -[/]", "", "", "0", *([""] if plan.groups else []))
             continue
         for i, record_id in enumerate(records):
             item = work[record_id]
@@ -281,49 +281,48 @@ def _render_split_records(plan: SplitPlan, work: dict[str, _RecordWork]) -> Tabl
                 str(len(item.labels)),
             ]
             if plan.groups:
-                row.append(item.group or "—")
+                row.append(item.group or "-")
             table.add_row(*row)
     return table
 
 
 @app.command()
-def build(  # noqa: PLR0913 — CLI seçenekleri SPEC §4'te tanımlı
-    input_path: Annotated[Path, typer.Argument(help="Tek .sigmf-meta dosyası veya klasör")],
-    output: Annotated[Path, typer.Option("-o", "--output", help="Çıktı klasörü")],
-    window: Annotated[int, typer.Option("--window", help="Pencere uzunluğu (örnek)")] = 1024,
-    stride: Annotated[int, typer.Option("--stride", help="Pencereler arası adım")] = 512,
+def build(  # noqa: PLR0913 — the CLI options are defined in SPEC §4
+    input_path: Annotated[Path, typer.Argument(help="A single .sigmf-meta file or a directory")],
+    output: Annotated[Path, typer.Option("-o", "--output", help="Output directory")],
+    window: Annotated[int, typer.Option("--window", help="Window length in samples")] = 1024,
+    stride: Annotated[int, typer.Option("--stride", help="Step between windows")] = 512,
     labels: Annotated[
-        str, typer.Option("--labels", help=f"Etiket kaynağı: {', '.join(LABEL_SOURCES)}")
+        str, typer.Option("--labels", help=f"Label source: {', '.join(LABEL_SOURCES)}")
     ] = "annotations",
     label_file: Annotated[
-        Path | None, typer.Option("--label-file", help="--labels csv için CSV yolu")
+        Path | None, typer.Option("--label-file", help="CSV path for --labels csv")
     ] = None,
     exclude_label: Annotated[
         list[str] | None,
-        typer.Option("--exclude-label", help="Etiketlemede yok sayılacak etiket (yinelenebilir)"),
+        typer.Option("--exclude-label", help="Label to ignore when labelling (repeatable)"),
     ] = None,
     keep_unlabeled: Annotated[
-        bool, typer.Option("--keep-unlabeled", help="Eşleşmeyen pencereleri atma, 'unlabeled' yap")
+        bool,
+        typer.Option("--keep-unlabeled", help="Keep unmatched windows as 'unlabeled'"),
     ] = False,
-    split: Annotated[
-        str, typer.Option("--split", help="train,val,test oranları")
-    ] = "0.7,0.15,0.15",
-    seed: Annotated[int, typer.Option("--seed", help="Deterministik bölme tohumu")] = 42,
+    split: Annotated[str, typer.Option("--split", help="train,val,test ratios")] = "0.7,0.15,0.15",
+    seed: Annotated[int, typer.Option("--seed", help="Seed for the deterministic split")] = 42,
     balance_by: Annotated[
         str | None,
         typer.Option(
             "--balance-by",
-            help="Split'lere yayılacak SigMF alanı, ör. core:freq_lower_edge",
+            help="SigMF field to spread across splits, e.g. core:freq_lower_edge",
         ),
     ] = None,
     representation: Annotated[
-        str, typer.Option("--repr", help=f"Temsil: {', '.join(REPRESENTATIONS)}")
+        str, typer.Option("--repr", help=f"Representation: {', '.join(REPRESENTATIONS)}")
     ] = "iq2ch",
     normalize: Annotated[
-        bool, typer.Option("--normalize/--no-normalize", help="Pencere başına birim güç")
+        bool, typer.Option("--normalize/--no-normalize", help="Unit power per window")
     ] = True,
 ) -> None:
-    """Kayıtları pencereleyip etiketli, bölünmüş bir veri seti olarak diske yazar."""
+    """Window, label, split and write recordings as a dataset on disk."""
     try:
         _run_build(
             input_path=input_path,
@@ -341,11 +340,11 @@ def build(  # noqa: PLR0913 — CLI seçenekleri SPEC §4'te tanımlı
             normalize=normalize,
         )
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Hata:[/] {exc}")
+        err_console.print(f"[bold red]Error:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
 
-def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
+def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
     *,
     input_path: Path,
     output: Path,
@@ -361,25 +360,25 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
     representation: str,
     normalize: bool,
 ) -> None:
-    """`build` komutunun boru hattı. Hatalar `IQForgeError` olarak yükselir."""
+    """The `build` pipeline. Failures are raised as `IQForgeError`."""
     validate_window_params(window, stride)
     if source not in LABEL_SOURCES:
         raise IQForgeError(
-            f"Bilinmeyen etiket kaynağı '{source}'. Desteklenenler: {', '.join(LABEL_SOURCES)}."
+            f"Unknown label source '{source}'. Supported: {', '.join(LABEL_SOURCES)}."
         )
     if representation not in REPRESENTATIONS:
         raise IQForgeError(
-            f"Bilinmeyen temsil '{representation}'. Desteklenenler: {', '.join(REPRESENTATIONS)}."
+            f"Unknown representation '{representation}'. Supported: {', '.join(REPRESENTATIONS)}."
         )
     if source == "csv" and label_file is None:
-        raise IQForgeError("--labels csv seçildi ama --label-file verilmedi.")
+        raise IQForgeError("--labels csv was selected but --label-file was not given.")
 
     ratios = parse_ratios(split)
     exclude = resolve_exclude_labels(exclude_label)
     csv_table = load_label_csv(label_file) if source == "csv" else None
 
     metas, root = _collect_inputs(input_path)
-    console.print(f"[dim]{len(metas)} kayıt bulundu:[/] {input_path}")
+    console.print(f"[dim]found {len(metas)} recording(s):[/] {input_path}")
 
     work: dict[str, _RecordWork] = {}
     totals = LabelingStats()
@@ -389,7 +388,9 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
         rec = load(meta)
         starts = window_starts(rec.num_samples, window, stride)
         if starts.size == 0:
-            skipped.append(f"{meta.name}: {rec.num_samples} örnek, {window} pencereye yetmiyor")
+            skipped.append(
+                f"{meta.name}: {rec.num_samples} samples, too few for a window of {window}"
+            )
             continue
 
         window_labels, stats = _label_one(
@@ -405,7 +406,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
 
         kept = [i for i, label in enumerate(window_labels) if label is not None]
         if not kept:
-            skipped.append(f"{meta.name}: etiket alan pencere yok")
+            skipped.append(f"{meta.name}: no window received a label")
             continue
 
         record_id = meta.relative_to(root).as_posix() if meta != root else meta.name
@@ -423,12 +424,12 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
         )
 
     for note in skipped:
-        console.print(f"[yellow]atlandı[/] {note}")
+        console.print(f"[yellow]skipped[/] {note}")
     if not work:
-        excluded = ", ".join(sorted(exclude)) or "(yok)"
+        excluded = ", ".join(sorted(exclude)) or "(none)"
         raise IQForgeError(
-            "Hiçbir kayıttan etiketli pencere çıkmadı. "
-            f"Etiket kaynağı '{source}', dışlanan etiketler: {excluded}."
+            "No recording produced a labelled window. "
+            f"Label source '{source}', excluded labels: {excluded}."
         )
 
     record_groups: dict[str, str] | None = None
@@ -443,8 +444,9 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
             record_groups[record_id] = item.group
         if missing:
             console.print(
-                f"[yellow]uyarı[/] --balance-by '{balance_by}' şu kayıtlarda bulunamadı, "
-                f"'{_group_key(None)}' grubuna alındılar: {', '.join(sorted(missing))}"
+                f"[yellow]warning[/] --balance-by '{balance_by}' was not found in these "
+                f"recordings, they went into the '{_group_key(None)}' group: "
+                f"{', '.join(sorted(missing))}"
             )
 
     plan = stratified_record_split(
@@ -452,9 +454,9 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
     )
     if balance_by is not None:
         for warning in balance_warnings(plan, balance_by):
-            console.print(f"[yellow]uyarı[/] {warning}")
+            console.print(f"[yellow]warning[/] {warning}")
         for warning in leakage_warnings(plan, {k: v.dominant for k, v in work.items()}, balance_by):
-            console.print(f"[bold yellow]uyarı[/] {warning}")
+            console.print(f"[bold yellow]warning[/] {warning}")
 
     all_labels = sorted({label for item in work.values() for label in item.labels})
     label_map = {label: i for i, label in enumerate(all_labels)}
@@ -470,7 +472,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
         console=console,
         transient=True,
     ) as progress:
-        task = progress.add_task("pencereler yazılıyor", total=total_windows)
+        task = progress.add_task("writing windows", total=total_windows)
         for record_id in sorted(work):
             item = work[record_id]
             writer = writers[plan.assignment[record_id]]
@@ -526,32 +528,32 @@ def _run_build(  # noqa: PLR0913, PLR0915 — tek akışlı boru hattı
 
     console.print(_render_split_records(plan, work))
     console.print(
-        f"[dim]pencere:[/] {totals.total} toplam, {totals.labeled} etiketli, "
-        f"{totals.unmatched} eşleşmeyen, {totals.ambiguous} belirsiz (çakışan annotation)"
+        f"[dim]windows:[/] {totals.total} total, {totals.labeled} labelled, "
+        f"{totals.unmatched} unmatched, {totals.ambiguous} ambiguous (overlapping annotations)"
     )
     if totals.excluded_labels:
-        console.print(f"[dim]dışlanan etiketler:[/] {', '.join(sorted(totals.excluded_labels))}")
-    console.print(f"[green]yazıldı:[/] {output} ({dataset_size_bytes(output) / 1e6:.2f} MB)")
+        console.print(f"[dim]excluded labels:[/] {', '.join(sorted(totals.excluded_labels))}")
+    console.print(f"[green]written:[/] {output} ({dataset_size_bytes(output) / 1e6:.2f} MB)")
 
 
 def _render_offset_summary(manifest: dict[str, Any]) -> Table:
-    """Split başına taşıyıcı ofset dağılımını özetler.
+    """Summarise the carrier-offset distribution per split.
 
-    Bir split'teki ofsetlerin tamamı aynı işaretteyse bu, sınıf etiketiyle
-    ilgisiz ama split'ler arasında sistematik olarak değişen bir değişken
-    demektir — yani dağılım kayması. Tablo bunu gözle görülür kılar.
+    If every offset in a split has the same sign, a variable unrelated to the
+    class label varies systematically between splits — a distribution shift.
+    This table makes that visible.
     """
-    table = Table(title="Taşıyıcı ofset dağılımı", title_style="bold")
+    table = Table(title="Carrier offset distribution", title_style="bold")
     table.add_column("Split", style="cyan", no_wrap=True)
-    table.add_column("Ofsetler (kHz)", style="magenta")
-    table.add_column("Negatif / Pozitif", justify="right")
+    table.add_column("Offsets (kHz)", style="magenta")
+    table.add_column("Negative / Positive", justify="right")
 
     for name in SPLIT_NAMES:
         listed = manifest["splits"][name].get("records", [])
         offsets = [e.get("carrier_offset_hz") for e in listed]
         known = [o for o in offsets if o is not None]
         if not known:
-            table.add_row(name, "[dim]—[/]", "—")
+            table.add_row(name, "[dim]-[/]", "-")
             continue
         negative = sum(1 for o in known if o < 0)
         positive = len(known) - negative
@@ -566,39 +568,39 @@ def _render_offset_summary(manifest: dict[str, Any]) -> Table:
 
 @app.command()
 def stats(
-    dataset_dir: Annotated[Path, typer.Argument(help="iqforge build ile üretilmiş klasör")],
+    dataset_dir: Annotated[Path, typer.Argument(help="A directory built by iqforge build")],
 ) -> None:
-    """Kurulmuş veri setinin özetini yazdırır."""
+    """Print a summary of a built dataset."""
     try:
         manifest = read_manifest(dataset_dir)
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Hata:[/] {exc}")
+        err_console.print(f"[bold red]Error:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
     label_map: dict[str, int] = manifest["label_map"]
     config = manifest["config"]
 
     overview = Table(title=str(dataset_dir), title_style="bold", show_header=False)
-    overview.add_column("Alan", style="cyan", no_wrap=True)
-    overview.add_column("Değer")
-    overview.add_row("iqforge sürümü", manifest["iqforge_version"])
-    overview.add_row("oluşturma", manifest["created"])
-    overview.add_row("kaynak kayıt", str(len(manifest["source_files"])))
-    overview.add_row("pencere / adım", f"{config['window']} / {config['stride']}")
-    overview.add_row("temsil", f"{config['repr']} (normalize={config['normalize']})")
-    overview.add_row("etiket kaynağı", str(config.get("labels", "—")))
-    overview.add_row("dışlanan etiket", ", ".join(config.get("exclude_labels", [])) or "—")
-    overview.add_row("split / seed", f"{config.get('split', '—')} / {config['seed']}")
+    overview.add_column("Field", style="cyan", no_wrap=True)
+    overview.add_column("Value")
+    overview.add_row("iqforge version", manifest["iqforge_version"])
+    overview.add_row("created", manifest["created"])
+    overview.add_row("source recordings", str(len(manifest["source_files"])))
+    overview.add_row("window / stride", f"{config['window']} / {config['stride']}")
+    overview.add_row("representation", f"{config['repr']} (normalize={config['normalize']})")
+    overview.add_row("label source", str(config.get("labels", "-")))
+    overview.add_row("excluded labels", ", ".join(config.get("exclude_labels", [])) or "-")
+    overview.add_row("split / seed", f"{config.get('split', '-')} / {config['seed']}")
     overview.add_row("disk", f"{dataset_size_bytes(dataset_dir) / 1e6:.2f} MB")
     console.print(overview)
 
-    distribution = Table(title="Sınıf dağılımı", title_style="bold")
+    distribution = Table(title="Class distribution", title_style="bold")
     distribution.add_column("Split", style="cyan")
-    distribution.add_column("Kayıt", justify="right")
-    distribution.add_column("Pencere", justify="right")
+    distribution.add_column("Recordings", justify="right")
+    distribution.add_column("Windows", justify="right")
     for label in label_map:
         distribution.add_column(label, justify="right", style="green")
-    distribution.add_column("Shard", justify="right")
+    distribution.add_column("Shards", justify="right")
 
     for name in SPLIT_NAMES:
         entry = manifest["splits"][name]
@@ -613,19 +615,19 @@ def stats(
     console.print(distribution)
 
     balanced = config.get("balance_by")
-    records = Table(title="Split başına kayıt dosyaları", title_style="bold")
+    records = Table(title="Recordings per split", title_style="bold")
     records.add_column("Split", style="cyan", no_wrap=True)
-    records.add_column("Kayıt", style="white")
-    records.add_column("Etiket", style="green")
-    records.add_column("Taşıyıcı", justify="right", style="magenta")
-    records.add_column("Pencere", justify="right")
+    records.add_column("Recording", style="white")
+    records.add_column("Label", style="green")
+    records.add_column("Carrier", justify="right", style="magenta")
+    records.add_column("Windows", justify="right")
     if balanced:
-        records.add_column(f"Grup ({balanced})", style="yellow")
+        records.add_column(f"Group ({balanced})", style="yellow")
 
     for name in SPLIT_NAMES:
         listed = manifest["splits"][name].get("records", [])
         if not listed:
-            records.add_row(name, "[dim]— boş —[/]", "", "", "0", *([""] if balanced else []))
+            records.add_row(name, "[dim]- empty -[/]", "", "", "0", *([""] if balanced else []))
             continue
         for i, entry in enumerate(listed):
             row = [
@@ -636,7 +638,7 @@ def stats(
                 str(entry["windows"]),
             ]
             if balanced:
-                row.append(entry.get("balance_group") or "—")
+                row.append(entry.get("balance_group") or "-")
             records.add_row(*row)
     console.print(records)
     console.print(_render_offset_summary(manifest))
@@ -644,36 +646,36 @@ def stats(
 
 @app.command()
 def train(
-    dataset_dir: Annotated[Path, typer.Argument(help="iqforge build ile üretilmiş klasör")],
-    epochs: Annotated[int, typer.Option("--epochs", help="Epoch sayısı")] = 10,
-    batch_size: Annotated[int, typer.Option("--batch-size", help="Batch boyutu")] = 64,
+    dataset_dir: Annotated[Path, typer.Argument(help="A directory built by iqforge build")],
+    epochs: Annotated[int, typer.Option("--epochs", help="Number of epochs")] = 10,
+    batch_size: Annotated[int, typer.Option("--batch-size", help="Batch size")] = 64,
     seed: Annotated[
-        int, typer.Option("--seed", help="EĞİTİM tohumu (ağırlık init + batch sırası)")
+        int, typer.Option("--seed", help="TRAINING seed (weight init + batch order)")
     ] = 0,
-    learning_rate: Annotated[float, typer.Option("--lr", help="Adam öğrenme oranı")] = 1e-3,
+    learning_rate: Annotated[float, typer.Option("--lr", help="Adam learning rate")] = 1e-3,
 ) -> None:
-    """Basit bir baseline CNN eğitir.
+    """Train a small baseline CNN.
 
-    Amaç doğruluk rekoru değil, veri setinin gerçekten eğitilebilir olduğunu
-    kanıtlamaktır. `--seed` yalnızca eğitimi etkiler; veri setinin bölünmesi
-    `build --seed` ile belirlenir ve burada değiştirilemez.
+    The point is not a record accuracy but proof that the dataset is actually
+    trainable. `--seed` affects training only; how the dataset was split is
+    fixed by `build --seed` and cannot be changed here.
     """
     try:
-        # torch opsiyonel: import yalnızca `train` çağrıldığında yapılır, böylece
-        # info/inspect/build/stats torch olmadan çalışmaya devam eder.
+        # torch is optional: import only when `train` runs, so that
+        # info/inspect/build/stats keep working without it.
         from iqforge.models import MAX_PARAMETERS
         from iqforge.training import train_baseline
-    except ImportError as exc:  # pragma: no cover - torch kurulu değilse
+    except ImportError as exc:  # pragma: no cover - only when torch is absent
         err_console.print(
-            "[bold red]Hata:[/] `train` için torch gerekli. Kurulum: "
-            "`uv sync --extra torch` veya `pip install 'iqforge[torch]'`."
+            "[bold red]Error:[/] `train` requires torch. Install it with "
+            "`uv sync --extra torch` or `pip install 'iqforge[torch]'`."
         )
         raise typer.Exit(code=1) from exc
 
     def _report(epoch_result: Any) -> None:
         line = (
-            f"epoch {epoch_result.epoch:>3}  kayıp {epoch_result.train_loss:.4f}  "
-            f"eğitim {epoch_result.train_accuracy:6.2%}"
+            f"epoch {epoch_result.epoch:>3}  loss {epoch_result.train_loss:.4f}  "
+            f"train {epoch_result.train_accuracy:6.2%}"
         )
         if epoch_result.val_accuracy is not None:
             line += f"  val {epoch_result.val_accuracy:6.2%}"
@@ -689,25 +691,25 @@ def train(
             on_epoch=_report,
         )
     except IQForgeError as exc:
-        err_console.print(f"[bold red]Hata:[/] {exc}")
+        err_console.print(f"[bold red]Error:[/] {exc}")
         raise typer.Exit(code=1) from exc
 
     console.print(
-        f"[dim]model:[/] {result.parameters} eğitilebilir parametre "
-        f"(bütçe {MAX_PARAMETERS})  [dim]eğitim tohumu:[/] {seed}"
+        f"[dim]model:[/] {result.parameters} trainable parameters "
+        f"(budget {MAX_PARAMETERS})  [dim]training seed:[/] {seed}"
     )
     if result.test_accuracy is None:
-        console.print("[yellow]test split'i boş — test doğruluğu hesaplanmadı[/]")
+        console.print("[yellow]the test split is empty - no test accuracy computed[/]")
         return
 
-    console.print(f"[bold]test doğruluğu: {result.test_accuracy:.2%}[/]")
+    console.print(f"[bold]test accuracy: {result.test_accuracy:.2%}[/]")
     for name, accuracy in result.test_per_class.items():
         console.print(f"[dim]  {name}:[/] {accuracy:.2%}")
 
 
 @app.command()
 def version() -> None:
-    """iqforge sürümünü yazdırır."""
+    """Print the iqforge version."""
     console.print(f"iqforge {__version__}")
 
 

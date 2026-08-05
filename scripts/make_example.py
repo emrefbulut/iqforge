@@ -1,34 +1,36 @@
-"""examples/ içindeki sentetik SigMF örnek kayıtlarını üretir.
+"""Generate the synthetic SigMF example recordings under examples/.
 
-Bu script bir kez çalıştırılır; üretilen `examples/*.sigmf-*` dosyaları sonraki
-fazlarda sabit referans kabul edilir ve yeniden üretilmez.
+This script is run once; the resulting `examples/*.sigmf-*` files are treated as
+a fixed reference by later work and are not regenerated.
 
-Neden birden fazla kayıt: SPEC §5.6 "aynı kayıt dosyasından gelen pencereler
-aynı split'e gitmeli" diyor. Tek bir kayıt dosyası varsa bu kural sınanamaz ve
-`build` sessizce pencere bazlı bölmeye düşme riski taşır. Bu yüzden veri seti
-sekiz ayrı kayıt çiftinden oluşur: dört BPSK, dört QPSK.
+Why more than one recording: SPEC §5.6 requires that windows from the same
+recording go to the same split. With a single recording that rule cannot be
+exercised, and `build` risks silently falling back to window-level splitting.
+The dataset therefore holds sixteen recordings: eight BPSK and eight QPSK.
 
-Her kayıtta:
-  * Sürekli saf ton — merkez frekanstan tam +100 kHz kaymış (`ref_tone`).
-    Faz 2'deki spektrogram doğrulaması bu bilinen sinyali referans alır.
-  * Tek bir modülasyonlu burst (`bpsk` VEYA `qpsk`), kaydın kimliğini belirler.
-  * Düşük seviyeli kompleks Gauss gürültüsü.
+Every recording contains:
+  * A continuous pure tone, exactly +100 kHz from the centre frequency
+    (`ref_tone`). The Phase 2 spectrogram verification uses it as a reference.
+  * A single modulated burst (`bpsk` OR `qpsk`), which gives the recording its
+    identity.
+  * Low-level complex Gaussian noise.
 
-Sınıflar arasında yalnızca modülasyon türü değişir. Kısayol ipuçlarını kapatmak
-için şunlar iki sınıfta da birebir aynıdır:
-  * sembol hızı (64 kBd) ve RRC roll-off (0.35) → aynı bant genişliği (86.4 kHz)
-  * burst süresi (40960 örnek) ve ortalama gücü
-  * taşıyıcı ofset havuzu — her sınıf aynı dört ofseti birer kez kullanır, yani
-    taşıyıcı frekansı sınıf hakkında hiçbir bilgi taşımaz
-Kayıttan kayda değişenler: gürültü tohumu, sembol dizisi, burst zaman konumu ve
-taşıyıcı ofseti.
+Only the modulation differs between the classes. To close off shortcut cues,
+these are identical in both:
+  * symbol rate (64 kBd) and RRC roll-off (0.35), hence the same bandwidth
+    (86.4 kHz)
+  * burst duration (20480 samples) and mean power
+  * the carrier offset pool - each class uses the same four offsets the same
+    number of times, so the carrier frequency carries no class information
+What varies from recording to recording: the noise seed, the symbol sequence,
+the burst position in time, and the carrier offset.
 
-Örnekleme hızı bilerek 1.024 MHz seçilmiştir: 1024 noktalı FFT'de bin aralığı
-tam 1 kHz olur, böylece +100 kHz'lik referans ton tam olarak +100. bine düşer.
+The sample rate is deliberately 1.024 MHz: with a 1024-point FFT the bin spacing
+is exactly 1 kHz, so the +100 kHz reference tone lands exactly on bin +100.
 
-Kullanım:
-    python scripts/make_example.py          # varsa atlar
-    python scripts/make_example.py --force  # bilerek yeniden üretir
+Usage:
+    python scripts/make_example.py          # skips if the files exist
+    python scripts/make_example.py --force  # deliberately regenerates
 """
 
 from __future__ import annotations
@@ -45,25 +47,26 @@ from sigmf import SigMFFile
 BASE_SEED = 20240101
 SAMPLE_RATE = 1_024_000.0  # Hz
 CENTER_FREQ = 2_450_000_000.0  # Hz
-NUM_SAMPLES = 32_768  # kayıt başına 0.032 s
+NUM_SAMPLES = 32_768  # 0.032 s per recording
 
-REF_TONE_OFFSET = 100_000.0  # Hz — bilinen referans sinyal
+REF_TONE_OFFSET = 100_000.0  # Hz - the known reference signal
 REF_TONE_AMPLITUDE = 0.25
 
-# Her iki sınıf için ortak burst parametreleri.
+# Burst parameters shared by both classes.
 SYMBOL_RATE = 64_000.0  # Bd
 RRC_BETA = 0.35
-BURST_RMS = 0.22  # her burst bu ortalama güce normalize edilir
-BURST_COUNT = 20_480  # örnek — her kayıtta aynı; 1024/512 pencerede 40 etiketli
-BURST_RAMP = 512  # örnek — zarf yükselme/düşme süresi
+BURST_RMS = 0.22  # every burst is normalized to this mean power
+BURST_COUNT = 20_480  # samples; same in every recording, 40 labelled windows at 1024/512
+BURST_RAMP = 512  # samples; envelope rise and fall time
 
-#: Her (sınıf, taşıyıcı ofset) çifti için kaç kayıt üretilecek.
-#: İKİ olması şart: bir ofsetin kayıtları train ile test arasında paylaşılabilsin
-#: diye. Tek kayıtla, split içi bağımsızlık garantisi (§5.6) o ofsetin tüm
-#: kayıtlarını aynı split'e zorlar ve model hep görülmemiş taşıyıcıda sınanır.
+#: How many recordings to generate per (class, carrier offset) pair.
+#: TWO is required so that a single offset's recordings can be shared between
+#: train and test. With one, the within-split independence guarantee (§5.6)
+#: forces every recording at that offset into the same split and the model is
+#: always evaluated on an unseen carrier.
 RECORDS_PER_CELL = 2
 
-#: İşgal edilen bant genişliği (Hz); annotation frekans sınırları buradan gelir.
+#: Occupied bandwidth in Hz; the annotation frequency edges derive from this.
 OCCUPIED_BW = SYMBOL_RATE * (1.0 + RRC_BETA)
 
 NOISE_SIGMA = 0.02
@@ -73,14 +76,14 @@ OUT_DIR = Path(__file__).resolve().parent.parent / "examples"
 
 @dataclass(frozen=True)
 class RecordPlan:
-    """Üretilecek tek bir kaydın parametreleri.
+    """Parameters of a single recording to generate.
 
     Attributes:
-        name: Uzantısız dosya adı; kaydın kimliğini taşır (ör. `bpsk_01`).
-        modulation: `"bpsk"` veya `"qpsk"`.
-        carrier_offset: Burstün merkez frekansa göre ofseti (Hz).
-        burst_start: Burstün başladığı örnek indisi.
-        seed: Bu kayda özgü rastgelelik tohumu.
+        name: File name without extension; carries the recording's identity.
+        modulation: `"bpsk"` or `"qpsk"`.
+        carrier_offset: Burst offset from the centre frequency, in Hz.
+        burst_start: Sample index where the burst starts.
+        seed: Randomness seed specific to this recording.
     """
 
     name: str
@@ -90,22 +93,22 @@ class RecordPlan:
     seed: int
 
 
-#: Taşıyıcı ofset havuzu. Her sınıf her ofseti `RECORDS_PER_CELL` kez kullanır,
-#: yani taşıyıcı frekansı sınıf hakkında hiçbir bilgi taşımaz.
+#: The carrier offset pool. Each class uses each offset `RECORDS_PER_CELL`
+#: times, so the carrier frequency carries no class information.
 CARRIER_OFFSETS = (-280_000.0, -180_000.0, 180_000.0, 280_000.0)
 
-#: Burst başlangıç havuzu. Burst hep kaydın ilk yarısında başlar; böylece her
-#: kayıtta burst sonrasında en az 4096 örneklik sinyalsiz kuyruk kalır ve
-#: referans ton ölçümü (Faz 1/2 doğrulaması) temiz bir bölgede yapılabilir.
+#: The burst start pool. Bursts always begin in the first half of the recording,
+#: leaving at least 4096 samples of signal-free tail afterwards so the reference
+#: tone measurement (the Phase 1/2 verification) has a clean region to work in.
 BURST_STARTS = (1_024, 3_072, 5_120, 7_168)
 
 
 def _build_plans() -> list[RecordPlan]:
-    """2 sınıf x 4 ofset x `RECORDS_PER_CELL` kayıt planı üretir.
+    """Build the plan for 2 classes x 4 offsets x `RECORDS_PER_CELL` recordings.
 
-    Burst başlangıcı hem ofsetten hem sınıftan bağımsız olacak şekilde
-    döndürülür: her sınıf her başlangıcı eşit sayıda kullanır, dolayısıyla
-    burst konumu da sınıf hakkında bilgi taşımaz.
+    The burst start is rotated so that it is independent of both the offset and
+    the class: each class uses each start the same number of times, so the burst
+    position carries no class information either.
     """
     plans: list[RecordPlan] = []
     for class_shift, modulation in enumerate(("bpsk", "qpsk")):
@@ -130,15 +133,15 @@ PLANS = _build_plans()
 
 
 def rrc_taps(sps: int, span: int = 8, beta: float = RRC_BETA) -> np.ndarray:
-    """Kök yükseltilmiş kosinüs (RRC) darbe şekillendirme katsayıları üretir.
+    """Build root-raised-cosine (RRC) pulse-shaping coefficients.
 
     Args:
-        sps: Sembol başına örnek sayısı.
-        span: Filtrenin kaç sembol boyunca uzandığı.
-        beta: Roll-off faktörü.
+        sps: Samples per symbol.
+        span: How many symbols the filter spans.
+        beta: Roll-off factor.
 
     Returns:
-        Enerjisi 1'e normalize edilmiş float64 katsayı dizisi.
+        A float64 coefficient array normalized to unit energy.
     """
     n = np.arange(-span * sps / 2, span * sps / 2 + 1, dtype=np.float64)
     t = n / sps
@@ -161,7 +164,7 @@ def rrc_taps(sps: int, span: int = 8, beta: float = RRC_BETA) -> np.ndarray:
 
 
 def _envelope(length: int, ramp: int) -> np.ndarray:
-    """Burst kenarlarını yumuşatan kosinüs rampalı zarf üretir."""
+    """Build a cosine-ramped envelope that softens the burst edges."""
     env = np.ones(length, dtype=np.float64)
     r = np.hanning(2 * ramp)
     env[:ramp] = r[:ramp]
@@ -170,19 +173,19 @@ def _envelope(length: int, ramp: int) -> np.ndarray:
 
 
 def _shaped_burst(symbols: np.ndarray, sps: int, length: int) -> np.ndarray:
-    """Sembolleri RRC ile şekillendirip istenen uzunlukta bir burst döndürür.
+    """Shape symbols with the RRC filter and return a burst of the given length.
 
-    Burst, kenarları yumuşatılmış zarfla çarpılır ve ortalama gücü tam olarak
-    `BURST_RMS**2` olacak şekilde normalize edilir. Böylece farklı modülasyonlar
-    ve farklı kayıtlar birebir aynı güçte olur.
+    The burst is multiplied by the softened envelope and then normalized so its
+    mean power is exactly `BURST_RMS**2`. That makes different modulations, and
+    different recordings, identical in power.
 
     Args:
-        symbols: Kompleks sembol dizisi.
-        sps: Sembol başına örnek sayısı.
-        length: İstenen burst uzunluğu (örnek).
+        symbols: Complex symbol sequence.
+        sps: Samples per symbol.
+        length: Desired burst length in samples.
 
     Returns:
-        `length` uzunluğunda, ortalama gücü `BURST_RMS**2` olan complex128 dizi.
+        A complex128 array of `length` samples with mean power `BURST_RMS**2`.
     """
     upsampled = np.zeros(len(symbols) * sps, dtype=np.complex128)
     upsampled[::sps] = symbols
@@ -194,25 +197,25 @@ def _shaped_burst(symbols: np.ndarray, sps: int, length: int) -> np.ndarray:
 
 
 def _symbols(modulation: str, count: int, rng: np.random.Generator) -> np.ndarray:
-    """Verilen modülasyona ait rastgele takımyıldız sembolleri üretir.
+    """Draw random constellation symbols for the given modulation.
 
     Raises:
-        ValueError: Modülasyon tanınmıyorsa.
+        ValueError: If the modulation is not recognised.
     """
     if modulation == "bpsk":
         return 2.0 * rng.integers(0, 2, count) - 1.0 + 0j
     if modulation == "qpsk":
         return np.exp(1j * (np.pi / 4.0 + rng.integers(0, 4, count) * np.pi / 2.0))
-    raise ValueError(f"Bilinmeyen modülasyon '{modulation}'. Desteklenenler: bpsk, qpsk.")
+    raise ValueError(f"Unknown modulation '{modulation}'. Supported: bpsk, qpsk.")
 
 
 def build_signal(plan: RecordPlan) -> np.ndarray:
-    """Tek bir kaydın kompleks örneklerini üretir."""
+    """Generate the complex samples of one recording."""
     rng = np.random.default_rng(plan.seed)
     t = np.arange(NUM_SAMPLES, dtype=np.float64) / SAMPLE_RATE
     x = np.zeros(NUM_SAMPLES, dtype=np.complex128)
 
-    # Referans ton: merkez frekanstan tam +100 kHz, kaydın tamamı boyunca.
+    # The reference tone: exactly +100 kHz from centre, for the whole recording.
     x += REF_TONE_AMPLITUDE * np.exp(2j * np.pi * REF_TONE_OFFSET * t)
 
     sps = int(round(SAMPLE_RATE / SYMBOL_RATE))
@@ -225,15 +228,15 @@ def build_signal(plan: RecordPlan) -> np.ndarray:
 
 
 def write_record(plan: RecordPlan, samples: np.ndarray, out_dir: Path) -> Path:
-    """Örnekleri ve metadata'yı SigMF kayıt çifti olarak diske yazar.
+    """Write the samples and metadata as a SigMF recording pair.
 
     Args:
-        plan: Kaydın parametreleri.
-        samples: `complex64` örnekler.
-        out_dir: Çıktı klasörü.
+        plan: The recording's parameters.
+        samples: `complex64` samples.
+        out_dir: Output directory.
 
     Returns:
-        Yazılan `.sigmf-meta` dosyasının yolu.
+        Path of the written `.sigmf-meta` file.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     data_path = out_dir / f"{plan.name}.sigmf-data"
@@ -251,8 +254,9 @@ def write_record(plan: RecordPlan, samples: np.ndarray, out_dir: Path) -> Path:
             sigmf.SAMPLE_RATE_KEY: SAMPLE_RATE,
             sigmf.AUTHOR_KEY: "iqforge",
             sigmf.DESCRIPTION_KEY: (
-                f"iqforge sentetik örnek kaydı '{plan.name}'. Sürekli referans ton "
-                f"(merkez +100 kHz), tek {plan.modulation.upper()} bursti, düşük seviyeli AWGN."
+                f"iqforge synthetic example recording '{plan.name}'. Continuous reference "
+                f"tone (+100 kHz from centre), one {plan.modulation.upper()} burst, "
+                "low-level AWGN."
             ),
             sigmf.HW_KEY: "synthetic (scripts/make_example.py)",
             sigmf.RECORDER_KEY: "iqforge scripts/make_example.py",
@@ -276,9 +280,10 @@ def write_record(plan: RecordPlan, samples: np.ndarray, out_dir: Path) -> Path:
             sigmf.FREQ_LOWER_EDGE_KEY: CENTER_FREQ + REF_TONE_OFFSET - 500.0,
             sigmf.FREQ_UPPER_EDGE_KEY: CENTER_FREQ + REF_TONE_OFFSET + 500.0,
             sigmf.COMMENT_KEY: (
-                "Bilinen referans sinyal: merkez frekanstan tam +100000 Hz kaymış saf ton, "
-                "kaydın tamamı boyunca sürekli. Spektrogram doğrulaması bunu kullanır. "
-                "Bir sınıf değil ölçüm referansıdır; etiketlemede --exclude-label ile dışlanır."
+                "Known reference signal: a pure tone exactly +100000 Hz from the centre "
+                "frequency, continuous for the whole recording. The spectrogram "
+                "verification uses it. It is a measurement reference rather than a class, "
+                "and is excluded from labelling by --exclude-label."
             ),
         },
     )
@@ -291,8 +296,8 @@ def write_record(plan: RecordPlan, samples: np.ndarray, out_dir: Path) -> Path:
             sigmf.FREQ_UPPER_EDGE_KEY: CENTER_FREQ + plan.carrier_offset + OCCUPIED_BW / 2.0,
             sigmf.COMMENT_KEY: (
                 f"{plan.modulation.upper()}, {SYMBOL_RATE / 1e3:.0f} kBd, RRC beta={RRC_BETA}, "
-                f"bant genişliği {OCCUPIED_BW / 1e3:.1f} kHz, "
-                f"ortalama güç {BURST_RMS**2:.4f}, taşıyıcı {plan.carrier_offset / 1e3:+.0f} kHz"
+                f"bandwidth {OCCUPIED_BW / 1e3:.1f} kHz, mean power {BURST_RMS**2:.4f}, "
+                f"carrier {plan.carrier_offset / 1e3:+.0f} kHz"
             ),
         },
     )
@@ -302,23 +307,23 @@ def write_record(plan: RecordPlan, samples: np.ndarray, out_dir: Path) -> Path:
 
 
 def main() -> None:
-    """Tüm kayıtları üretir ve özetini yazdırır.
+    """Generate every recording and print a summary.
 
-    Kayıtlardan herhangi biri zaten varsa hiçbir şey yapmaz: örnek veri seti bir
-    kez üretilir ve sabit kalır. Bilinçli yeniden üretim için `--force`.
+    Does nothing if any recording already exists: the example dataset is
+    generated once and then stays fixed. Use `--force` to regenerate on purpose.
     """
     force = "--force" in sys.argv
     existing = [p for p in PLANS if (OUT_DIR / f"{p.name}.sigmf-meta").exists()]
     if existing and not force:
-        print(f"{len(existing)} kayıt zaten var ({OUT_DIR}) — üretim atlandı.")
-        print("Bilerek yeniden üretmek için: python scripts/make_example.py --force")
+        print(f"{len(existing)} recording(s) already exist in {OUT_DIR} - skipping generation.")
+        print("To regenerate on purpose: python scripts/make_example.py --force")
         return
     if force:
         for stale in sorted(OUT_DIR.glob("*.sigmf-*")):
             stale.unlink()
 
     total_bytes = 0
-    print(f"{'kayıt':<10} {'modülasyon':<11} {'taşıyıcı':>11} {'burst (s)':>18} {'güç':>9}")
+    print(f"{'recording':<10} {'modulation':<11} {'carrier':>11} {'burst (s)':>18} {'power':>9}")
     for plan in PLANS:
         samples = build_signal(plan)
         meta_path = write_record(plan, samples, OUT_DIR)
@@ -333,11 +338,11 @@ def main() -> None:
         )
 
     print(
-        f"\n{len(PLANS)} kayıt, kayıt başına {NUM_SAMPLES} örnek "
-        f"({NUM_SAMPLES / SAMPLE_RATE:.4f} s), toplam {total_bytes / 1e6:.2f} MB"
+        f"\n{len(PLANS)} recordings, {NUM_SAMPLES} samples each "
+        f"({NUM_SAMPLES / SAMPLE_RATE:.4f} s), {total_bytes / 1e6:.2f} MB total"
     )
-    print(f"referans ton: merkez {REF_TONE_OFFSET:+.0f} Hz (her kayıtta)")
-    print(f"burst bant genişliği: {OCCUPIED_BW / 1e3:.1f} kHz (her kayıtta)")
+    print(f"reference tone: {REF_TONE_OFFSET:+.0f} Hz from centre (every recording)")
+    print(f"burst bandwidth: {OCCUPIED_BW / 1e3:.1f} kHz (every recording)")
 
 
 if __name__ == "__main__":

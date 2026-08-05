@@ -1,4 +1,4 @@
-"""Shard dosyalarının yazılması/okunması ve manifest.json."""
+"""Writing and reading shard files, and manifest.json."""
 
 from __future__ import annotations
 
@@ -13,20 +13,20 @@ from iqforge.io import IQForgeError
 
 MANIFEST_NAME = "manifest.json"
 
-#: Bir shard dosyasının üst sınırı (SPEC §5.7).
+#: Upper bound on the size of one shard file (SPEC §5.7).
 SHARD_MAX_BYTES = 256 * 1024 * 1024
 
 
 class ShardWriter:
-    """Bir split'in pencerelerini en fazla `SHARD_MAX_BYTES` boyutlu shard'lara yazar."""
+    """Writes a split's windows into shards of at most `SHARD_MAX_BYTES`."""
 
     def __init__(self, root: Path, split: str, max_bytes: int = SHARD_MAX_BYTES) -> None:
-        """Yazıcıyı hazırlar.
+        """Prepare the writer.
 
         Args:
-            root: Veri seti kök klasörü.
-            split: Split adı (`train`, `val`, `test`).
-            max_bytes: Shard başına üst sınır.
+            root: Dataset root directory.
+            split: Split name (`train`, `val`, `test`).
+            max_bytes: Upper bound per shard.
         """
         self.root = root
         self.split = split
@@ -37,11 +37,11 @@ class ShardWriter:
         self._buffered_bytes = 0
 
     def add(self, windows: np.ndarray, labels: list[int]) -> None:
-        """Bir parti pencereyi ve etiketlerini kuyruğa ekler.
+        """Queue a batch of windows and their labels.
 
         Args:
-            windows: `(n, ...)` şeklinde temsil dizisi.
-            labels: `n` uzunluğunda tamsayı etiket listesi.
+            windows: An `(n, ...)` representation array.
+            labels: `n` integer labels.
         """
         if windows.shape[0] == 0:
             return
@@ -52,12 +52,12 @@ class ShardWriter:
         self._buffered_bytes += windows.nbytes
         self.labels.extend(labels)
 
-        # Tek parti bile sınırı aşıyorsa hemen boşalt.
+        # Flush immediately if even a single batch exceeds the limit.
         if self._buffered_bytes >= self.max_bytes - item_bytes:
             self.flush()
 
     def flush(self) -> None:
-        """Kuyruktaki pencereleri yeni bir shard dosyasına yazar."""
+        """Write the queued windows into a new shard file."""
         if not self._buffer:
             return
         split_dir = self.root / self.split
@@ -70,7 +70,7 @@ class ShardWriter:
 
     @property
     def count(self) -> int:
-        """Bu split'e yazılmış toplam pencere sayısı."""
+        """Total windows written to this split."""
         return len(self.labels)
 
 
@@ -83,18 +83,18 @@ def write_manifest(
     source_files: list[str],
     splits: dict[str, dict[str, Any]],
 ) -> Path:
-    """`manifest.json` dosyasını yazar.
+    """Write the `manifest.json` file.
 
     Args:
-        root: Veri seti kök klasörü.
-        version: iqforge sürümü.
-        config: Kullanılan build parametreleri.
-        label_map: Etiket -> tamsayı eşlemesi.
-        source_files: Kaynak `.sigmf-meta` yolları.
-        splits: Split adı -> `{shards, labels, count, records}`.
+        root: Dataset root directory.
+        version: iqforge version.
+        config: The build parameters used.
+        label_map: Label -> integer mapping.
+        source_files: Paths of the source `.sigmf-meta` files.
+        splits: Split name -> `{shards, labels, count, records}`.
 
     Returns:
-        Yazılan manifest yolu.
+        Path of the written manifest.
     """
     root.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -111,23 +111,24 @@ def write_manifest(
 
 
 def read_manifest(root: Path) -> dict[str, Any]:
-    """Veri setinin manifest'ini okur.
+    """Read a dataset's manifest.
 
     Raises:
-        IQForgeError: Klasör veya manifest yoksa, ya da JSON bozuksa.
+        IQForgeError: If the directory or manifest is missing, or the JSON is
+            malformed.
     """
     path = Path(root) / MANIFEST_NAME
     if not path.exists():
         raise IQForgeError(
-            f"'{root}' bir iqforge veri seti değil: {MANIFEST_NAME} bulunamadı. "
-            "Önce `iqforge build <girdi> -o <klasör>` çalıştırın."
+            f"'{root}' is not an iqforge dataset: {MANIFEST_NAME} not found. "
+            "Run `iqforge build <input> -o <dir>` first."
         )
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
-        raise IQForgeError(f"'{path}' geçerli JSON değil: {exc}") from exc
+        raise IQForgeError(f"'{path}' is not valid JSON: {exc}") from exc
 
 
 def dataset_size_bytes(root: Path) -> int:
-    """Veri setinin diskte kapladığı toplam baytı verir."""
+    """Return the total size of the dataset on disk, in bytes."""
     return sum(p.stat().st_size for p in Path(root).rglob("*") if p.is_file())

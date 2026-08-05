@@ -1,25 +1,25 @@
-PNG yazıldı: artifacts\spectrogram_qpsk_01.png
-pencere: örnek 0…32768 (0.0005…0.0315 s), nfft=1024
+PNG written: artifacts\spectrogram_qpsk_01.png
+window: samples 0…32768 (0.0005…0.0315 s), nfft=1024
 
---- referans ton (+100 kHz) ---
-  matplotlib (tam çözünürlük): tepe +100.000 kHz  (bin 1000 Hz)
-  terminal (havuzlanmış)     : tepe satırı +96.0 kHz  (satır yüksekliği ~21.3 kHz)
-  TAMAM: tam çözünürlüklü tepe +100 kHz'te (bir bin içinde)
-  TAMAM: terminal tepe satırı +100 kHz'i içeriyor
+--- reference tone (+100 kHz) ---
+  matplotlib (full resolution): peak +100.000 kHz  (bin 1000 Hz)
+  terminal (pooled)          : peak row +96.0 kHz  (row height ~21.3 kHz)
+  OK: the full-resolution peak is at +100 kHz (within one bin)
+  OK: the terminal peak row contains +100 kHz
 
---- burst zaman aralıkları ---
+--- burst time spans ---
   qpsk: annotation 0.0030…0.0230 s  (-323.2…-236.8 kHz)
-      matplotlib ölçümü : 0.0035…0.0225 s  (fark +0.5 / +0.5 ms)
-      terminal ölçümü   : 0.0030…0.0225 s
-      TAMAM: 5 ms tolerans içinde
+      matplotlib measurement: 0.0035…0.0225 s  (diff +0.5 / -0.5 ms)
+      terminal measurement  : 0.0030…0.0225 s
+      OK: within the 5 ms tolerance
 
---- güç eğrisi basamak kenarları vs annotation ---
+--- power curve step edges vs annotation ---
   annotation           : 0.00300…0.02300 s
-  beklenen kayıklık    : +325.3 / -325.3 örnek — 512 örneklik Hann rampasının yarı-güç noktası
-  blok=512  (çizilen eğri): 0.00337…0.02263 s  fark +0.366 / -0.365 ms  (+374 / -374 örnek)
-  blok=32   (ince ızgara): 0.00333…0.02266 s  fark +0.333 / -0.338 ms  (+341 / -346 örnek)
-  blok ızgarası etkisi : 34 / 28 örnek — 512 örneklik blok 512 örneklik rampayı tek bloğa sıkıştırıp kenarı dışarı iter
-  TAMAM: ince ızgarada kayıklık rampanın yarı-güç noktasına yakınsıyor;
-         kalan fark yalnızca blok ızgarası çözünürlüğü, sistematik hata yok
+  expected offset      : +325.3 / -325.3 samples - the half-power point of the 512-sample Hann ramp
+  block=512  (drawn curve): 0.00337…0.02263 s  diff +0.366 / -0.365 ms  (+374 / -374 samples)
+  block=32   (fine grid): 0.00333…0.02266 s  diff +0.333 / -0.338 ms  (+341 / -346 samples)
+  block grid effect    : 34 / 28 samples - a 512-sample block squeezes the 512-sample ramp into one block and pushes the edge outwards
+  OK: on the fine grid the offset converges on the ramp's half-power point;
+      what remains is block grid resolution, not a systematic error
 
-SONUÇ: tüm kontroller geçti
+RESULT: every check passed

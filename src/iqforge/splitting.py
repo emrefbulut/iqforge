@@ -1,10 +1,11 @@
-"""Katmanlı, KAYIT BAZLI train/val/test bölmesi (SPEC §5.6).
+"""Stratified, RECORDING-LEVEL train/val/test splitting (SPEC §5.6).
 
-Bu modülün tek kuralı var: aynı kayıt dosyasından gelen pencereler aynı split'e
-gider. Pencere bazlı bölme, komşu pencereleri hem eğitime hem teste düşürdüğü
-için test doğruluğunu yapay olarak şişirir.
+This module has one rule: windows from the same recording go to the same split.
+Splitting at the window level puts neighbouring windows in both train and test,
+which inflates test accuracy.
 
-Kural uygulanamıyorsa sessizce pencere bazlı bölmeye DÜŞÜLMEZ, hata verilir.
+If the rule cannot be honoured, iqforge does NOT quietly fall back to
+window-level splitting — it raises.
 """
 
 from __future__ import annotations
@@ -16,20 +17,20 @@ import numpy as np
 
 from iqforge.io import IQForgeError
 
-#: Split adları, manifest'teki sırayla.
+#: Split names, in manifest order.
 SPLIT_NAMES = ("train", "val", "test")
 
 
 @dataclass(frozen=True)
 class SplitPlan:
-    """Hangi kaydın hangi split'e gittiğini tutar.
+    """Which recording goes to which split.
 
     Attributes:
-        assignment: Kayıt kimliği -> split adı.
-        ratios: Kullanılan oranlar.
-        seed: Kullanılan tohum.
-        groups: Dengeleme kullanıldıysa kayıt kimliği -> rahatsız edici değişken
-            grubu; kullanılmadıysa boş.
+        assignment: Recording id -> split name.
+        ratios: The ratios used.
+        seed: The seed used.
+        groups: Recording id -> nuisance-variable group when balancing was used;
+            empty otherwise.
     """
 
     assignment: dict[str, str]
@@ -38,45 +39,46 @@ class SplitPlan:
     groups: dict[str, str] = field(default_factory=dict)
 
     def records_in(self, split: str) -> list[str]:
-        """Bir split'e düşen kayıt kimliklerini sıralı olarak verir."""
+        """Return the recording ids in a split, sorted."""
         return sorted(rid for rid, name in self.assignment.items() if name == split)
 
 
 def parse_ratios(text: str) -> tuple[float, float, float]:
-    """`0.7,0.15,0.15` biçimindeki oran dizgisini çözer.
+    """Parse a ratio string of the form `0.7,0.15,0.15`.
 
     Raises:
-        IQForgeError: Biçim bozuksa, negatif değer varsa veya toplam 1 değilse.
+        IQForgeError: If the format is wrong, a value is negative, or the values
+            do not sum to 1.
     """
     parts = [p.strip() for p in text.split(",")]
     if len(parts) != 3:
         raise IQForgeError(
-            f"--split üç değer bekliyor (train,val,test), {len(parts)} verildi: '{text}'. "
-            "Örnek: --split 0.7,0.15,0.15"
+            f"--split expects three values (train,val,test), got {len(parts)}: '{text}'. "
+            "Example: --split 0.7,0.15,0.15"
         )
     try:
         values = tuple(float(p) for p in parts)
     except ValueError as exc:
         raise IQForgeError(
-            f"--split sayısal olmalı: '{text}'. Örnek: --split 0.7,0.15,0.15"
+            f"--split values must be numeric: '{text}'. Example: --split 0.7,0.15,0.15"
         ) from exc
 
     if any(v < 0 for v in values):
-        raise IQForgeError(f"--split değerleri negatif olamaz: '{text}'.")
+        raise IQForgeError(f"--split values cannot be negative: '{text}'.")
     if abs(sum(values) - 1.0) > 1e-6:
-        raise IQForgeError(f"--split değerlerinin toplamı 1 olmalı, {sum(values):.6g} verildi.")
+        raise IQForgeError(f"--split values must sum to 1, got {sum(values):.6g}.")
     return values  # type: ignore[return-value]
 
 
 def _allocate(n: int, ratios: tuple[float, float, float], active: list[int]) -> list[int]:
-    """`n` kaydı oranlara göre paylaştırır; her aktif split'e en az bir kayıt verir.
+    """Share `n` recordings out by ratio, giving every active split at least one.
 
-    Önce standart en-büyük-kalan (largest remainder) yöntemi uygulanır, sonra boş
-    kalan aktif split'lere en kalabalık split'ten birer kayıt aktarılır.
+    Standard largest-remainder allocation first, then a transfer from the
+    fullest split to any active split left empty.
 
-    Minimum garantisini baştan ayırmak yerine sonradan uygulamak önemli: baştan
-    her split'e birer kayıt verilirse küçük split'ler sistematik olarak şişer
-    (10 kayıt, 0.7/0.15/0.15 -> 6/2/2 yerine doğrusu 7/2/1).
+    Applying the minimum afterwards rather than up front matters: reserving one
+    recording per split first systematically inflates the small splits (with 10
+    recordings and 0.7/0.15/0.15 that gives 6/2/2 instead of the correct 7/2/1).
     """
     exact = [n * ratios[i] if i in active else 0.0 for i in range(3)]
     counts = [int(value) for value in exact]
@@ -94,7 +96,8 @@ def _allocate(n: int, ratios: tuple[float, float, float], active: list[int]) -> 
 
 
 def _shuffled(values: list[str], rng: np.random.Generator) -> list[str]:
-    """Deterministik karıştırma; girdi önce sıralanır ki sonuç girdi sırasından bağımsız olsun."""
+    """Shuffle deterministically; the input is sorted first so the result does
+    not depend on the caller's ordering."""
     ordered = sorted(values)
     return [ordered[i] for i in rng.permutation(len(ordered))]
 
@@ -106,30 +109,32 @@ def _assign_balanced(
     active: list[int],
     rng: np.random.Generator,
 ) -> dict[str, str]:
-    """Katmanlı bölmeyi, rahatsız edici değişkeni split'lere yayarak yapar.
+    """Do the stratified split while spreading the nuisance variable across splits.
 
-    Her sınıfın split başına kayıt sayısı `_allocate` ile sabittir — katmanlama
-    bozulmaz. Değişen yalnızca HANGİ kaydın hangi split'e gittiğidir.
+    The per-class recording count of each split is fixed by `_allocate`, so the
+    stratification is untouched. What changes is WHICH recording goes where.
 
-    Hedef: **bir split'in içinde grup ile etiket bağımsız olsun.** Bunun için
-    atama "tur" birimiyle yapılır: bir tur = bir gruptan, her sınıftan birer
-    kayıt. Tur bütün olarak tek bir split'e gider, böylece o split içinde grup
-    etiketi ele veremez.
+    Goal: **inside a split, group and label must be independent.** Assignment
+    therefore works in "rounds": a round is one recording of every class from a
+    single group. A round goes to one split as a unit, so the group cannot give
+    the label away within that split.
 
-    Bu kural şart, çünkü tersi felakettir: gruplar sınıflar arasında
-    tamamlayıcı dağıtılırsa (bpsk train'de pozitif ofsetleri, qpsk negatifleri
-    alırsa) grup, split İÇİNDE etiketi birebir tahmin eder. Model o kestirmeyi
-    öğrenir, eğitimde %100 yapar ve ilişki başka split'te tersine döndüğü için
-    testte %0'a düşer — şans seviyesinin de altına.
+    This rule is essential, because the opposite is a disaster: if groups are
+    handed out complementarily between classes (bpsk taking the positive offsets
+    in train, qpsk the negative ones), the group predicts the label exactly
+    WITHIN a split. The model learns that shortcut, scores 100% on training, and
+    collapses to 0% on a test split where the relationship is reversed — below
+    chance.
 
-    Turlar gruplar arasında dönüşümlü işlenir ve her tur, hedefine göre EN ÇOK
-    AÇIĞI olan split'e verilir (mutlak kapasiteye değil orana bakılır). Mutlak
-    kapasite kullanılsaydı train tamamen dolana kadar hiçbir grup val/test'e
-    geçmez, dolayısıyla hiçbir grup train ile val/test arasında paylaşılmazdı;
-    o zaman değerlendirme her zaman görülmemiş gruplar üzerinde yapılırdı.
+    Rounds are processed group by group in rotation, and each round goes to the
+    split with the largest PROPORTIONAL deficit (not the largest absolute
+    capacity). With absolute capacity, train fills up completely before any
+    group reaches val or test, so no group is ever shared between train and the
+    evaluation splits and evaluation always happens on unseen groups.
 
-    Grup başına yalnızca bir sınıfın kaydı varsa tur oluşturulamaz; kalanlar
-    etiket bazında en açık split'e konur ve `leakage_warnings` durumu bildirir.
+    If a group holds recordings of only one class, no round can be formed; the
+    leftovers go to the emptiest split for their label and `leakage_warnings`
+    reports the situation.
     """
     targets: dict[tuple[str, int], int] = {}
     for label, records in by_label.items():
@@ -138,7 +143,7 @@ def _assign_balanced(
             targets[(label, i)] = counts[i]
     remaining = dict(targets)
 
-    # cell[grup][etiket] = o gruptaki, o etikete sahip kayıtlar
+    # cell[group][label] = recordings in that group carrying that label
     cell: dict[str, dict[str, list[str]]] = defaultdict(dict)
     for label, records in by_label.items():
         for record_id in records:
@@ -148,7 +153,7 @@ def _assign_balanced(
             buckets[label] = _shuffled(buckets[label], rng)
 
     def _deficit(split: int, labels: list[str]) -> float:
-        """Split'in hedefine göre doldurulmamış oranı."""
+        """Fraction of the split's target that is still unfilled."""
         total = sum(targets[(label, split)] for label in labels)
         left = sum(remaining[(label, split)] for label in labels)
         return left / total if total else 0.0
@@ -172,7 +177,7 @@ def _assign_balanced(
                     remaining[(label, best)] -= 1
                 continue
 
-            # Tam tur oluşturulamıyor: kalanları etiket bazında en açık split'e koy.
+            # A whole round does not fit: place the rest per label, emptiest split first.
             for label in present:
                 record_id = buckets[label].pop()
                 target = max(
@@ -191,29 +196,29 @@ def stratified_record_split(
     seed: int,
     record_groups: dict[str, str] | None = None,
 ) -> SplitPlan:
-    """Kayıtları etikete göre katmanlı biçimde split'lere dağıtır.
+    """Distribute recordings across splits, stratified by label.
 
-    Bölme KAYIT bazındadır: bir kaydın tüm pencereleri aynı split'e gider.
-    Aynı `seed` ile birebir aynı sonucu verir.
+    The split is at the RECORDING level: every window of a recording lands in
+    the same split. The same `seed` reproduces the result exactly.
 
-    `record_groups` verilirse katmanlama korunarak rahatsız edici değişken de
-    split'lere yayılır (bkz. `--balance-by`).
+    If `record_groups` is given, the nuisance variable is also spread across the
+    splits while the stratification is preserved (see `--balance-by`).
 
     Args:
-        record_labels: Kayıt kimliği -> o kaydın baskın etiketi.
-        ratios: `(train, val, test)` oranları.
-        seed: Deterministik karıştırma tohumu.
-        record_groups: Kayıt kimliği -> dengelenecek grup değeri.
+        record_labels: Recording id -> that recording's dominant label.
+        ratios: `(train, val, test)` ratios.
+        seed: Seed for deterministic shuffling.
+        record_groups: Recording id -> the group value to balance.
 
     Returns:
-        Kayıt ataması.
+        The recording assignment.
 
     Raises:
-        IQForgeError: Bir sınıfın kayıt sayısı, oranların gerektirdiği boş olmayan
-            split'leri dolduramayacak kadar azsa.
+        IQForgeError: If a class has too few recordings to fill the non-empty
+            splits the ratios ask for.
     """
     if not record_labels:
-        raise IQForgeError("Bölünecek kayıt yok: girdide etiketlenebilir pencere bulunamadı.")
+        raise IQForgeError("Nothing to split: no labelled windows were found in the input.")
 
     active = [i for i, r in enumerate(ratios) if r > 0]
     by_label: dict[str, list[str]] = defaultdict(list)
@@ -225,15 +230,17 @@ def stratified_record_split(
         if available < len(active):
             needed = ", ".join(f"{SPLIT_NAMES[i]}={ratios[i]:g}" for i in active)
             raise IQForgeError(
-                f"Kayıt bazında katmanlı bölme yapılamıyor: '{label}' sınıfında yalnızca "
-                f"{available} kayıt dosyası var, {'/'.join(f'{r:g}' for r in ratios)} bölmesi "
-                f"için en az {len(active)} gerekli ({needed}).\n\n"
-                "SPEC §5.6 gereği aynı kayıttan gelen pencereler aynı split'e gitmeli; "
-                "pencere bazlı bölmeye düşmek test doğruluğunu yapay olarak şişirir.\n\n"
-                "Şunlardan birini yapın:\n"
-                "  - her sınıf için daha fazla kayıt dosyası verin (klasör girdisi kullanın)\n"
-                "  - --split oranlarını azaltın, örn. --split 0.5,0.25,0.25\n"
-                "  - tek kayıtla yalnızca eğitim seti üretin: --split 1.0,0,0"
+                f"Cannot stratify by recording: class '{label}' has only {available} "
+                f"recording{'' if available == 1 else 's'}, but a "
+                f"{'/'.join(f'{r:g}' for r in ratios)} split needs at least "
+                f"{len(active)} ({needed}).\n\n"
+                "Windows from one recording must not appear in more than one split "
+                "(SPEC §5.6); falling back to window-level splitting inflates test "
+                "accuracy.\n\n"
+                "Options:\n"
+                "  - provide more recordings per class (pass a directory)\n"
+                "  - reduce the split ratios, e.g. --split 0.5,0.25,0.25\n"
+                "  - build a training set only: --split 1.0,0,0"
             )
 
     rng = np.random.default_rng(seed)
@@ -258,14 +265,15 @@ def stratified_record_split(
 
 
 def balance_warnings(plan: SplitPlan, field_name: str) -> list[str]:
-    """Dengelemenin ne kadar tuttuğunu denetler ve uyarı metinleri döndürür.
+    """Check how well balancing worked and return warning texts.
 
-    Dengeleme yapısal olarak imkânsız olabilir (ör. grup sayısı en küçük
-    split'ten fazlaysa). Bu durum HATA değildir — bölme yine de geçerlidir —
-    ama kullanıcı bilmelidir, çünkü kalan kayma sonuçları etkileyebilir.
+    Balancing can be structurally impossible — for instance when there are more
+    groups than the smallest split can hold. That is not an ERROR, the split is
+    still valid, but the user should know because the residual skew can affect
+    the results.
 
     Returns:
-        Uyarı metinleri; sorun yoksa boş liste.
+        Warning texts; an empty list when there is nothing to report.
     """
     if not plan.groups:
         return []
@@ -273,32 +281,34 @@ def balance_warnings(plan: SplitPlan, field_name: str) -> list[str]:
     warnings: list[str] = []
     distinct = sorted(set(plan.groups.values()))
     if len(distinct) < 2:
-        only = distinct[0] if distinct else "—"
+        only = distinct[0] if distinct else "-"
         return [
-            f"--balance-by '{field_name}' tek bir grup değeri verdi ({only}); dengeleme etkisiz."
+            f"--balance-by '{field_name}' produced a single group value ({only}); "
+            "balancing had no effect."
         ]
     if len(distinct) == len(plan.groups):
         warnings.append(
-            f"--balance-by '{field_name}' her kayda ayrı bir grup verdi "
-            f"({len(distinct)} grup / {len(plan.groups)} kayıt); dengeleme anlamsız. "
-            "Daha kaba bir alan seçin."
+            f"--balance-by '{field_name}' gave every recording its own group "
+            f"({len(distinct)} groups / {len(plan.groups)} recordings); balancing is "
+            "meaningless. Pick a coarser field."
         )
 
     return warnings
 
 
 def leakage_warnings(plan: SplitPlan, record_labels: dict[str, str], field_name: str) -> list[str]:
-    """Grubun split İÇİNDE etiketi ele verip vermediğini denetler.
+    """Check whether the group gives the label away WITHIN a split.
 
-    En tehlikeli durum budur: bir split'te her sınıf ayrı gruplara düşerse grup,
-    etiketi birebir tahmin eder. Model o kestirmeyi öğrenir; ilişki başka
-    split'te değiştiğinde doğruluk şans seviyesinin de altına iner.
+    This is the dangerous case: if each class falls into different groups inside
+    one split, the group predicts the label exactly. The model learns that
+    shortcut, and when the relationship changes in another split accuracy drops
+    below chance.
 
-    Ayrıca eğitimde hiç görülmeyen gruplarla değerlendirme yapılıp yapılmadığı
-    da bildirilir — bu bir hata değil, ama sonuçları okurken bilinmeli.
+    Also reports whether evaluation happens on groups never seen in training.
+    That is not an error, but it should be known when reading the numbers.
 
     Returns:
-        Uyarı metinleri; sorun yoksa boş liste.
+        Warning texts; an empty list when there is nothing to report.
     """
     if not plan.groups:
         return []
@@ -316,10 +326,10 @@ def leakage_warnings(plan: SplitPlan, record_labels: dict[str, str], field_name:
         if not set.intersection(*by_label.values()):
             detail = ", ".join(f"{label}={sorted(gs)}" for label, gs in sorted(by_label.items()))
             warnings.append(
-                f"SIZINTI RİSKİ — '{name}' split'inde '{field_name}' değeri sınıfları "
-                f"birebir ayırıyor ({detail}). Model etiketi bu alandan okuyabilir; "
-                "doğruluk sayıları güvenilmez. Daha fazla kayıt verin veya "
-                "--balance-by alanını değiştirin."
+                f"LEAKAGE RISK - in the '{name}' split, '{field_name}' separates the classes "
+                f"exactly ({detail}). The model can read the label off this field; the "
+                "accuracy numbers are not trustworthy. Provide more recordings or change "
+                "the --balance-by field."
             )
 
     train_groups = {plan.groups[r] for r in plan.records_in("train")}
@@ -330,8 +340,8 @@ def leakage_warnings(plan: SplitPlan, record_labels: dict[str, str], field_name:
         unseen = {plan.groups[r] for r in records} - train_groups
         if unseen == {plan.groups[r] for r in records}:
             warnings.append(
-                f"'{name}' split'indeki tüm kayıtların '{field_name}' değeri eğitimde hiç "
-                f"görülmedi ({sorted(unseen)}). Bu bir dışdeğerleme testidir; doğruluk "
-                "beklenenden düşük çıkabilir ve bu bir hata değildir."
+                f"every recording in the '{name}' split has a '{field_name}' value never "
+                f"seen during training ({sorted(unseen)}). This is an extrapolation test; "
+                "accuracy may come out lower than expected, and that is not a bug."
             )
     return warnings

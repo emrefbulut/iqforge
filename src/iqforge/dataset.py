@@ -1,7 +1,7 @@
-"""`IQForgeDataset` — kurulmuş veri setini PyTorch'a bağlar.
+"""`IQForgeDataset` - connects a built dataset to PyTorch.
 
-Bu modül `torch` gerektirir. `info`, `inspect`, `build` ve `stats` komutları
-torch olmadan çalışır; bu yüzden `iqforge/__init__.py` bu modülü tembel yükler.
+This module needs `torch`. The `info`, `inspect`, `build` and `stats` commands
+work without it, which is why `iqforge/__init__.py` imports this lazily.
 """
 
 from __future__ import annotations
@@ -19,37 +19,36 @@ from iqforge.storage import read_manifest
 
 
 class IQForgeDataset(Dataset):
-    """`iqforge build` çıktısını okuyan `torch.utils.data.Dataset`.
+    """A `torch.utils.data.Dataset` over the output of `iqforge build`.
 
-    Shard dosyaları `numpy.memmap` ile tembel okunur: veri setinin tamamı
-    belleğe alınmaz, yalnızca erişilen pencereler sayfalanır.
+    Shard files are read lazily through `numpy.memmap`: the dataset is never
+    loaded into memory as a whole, only the windows actually touched are paged
+    in.
 
     Attributes:
-        root: Veri seti klasörü.
-        split: `train`, `val` veya `test`.
-        label_map: Etiket -> tamsayı eşlemesi.
-        manifest: Ham manifest sözlüğü.
+        root: The dataset directory.
+        split: `train`, `val` or `test`.
+        label_map: Label -> integer mapping.
+        manifest: The raw manifest dictionary.
     """
 
     def __init__(self, root: str | Path, split: str = "train") -> None:
-        """Veri setini açar.
+        """Open the dataset.
 
         Args:
-            root: `manifest.json` içeren klasör.
-            split: Okunacak split.
+            root: A directory containing `manifest.json`.
+            split: Which split to read.
 
         Raises:
-            IQForgeError: Klasör veri seti değilse, split adı geçersizse veya
-                split boşsa.
+            IQForgeError: If the directory is not a dataset, the split name is
+                invalid, or the split is empty.
         """
         self.root = Path(root)
         self.split = split
         self.manifest: dict[str, Any] = read_manifest(self.root)
 
         if split not in SPLIT_NAMES:
-            raise IQForgeError(
-                f"Bilinmeyen split '{split}'. Desteklenenler: {', '.join(SPLIT_NAMES)}."
-            )
+            raise IQForgeError(f"Unknown split '{split}'. Supported: {', '.join(SPLIT_NAMES)}.")
 
         entry = self.manifest["splits"][split]
         self.label_map: dict[str, int] = self.manifest["label_map"]
@@ -58,8 +57,9 @@ class IQForgeDataset(Dataset):
 
         if entry["count"] == 0:
             raise IQForgeError(
-                f"'{split}' split'i boş. `iqforge stats {self.root}` ile bölmeyi kontrol edin; "
-                "--split oranları bu split'e kayıt ayırmamış olabilir."
+                f"The '{split}' split is empty. Check the split with "
+                f"`iqforge stats {self.root}`; the --split ratios may not have "
+                "allocated any recording to it."
             )
 
         self._shards: list[np.memmap | None] = [None] * len(self._shard_names)
@@ -71,39 +71,40 @@ class IQForgeDataset(Dataset):
 
         if total != len(self._labels):
             raise IQForgeError(
-                f"'{split}' bozuk: shard'larda {total} pencere var ama manifest "
-                f"{len(self._labels)} etiket listeliyor."
+                f"'{split}' is corrupt: the shards hold {total} windows but the manifest "
+                f"lists {len(self._labels)} labels."
             )
 
     def __len__(self) -> int:
-        """Split'teki pencere sayısı."""
+        """Number of windows in the split."""
         return len(self._labels)
 
     @property
     def classes(self) -> list[str]:
-        """Etiket adları, tamsayı sırasına göre."""
+        """Label names, in integer order."""
         return [name for name, _ in sorted(self.label_map.items(), key=lambda kv: kv[1])]
 
     def _shard(self, index: int) -> np.memmap:
-        """Bir shard'ı tembel açar ve önbelleğe alır."""
+        """Open a shard lazily and cache it."""
         if self._shards[index] is None:
             self._shards[index] = np.load(self.root / self._shard_names[index], mmap_mode="r")
         return self._shards[index]  # type: ignore[return-value]
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
-        """Tek bir pencereyi ve etiketini verir.
+        """Return one window and its label.
 
         Args:
-            index: Pencere indisi.
+            index: Window index.
 
         Returns:
-            `(x, y)` — `x` temsile göre `(2, window)` float32 veya `(window,)`
-            complex64 tensör; `y` tamsayı etiket.
+            `(x, y)` where `x` is a `(2, window)` float32 tensor or a
+            `(window,)` complex64 tensor depending on the representation, and
+            `y` is the integer label.
         """
         if index < 0:
             index += len(self)
         if not 0 <= index < len(self):
-            raise IndexError(f"İndis {index} aralık dışında (0..{len(self) - 1}).")
+            raise IndexError(f"Index {index} is out of range (0..{len(self) - 1}).")
 
         shard_index = int(np.searchsorted(self._offsets, index, side="right")) - 1
         row = index - self._offsets[shard_index]
@@ -111,7 +112,7 @@ class IQForgeDataset(Dataset):
         return torch.from_numpy(window.copy()), self._labels[index]
 
     def __repr__(self) -> str:
-        """Kısa özet."""
+        """Short summary."""
         return (
             f"IQForgeDataset(root='{self.root}', split='{self.split}', "
             f"n={len(self)}, classes={self.classes})"

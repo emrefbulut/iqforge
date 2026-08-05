@@ -1,8 +1,8 @@
-"""Terminal spektrogramı ve zaman ekseninde güç grafiği.
+"""Terminal spectrogram and power-over-time plot.
 
-Çizim yöntemi Unicode üst yarı blok karakteridir (`▀`): her karakter hücresi iki
-dikey piksel taşır — üst yarı ön plan rengiyle, alt yarı arka plan rengiyle
-boyanır. Böylece grafik protokolü olmayan terminallerde de çalışır.
+Drawing uses the Unicode upper half block (`▀`): each character cell carries two
+vertical pixels — the top half painted in the foreground colour, the bottom half
+in the background colour. That works in terminals without a graphics protocol.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ from scipy import signal
 
 from iqforge.io import Recording
 
-#: matplotlib'in viridis paletinden 32 noktada örneklenmiş RGB çapaları.
-#: Runtime'da matplotlib bağımlılığı olmasın diye gömülüdür.
+#: RGB anchors sampled at 32 points from matplotlib's viridis palette.
+#: Embedded so there is no matplotlib dependency at runtime.
 VIRIDIS: tuple[tuple[int, int, int], ...] = (
     (68, 1, 84), (71, 13, 96), (72, 24, 106), (72, 35, 116),
     (71, 46, 124), (69, 56, 130), (66, 65, 134), (62, 74, 137),
@@ -32,20 +32,20 @@ VIRIDIS: tuple[tuple[int, int, int], ...] = (
 UPPER_HALF_BLOCK = "▀"
 SPARK_BLOCKS = " ▁▂▃▄▅▆▇█"
 
-#: Renk ölçeğinin alt/üst sınırı için kullanılan persentiller.
+#: Percentiles used for the lower and upper bound of the colour scale.
 CLIP_PERCENTILES = (5.0, 99.0)
 
 FREQ_LABEL_WIDTH = 9
 
 
 def colormap(values: np.ndarray) -> np.ndarray:
-    """[0, 1] aralığındaki değerleri viridis benzeri RGB renklere çevirir.
+    """Map values in [0, 1] to viridis-like RGB colours.
 
     Args:
-        values: [0, 1] aralığında, herhangi bir şekle sahip dizi.
+        values: Array of any shape with values in [0, 1].
 
     Returns:
-        `values.shape + (3,)` şeklinde uint8 RGB dizisi.
+        A uint8 RGB array of shape `values.shape + (3,)`.
     """
     anchors = np.asarray(VIRIDIS, dtype=np.float64)
     pos = np.clip(values, 0.0, 1.0) * (len(anchors) - 1)
@@ -59,24 +59,25 @@ def colormap(values: np.ndarray) -> np.ndarray:
 def compute_spectrogram(
     samples: np.ndarray, sample_rate: float, nfft: int = 1024
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """STFT ile spektrogramı dB ölçeğinde hesaplar.
+    """Compute the spectrogram in dB via STFT.
 
     Args:
-        samples: Kompleks örnekler.
-        sample_rate: Örnekleme hızı (Hz).
-        nfft: FFT uzunluğu.
+        samples: Complex samples.
+        sample_rate: Sample rate in Hz.
+        nfft: FFT length.
 
     Returns:
-        `(freqs, times, power_db)` üçlüsü. `freqs` artan sırada, merkez frekansa
-        göre ofset (Hz); `times` saniye; `power_db` `(len(freqs), len(times))`.
+        `(freqs, times, power_db)`. `freqs` is ascending and relative to the
+        centre frequency (Hz); `times` is in seconds; `power_db` has shape
+        `(len(freqs), len(times))`.
 
     Raises:
-        ValueError: Örnek sayısı `nfft`'ten azsa.
+        ValueError: If there are fewer samples than `nfft`.
     """
     if samples.size < nfft:
         raise ValueError(
-            f"Spektrogram için en az {nfft} örnek gerekli, {samples.size} örnek verildi. "
-            f"--nfft değerini küçültün veya --samples değerini artırın."
+            f"A spectrogram needs at least {nfft} samples, got {samples.size}. "
+            f"Lower --nfft or raise --samples."
         )
 
     freqs, times, zxx = signal.stft(
@@ -95,15 +96,15 @@ def compute_spectrogram(
 
 
 def _bucket_starts(n_in: int, n_out: int) -> np.ndarray:
-    """`n_in` uzunluğundaki ekseni `n_out` kovaya bölen başlangıç indislerini verir."""
+    """Start indices that divide an axis of length `n_in` into `n_out` buckets."""
     return (np.arange(n_out) * n_in) // n_out
 
 
 def _pool_max(arr: np.ndarray, n_out: int, axis: int) -> np.ndarray:
-    """Ekseni `n_out` uzunluğuna indirger; küçültürken maksimum alır.
+    """Reduce an axis to `n_out`, taking the maximum when shrinking.
 
-    Maksimum kullanılır çünkü dar bantlı bir ton ortalama alınırken komşu
-    gürültü binlerine karışıp kaybolur; maksimum onu görünür tutar.
+    Maximum rather than mean, because a narrowband tone averaged together with
+    its neighbouring noise bins disappears; the maximum keeps it visible.
     """
     n_in = arr.shape[axis]
     if n_out >= n_in:
@@ -113,7 +114,7 @@ def _pool_max(arr: np.ndarray, n_out: int, axis: int) -> np.ndarray:
 
 
 def _pool_mean_axis(values: np.ndarray, n_out: int) -> np.ndarray:
-    """Tek boyutlu bir ekseni `n_out` kovaya indirger; her kovanın ortalamasını verir."""
+    """Reduce a one-dimensional axis to `n_out`, taking each bucket's mean."""
     n_in = values.size
     if n_out >= n_in:
         idx = np.clip((np.arange(n_out) * n_in) // n_out, 0, n_in - 1)
@@ -125,7 +126,7 @@ def _pool_mean_axis(values: np.ndarray, n_out: int) -> np.ndarray:
 
 
 def _format_offset_mhz(hz: float) -> str:
-    """Merkez frekansa göre ofseti MHz cinsinde işaretli biçimlendirir."""
+    """Format an offset from the centre frequency in MHz, with a sign."""
     return f"{hz / 1e6:+.3f}"
 
 
@@ -137,28 +138,29 @@ def spectrogram_panel(
     width: int,
     height: int,
 ) -> Text:
-    """Spektrogramı yarım blok karakterleriyle çizilmiş metin olarak döndürür.
+    """Render the spectrogram as text drawn with half-block characters.
 
     Args:
-        freqs: Merkez frekansa göre ofset frekans ekseni (Hz), artan sırada.
-        times: Zaman ekseni (s).
-        power_db: dB ölçeğinde güç, `(freq, time)`.
-        width: Çizim alanının karakter genişliği (eksen etiketleri hariç).
-        height: Çizim alanının karakter yüksekliği; dikey çözünürlük 2×height.
+        freqs: Frequency axis relative to the centre frequency (Hz), ascending.
+        times: Time axis in seconds.
+        power_db: Power in dB, shaped `(freq, time)`.
+        width: Character width of the plot area, excluding axis labels.
+        height: Character height of the plot area; vertical resolution is 2×.
 
     Returns:
-        Renkli `rich.text.Text`.
+        A coloured `rich.text.Text`.
     """
-    # Üst satır en yüksek frekans olsun diye frekans eksenini ters çevir.
+    # Flip the frequency axis so the top row is the highest frequency.
     flipped = power_db[::-1, :]
     freqs_desc = freqs[::-1]
 
     pixels = _pool_max(_pool_max(flipped, 2 * height, axis=0), width, axis=1)
     pixel_freqs = _pool_mean_axis(freqs_desc, 2 * height)
 
-    # Persentiller havuzlama SONRASI, yani gerçekten ekrana basılan değerler
-    # üzerinden hesaplanır. Tam çözünürlüklü diziden hesaplanırsa max-havuzlanmış
-    # piksellerin neredeyse tamamı üst sınırın üstünde kalır ve görüntü tekdüze olur.
+    # Percentiles are computed AFTER pooling, i.e. over the values actually
+    # printed. Computed from the full-resolution array instead, nearly every
+    # max-pooled pixel would sit above the upper bound and the image would come
+    # out uniform.
     vmin, vmax = np.percentile(pixels, CLIP_PERCENTILES)
     if vmax <= vmin:
         vmax = vmin + 1.0
@@ -182,7 +184,7 @@ def spectrogram_panel(
 
 
 def _time_axis(times: np.ndarray, width: int) -> Text:
-    """Yatay zaman eksenini (tik çizgisi + etiketler) çizer."""
+    """Draw the horizontal time axis: tick marks plus labels."""
     n_ticks = max(2, min(6, width // 12))
     cols = [round(i * (width - 1) / (n_ticks - 1)) for i in range(n_ticks)]
     labels = [f"{times[round(c * (times.size - 1) / (width - 1))]:.3f}" for c in cols]
@@ -201,15 +203,15 @@ def _time_axis(times: np.ndarray, width: int) -> Text:
 
 
 def power_panel(samples: np.ndarray, times: np.ndarray, width: int) -> Text:
-    """Zaman ekseninde güç grafiğini tek satırlık sparkline olarak çizer.
+    """Draw power over time as a one-line sparkline.
 
     Args:
-        samples: Kompleks örnekler.
-        times: Spektrogramın zaman ekseni (yalnızca uzunluk hizalaması için).
-        width: Sparkline genişliği (karakter).
+        samples: Complex samples.
+        times: The spectrogram's time axis (used only for length alignment).
+        width: Sparkline width in characters.
 
     Returns:
-        Renkli `rich.text.Text`.
+        A coloured `rich.text.Text`.
     """
     del times
     usable = (samples.size // width) * width
@@ -227,7 +229,7 @@ def power_panel(samples: np.ndarray, times: np.ndarray, width: int) -> Text:
         len(SPARK_BLOCKS) - 1,
     )
 
-    text = Text(f"{'güç':>{FREQ_LABEL_WIDTH - 1}} ", style="dim")
+    text = Text(f"{'power':>{FREQ_LABEL_WIDTH - 1}} ", style="dim")
     text.append("".join(SPARK_BLOCKS[i] for i in levels), style="bright_cyan")
     text.append(f"\n{'':>{FREQ_LABEL_WIDTH}}{lo:.1f} … {hi:.1f} dB\n", style="dim")
     return text
@@ -242,37 +244,37 @@ def render_inspect(
     width: int,
     height: int,
 ) -> RenderableType:
-    """`iqforge inspect` çıktısının tamamını (başlık + spektrogram + güç) üretir.
+    """Build the whole `iqforge inspect` output: header, spectrogram, power.
 
     Args:
-        rec: Açılmış kayıt.
-        samples: Görüntülenecek kompleks örnekler.
-        start: Örneklerin kayıttaki başlangıç indisi.
-        nfft: FFT uzunluğu.
-        width: Toplam kullanılabilir karakter genişliği.
-        height: Spektrogramın karakter yüksekliği.
+        rec: The opened recording.
+        samples: The complex samples to display.
+        start: Index of the first sample within the recording.
+        nfft: FFT length.
+        width: Total available character width.
+        height: Character height of the spectrogram.
 
     Returns:
-        `rich` ile yazdırılabilir bir nesne.
+        A renderable object for `rich`.
     """
     freqs, times, power_db = compute_spectrogram(samples, rec.sample_rate, nfft)
     times = times + start / rec.sample_rate
-    # Son sütun boş bırakılır: tam genişlikte bir satır bazı terminallerde
-    # (ve rich'in legacy Windows modunda) otomatik olarak alt satıra sarar.
+    # One column is left blank: a full-width line wraps in some terminals (and
+    # in rich's legacy Windows mode).
     plot_width = max(16, width - FREQ_LABEL_WIDTH - 1)
 
     center_mhz = (rec.center_frequency or 0.0) / 1e6
     header = Text.assemble(
         (rec.meta_path.name, "bold"),
-        ("  merkez ", "dim"),
+        ("  centre ", "dim"),
         (f"{center_mhz:.6g} MHz", "cyan"),
-        ("  hız ", "dim"),
+        ("  rate ", "dim"),
         (f"{rec.sample_rate / 1e6:.6g} MS/s", "cyan"),
-        ("  örnek ", "dim"),
+        ("  samples ", "dim"),
         (f"{start}…{start + samples.size}", "cyan"),
         ("  nfft ", "dim"),
         (f"{nfft}", "cyan"),
-        ("\ndikey: merkeze göre ofset (MHz)   yatay: zaman (s)\n", "dim"),
+        ("\nvertical: offset from centre (MHz)   horizontal: time (s)\n", "dim"),
     )
     return Group(
         header,

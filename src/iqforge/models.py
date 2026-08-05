@@ -1,8 +1,8 @@
-"""Baseline sınıflandırıcı.
+"""The baseline classifier.
 
-Amaç doğruluk rekoru değil: veri setinin gerçekten eğitilebilir olduğunu
-kanıtlamak. Model bilerek küçük tutulur (50k parametrenin altında), böylece
-yüksek doğruluk kapasiteden değil veriden gelir.
+The point is not a record accuracy: it is to show that the dataset is actually
+trainable. The model is deliberately small (under 50k parameters) so that high
+accuracy comes from the data rather than from capacity.
 """
 
 from __future__ import annotations
@@ -10,38 +10,38 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-#: Modelin aşmaması gereken parametre bütçesi.
+#: Parameter budget the model must not exceed.
 MAX_PARAMETERS = 50_000
 
 
 class BaselineCNN(nn.Module):
-    """Küçük 1B evrişimli sınıflandırıcı.
+    """A small 1-D convolutional classifier.
 
-    Yapı:
+    Architecture:
         Conv1d(2->16, k=7)  - BN - ReLU - MaxPool2
         Conv1d(16->32, k=5) - BN - ReLU - MaxPool2
         Conv1d(32->64, k=5) - BN - ReLU - AdaptiveAvgPool1d(1)
         Dropout(0.3) - Linear(64->n)
 
-    Sonda flatten yerine global ortalama havuzlama kullanılır. Flatten,
-    parametre sayısını pencere uzunluğuna bağlar (1024 örnekte tek başına
-    ~16k*n parametre) ve modeli pencere içindeki MUTLAK konuma duyarlı hale
-    getirir. Global havuzlama ise pencere uzunluğundan bağımsızdır ve
-    öteleme-değişmez bir özet üretir — burst konumu kayıttan kayda değiştiği
-    için istenen davranış budur.
+    Global average pooling is used at the end rather than a flatten. A flatten
+    ties the parameter count to the window length (about 16k*n parameters on its
+    own for a 1024-sample window) and makes the model sensitive to ABSOLUTE
+    position inside the window. Global pooling is independent of window length
+    and produces a shift-invariant summary — which is what we want, since the
+    burst position varies from recording to recording.
 
     Attributes:
-        features: Evrişim yığını.
-        head: Dropout + doğrusal sınıflandırıcı.
+        features: The convolutional stack.
+        head: Dropout plus the linear classifier.
     """
 
     def __init__(self, in_channels: int = 2, num_classes: int = 2, dropout: float = 0.3) -> None:
-        """Modeli kurar.
+        """Build the model.
 
         Args:
-            in_channels: Girdi kanal sayısı (iq2ch ve magphase için 2).
-            num_classes: Sınıf sayısı.
-            dropout: Sınıflandırıcı öncesi dropout oranı.
+            in_channels: Number of input channels (2 for iq2ch and magphase).
+            num_classes: Number of classes.
+            dropout: Dropout rate before the classifier.
         """
         super().__init__()
         self.features = nn.Sequential(
@@ -64,26 +64,26 @@ class BaselineCNN(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Girdiyi sınıf skorlarına çevirir.
+        """Map the input to class scores.
 
         Args:
-            x: `(batch, channels, window)` float32 tensör.
+            x: A `(batch, channels, window)` float32 tensor.
 
         Returns:
-            `(batch, num_classes)` logit tensörü.
+            A `(batch, num_classes)` tensor of logits.
         """
         return self.head(self.features(x).squeeze(-1))
 
 
 def count_parameters(model: nn.Module, trainable_only: bool = True) -> int:
-    """Modelin parametre sayısını verir.
+    """Return the model's parameter count.
 
     Args:
-        model: Sayılacak model.
-        trainable_only: Yalnızca gradyan alan parametreler sayılsın mı.
+        model: The model to count.
+        trainable_only: Count only parameters that require gradients.
 
     Returns:
-        Parametre sayısı.
+        The number of parameters.
     """
     params = model.parameters()
     if trainable_only:

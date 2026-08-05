@@ -1,4 +1,4 @@
-"""iqforge.windowing testleri."""
+"""Tests for iqforge.windowing."""
 
 from __future__ import annotations
 
@@ -24,21 +24,21 @@ from iqforge.windowing import (
     [
         (65_536, 1024, 512, 127),  # floor((65536-1024)/512)+1
         (1024, 1024, 512, 1),
-        (1023, 1024, 512, 0),  # eksik pencere atılır, padding yok
+        (1023, 1024, 512, 0),  # partial window dropped, no padding
         (2048, 1024, 1024, 2),
-        (2047, 1024, 1024, 1),  # sondaki eksik pencere düşer
+        (2047, 1024, 1024, 1),  # trailing partial window falls away
         (10_000, 1000, 1000, 10),
     ],
 )
 def test_window_count_matches_formula(
     num_samples: int, window: int, stride: int, expected: int
 ) -> None:
-    """Pencere sayısı SPEC §5.2'deki formülle birebir aynı olmalı."""
+    """The window count must match the formula in SPEC §5.2 exactly."""
     assert window_count(num_samples, window, stride) == expected
 
 
 def test_window_starts_never_exceed_record() -> None:
-    """Hiçbir pencere kaydın sonunu aşmamalı."""
+    """No window may run past the end of the recording."""
     starts = window_starts(10_000, 1024, 512)
     assert starts[0] == 0
     assert starts[-1] + 1024 <= 10_000
@@ -46,7 +46,7 @@ def test_window_starts_never_exceed_record() -> None:
 
 
 def test_validate_window_params_rejects_non_positive() -> None:
-    """Sıfır veya negatif pencere/adım açık hata vermeli."""
+    """A zero or negative window/stride must raise an explicit error."""
     with pytest.raises(IQForgeError, match="--window"):
         validate_window_params(0, 512)
     with pytest.raises(IQForgeError, match="--stride"):
@@ -54,7 +54,7 @@ def test_validate_window_params_rejects_non_positive() -> None:
 
 
 def test_normalize_gives_unit_power() -> None:
-    """Her pencere ayrı ayrı birim güce normalize edilmeli."""
+    """Every window is normalized to unit power on its own."""
     rng = np.random.default_rng(0)
     windows = (rng.standard_normal((5, 256)) + 1j * rng.standard_normal((5, 256))).astype(
         np.complex64
@@ -68,7 +68,7 @@ def test_normalize_gives_unit_power() -> None:
 
 
 def test_zero_power_window_returns_zeros_not_nan() -> None:
-    """Sıfır güçlü pencerede bölme hatası olmamalı, sıfır dönmeli (SPEC §5.5)."""
+    """A zero-power window must not divide; it returns zeros (SPEC §5.5)."""
     windows = np.zeros((2, 64), dtype=np.complex64)
     windows[1] = 1.0 + 0j
 
@@ -80,7 +80,7 @@ def test_zero_power_window_returns_zeros_not_nan() -> None:
 
 
 def test_iq2ch_channels_are_real_and_imaginary() -> None:
-    """iq2ch kanal 0 = I, kanal 1 = Q olmalı."""
+    """For iq2ch, channel 0 is I and channel 1 is Q."""
     windows = np.array([[1 + 2j, 3 - 4j]], dtype=np.complex64)
     out = to_representation(windows, "iq2ch")
 
@@ -91,7 +91,7 @@ def test_iq2ch_channels_are_real_and_imaginary() -> None:
 
 
 def test_complex_representation_is_unchanged() -> None:
-    """complex temsili ham hali korumalı."""
+    """The complex representation keeps the raw samples."""
     windows = np.array([[1 + 2j, 3 - 4j]], dtype=np.complex64)
     out = to_representation(windows, "complex")
 
@@ -101,7 +101,7 @@ def test_complex_representation_is_unchanged() -> None:
 
 
 def test_magphase_round_trips_to_original() -> None:
-    """magphase kanalları genlik ve faz olmalı; birleştirince orijinali vermeli."""
+    """magphase holds magnitude and phase; recombining gives the original back."""
     rng = np.random.default_rng(1)
     windows = (rng.standard_normal((3, 32)) + 1j * rng.standard_normal((3, 32))).astype(
         np.complex64
@@ -114,7 +114,7 @@ def test_magphase_round_trips_to_original() -> None:
 
 
 def test_unknown_representation_is_explicit() -> None:
-    """Tanınmayan temsil desteklenenleri listelemeli."""
+    """An unknown representation must list the supported ones."""
     with pytest.raises(IQForgeError) as exc:
         to_representation(np.zeros((1, 4), dtype=np.complex64), "iq3ch")
     assert "iq2ch" in str(exc.value) and "magphase" in str(exc.value)
@@ -123,7 +123,7 @@ def test_unknown_representation_is_explicit() -> None:
 def test_batched_reading_matches_direct_slicing(
     tmp_path: Path, make_recording: Callable[..., object], noise: Callable[..., np.ndarray]
 ) -> None:
-    """Parça parça okuma, kaydın tamamını dilimlemeyle birebir aynı sonucu vermeli."""
+    """Batched reading must match slicing the whole recording exactly."""
     samples = noise(20_000, seed=3)
     rec = make_recording(tmp_path, samples)
 
@@ -140,7 +140,7 @@ def test_batched_reading_matches_direct_slicing(
 def test_batched_reading_honours_index_selection(
     tmp_path: Path, make_recording: Callable[..., object], noise: Callable[..., np.ndarray]
 ) -> None:
-    """Yalnızca istenen pencere indisleri üretilmeli."""
+    """Only the requested window indices are produced."""
     samples = noise(8192, seed=4)
     rec = make_recording(tmp_path, samples)
     wanted = np.array([0, 3, 4, 9])

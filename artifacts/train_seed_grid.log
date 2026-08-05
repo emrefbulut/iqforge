@@ -1,468 +1,468 @@
-kaynak            : examples
-bölme tohumları   : (11, 22, 33, 44, 55)
-eğitim tohumları  : (0, 1, 2)
-epoch / batch     : 20 / 64
---balance-by      : core:freq_lower_edge
+source          : examples
+split seeds     : (11, 22, 33, 44, 55)
+training seeds  : (0, 1, 2)
+epochs / batch  : 20 / 64
+--balance-by    : core:freq_lower_edge
 
-=== bölme tohumu 11 ===
+=== split seed 11 ===
   train : bpsk_02(-280k), bpsk_03(-180k), bpsk_04(-180k), bpsk_05(+180k), bpsk_06(+180k), bpsk_07(+280k), qpsk_02(-280k), qpsk_03(-180k), qpsk_04(-180k), qpsk_05(+180k), qpsk_06(+180k), qpsk_08(+280k)
   val   : bpsk_08(+280k), qpsk_07(+280k)
   test  : bpsk_01(-280k), qpsk_01(-280k)
-  --- sınıf x ofset kontenjans tabloları ---
-  train (12 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+  --- class x offset contingency tables ---
+  train (12 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           1         2         2         1         6
     qpsk           1         2         2         1         6
-    toplam         2         4         4         2        12
-    -> ofset ile etiket: BAĞIMSIZ
-  val (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          2         4         4         2        12
+    -> offset vs label: INDEPENDENT
+  val (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         0         0         1         1
     qpsk           0         0         0         1         1
-    toplam         0         0         0         2         2
-    -> ofset ile etiket: BAĞIMSIZ
-  test (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          0         0         0         2         2
+    -> offset vs label: INDEPENDENT
+  test (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           1         0         0         0         1
     qpsk           1         0         0         0         1
-    toplam         2         0         0         0         2
-    -> ofset ile etiket: BAĞIMSIZ
-  train ile val paylaşılan ofsetler (kHz): [280.0]
-  train ile test paylaşılan ofsetler (kHz): [-280.0]
-    [split 11 train 0] epoch   1 kayıp 0.7109 eğitim 0.5146 val 0.5000
-    [split 11 train 0] epoch   2 kayıp 0.6992 eğitim 0.5167 val 0.5000
-    [split 11 train 0] epoch   3 kayıp 0.6822 eğitim 0.5667 val 0.5000
-    [split 11 train 0] epoch   4 kayıp 0.6730 eğitim 0.6104 val 0.5125
-    [split 11 train 0] epoch   5 kayıp 0.6540 eğitim 0.6542 val 0.5000
-    [split 11 train 0] epoch   6 kayıp 0.6394 eğitim 0.6917 val 0.9500
-    [split 11 train 0] epoch   7 kayıp 0.6204 eğitim 0.7417 val 0.9625
-    [split 11 train 0] epoch   8 kayıp 0.6127 eğitim 0.7604 val 0.5000
-    [split 11 train 0] epoch   9 kayıp 0.5775 eğitim 0.8063 val 0.9250
-    [split 11 train 0] epoch  10 kayıp 0.5484 eğitim 0.8396 val 0.8125
-    [split 11 train 0] epoch  11 kayıp 0.4820 eğitim 0.9417 val 0.5125
-    [split 11 train 0] epoch  12 kayıp 0.4386 eğitim 0.9354 val 0.6750
-    [split 11 train 0] epoch  13 kayıp 0.3696 eğitim 0.9708 val 0.5125
-    [split 11 train 0] epoch  14 kayıp 0.3196 eğitim 0.9833 val 0.7000
-    [split 11 train 0] epoch  15 kayıp 0.2739 eğitim 0.9833 val 0.8500
-    [split 11 train 0] epoch  16 kayıp 0.2378 eğitim 0.9750 val 0.9750
-    [split 11 train 0] epoch  17 kayıp 0.1975 eğitim 0.9875 val 1.0000
-    [split 11 train 0] epoch  18 kayıp 0.1795 eğitim 0.9812 val 0.9750
-    [split 11 train 0] epoch  19 kayıp 0.1529 eğitim 0.9896 val 1.0000
-    [split 11 train 0] epoch  20 kayıp 0.1312 eğitim 0.9896 val 1.0000
-  -> eğitim tohumu 0: eğitim 98.96%  test 95.00%  (bpsk=100.00%  qpsk=90.00%)
-    [split 11 train 1] epoch   1 kayıp 0.6927 eğitim 0.5250 val 0.5000
-    [split 11 train 1] epoch   2 kayıp 0.6866 eğitim 0.5333 val 0.5000
-    [split 11 train 1] epoch   3 kayıp 0.6766 eğitim 0.5583 val 0.5000
-    [split 11 train 1] epoch   4 kayıp 0.6544 eğitim 0.6542 val 0.9375
-    [split 11 train 1] epoch   5 kayıp 0.6368 eğitim 0.6958 val 0.9250
-    [split 11 train 1] epoch   6 kayıp 0.6248 eğitim 0.7250 val 0.5250
-    [split 11 train 1] epoch   7 kayıp 0.5934 eğitim 0.7854 val 0.7000
-    [split 11 train 1] epoch   8 kayıp 0.5762 eğitim 0.7729 val 0.9625
-    [split 11 train 1] epoch   9 kayıp 0.5133 eğitim 0.8500 val 0.5000
-    [split 11 train 1] epoch  10 kayıp 0.4765 eğitim 0.8958 val 0.8875
-    [split 11 train 1] epoch  11 kayıp 0.4279 eğitim 0.9042 val 0.5000
-    [split 11 train 1] epoch  12 kayıp 0.3881 eğitim 0.8979 val 0.5125
-    [split 11 train 1] epoch  13 kayıp 0.3291 eğitim 0.9479 val 0.9750
-    [split 11 train 1] epoch  14 kayıp 0.3018 eğitim 0.9521 val 0.9375
-    [split 11 train 1] epoch  15 kayıp 0.2595 eğitim 0.9729 val 0.8375
-    [split 11 train 1] epoch  16 kayıp 0.2304 eğitim 0.9646 val 0.8750
-    [split 11 train 1] epoch  17 kayıp 0.2066 eğitim 0.9729 val 1.0000
-    [split 11 train 1] epoch  18 kayıp 0.1648 eğitim 0.9896 val 1.0000
-    [split 11 train 1] epoch  19 kayıp 0.1519 eğitim 0.9896 val 0.9625
-    [split 11 train 1] epoch  20 kayıp 0.1142 eğitim 0.9979 val 1.0000
-  -> eğitim tohumu 1: eğitim 99.79%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 11 train 2] epoch   1 kayıp 0.7443 eğitim 0.5083 val 0.5000
-    [split 11 train 2] epoch   2 kayıp 0.6915 eğitim 0.5333 val 0.5000
-    [split 11 train 2] epoch   3 kayıp 0.6651 eğitim 0.6062 val 0.5000
-    [split 11 train 2] epoch   4 kayıp 0.6542 eğitim 0.6333 val 0.5125
-    [split 11 train 2] epoch   5 kayıp 0.6145 eğitim 0.7458 val 0.9375
-    [split 11 train 2] epoch   6 kayıp 0.5922 eğitim 0.8000 val 0.9500
-    [split 11 train 2] epoch   7 kayıp 0.5574 eğitim 0.8292 val 0.8875
-    [split 11 train 2] epoch   8 kayıp 0.5217 eğitim 0.8479 val 0.5125
-    [split 11 train 2] epoch   9 kayıp 0.4779 eğitim 0.8854 val 0.6625
-    [split 11 train 2] epoch  10 kayıp 0.4169 eğitim 0.9313 val 0.5000
-    [split 11 train 2] epoch  11 kayıp 0.3717 eğitim 0.9500 val 0.5125
-    [split 11 train 2] epoch  12 kayıp 0.3393 eğitim 0.9271 val 0.5125
-    [split 11 train 2] epoch  13 kayıp 0.2743 eğitim 0.9708 val 0.8875
-    [split 11 train 2] epoch  14 kayıp 0.2376 eğitim 0.9812 val 0.7625
-    [split 11 train 2] epoch  15 kayıp 0.2066 eğitim 0.9896 val 0.8000
-    [split 11 train 2] epoch  16 kayıp 0.1782 eğitim 0.9917 val 0.9875
-    [split 11 train 2] epoch  17 kayıp 0.1542 eğitim 0.9875 val 0.9750
-    [split 11 train 2] epoch  18 kayıp 0.1425 eğitim 0.9875 val 0.9375
-    [split 11 train 2] epoch  19 kayıp 0.1177 eğitim 0.9938 val 0.9875
-    [split 11 train 2] epoch  20 kayıp 0.0966 eğitim 0.9979 val 0.9750
-  -> eğitim tohumu 2: eğitim 99.79%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    total          2         0         0         0         2
+    -> offset vs label: INDEPENDENT
+  offsets shared between train and val (kHz): [280.0]
+  offsets shared between train and test (kHz): [-280.0]
+    [split 11 train 0] epoch   1 loss 0.7109 train 0.5146 val 0.5000
+    [split 11 train 0] epoch   2 loss 0.6992 train 0.5167 val 0.5000
+    [split 11 train 0] epoch   3 loss 0.6822 train 0.5667 val 0.5000
+    [split 11 train 0] epoch   4 loss 0.6730 train 0.6104 val 0.5125
+    [split 11 train 0] epoch   5 loss 0.6540 train 0.6542 val 0.5000
+    [split 11 train 0] epoch   6 loss 0.6394 train 0.6917 val 0.9500
+    [split 11 train 0] epoch   7 loss 0.6204 train 0.7417 val 0.9625
+    [split 11 train 0] epoch   8 loss 0.6127 train 0.7604 val 0.5000
+    [split 11 train 0] epoch   9 loss 0.5775 train 0.8063 val 0.9250
+    [split 11 train 0] epoch  10 loss 0.5484 train 0.8396 val 0.8125
+    [split 11 train 0] epoch  11 loss 0.4820 train 0.9417 val 0.5125
+    [split 11 train 0] epoch  12 loss 0.4386 train 0.9354 val 0.6750
+    [split 11 train 0] epoch  13 loss 0.3696 train 0.9708 val 0.5125
+    [split 11 train 0] epoch  14 loss 0.3196 train 0.9833 val 0.7000
+    [split 11 train 0] epoch  15 loss 0.2739 train 0.9833 val 0.8500
+    [split 11 train 0] epoch  16 loss 0.2378 train 0.9750 val 0.9750
+    [split 11 train 0] epoch  17 loss 0.1975 train 0.9875 val 1.0000
+    [split 11 train 0] epoch  18 loss 0.1795 train 0.9812 val 0.9750
+    [split 11 train 0] epoch  19 loss 0.1529 train 0.9896 val 1.0000
+    [split 11 train 0] epoch  20 loss 0.1312 train 0.9896 val 1.0000
+  -> training seed 0: train 98.96%  test 95.00%  (bpsk=100.00%  qpsk=90.00%)
+    [split 11 train 1] epoch   1 loss 0.6927 train 0.5250 val 0.5000
+    [split 11 train 1] epoch   2 loss 0.6866 train 0.5333 val 0.5000
+    [split 11 train 1] epoch   3 loss 0.6766 train 0.5583 val 0.5000
+    [split 11 train 1] epoch   4 loss 0.6544 train 0.6542 val 0.9375
+    [split 11 train 1] epoch   5 loss 0.6368 train 0.6958 val 0.9250
+    [split 11 train 1] epoch   6 loss 0.6248 train 0.7250 val 0.5250
+    [split 11 train 1] epoch   7 loss 0.5934 train 0.7854 val 0.7000
+    [split 11 train 1] epoch   8 loss 0.5762 train 0.7729 val 0.9625
+    [split 11 train 1] epoch   9 loss 0.5133 train 0.8500 val 0.5000
+    [split 11 train 1] epoch  10 loss 0.4765 train 0.8958 val 0.8875
+    [split 11 train 1] epoch  11 loss 0.4279 train 0.9042 val 0.5000
+    [split 11 train 1] epoch  12 loss 0.3881 train 0.8979 val 0.5125
+    [split 11 train 1] epoch  13 loss 0.3291 train 0.9479 val 0.9750
+    [split 11 train 1] epoch  14 loss 0.3018 train 0.9521 val 0.9375
+    [split 11 train 1] epoch  15 loss 0.2595 train 0.9729 val 0.8375
+    [split 11 train 1] epoch  16 loss 0.2304 train 0.9646 val 0.8750
+    [split 11 train 1] epoch  17 loss 0.2066 train 0.9729 val 1.0000
+    [split 11 train 1] epoch  18 loss 0.1648 train 0.9896 val 1.0000
+    [split 11 train 1] epoch  19 loss 0.1519 train 0.9896 val 0.9625
+    [split 11 train 1] epoch  20 loss 0.1142 train 0.9979 val 1.0000
+  -> training seed 1: train 99.79%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 11 train 2] epoch   1 loss 0.7443 train 0.5083 val 0.5000
+    [split 11 train 2] epoch   2 loss 0.6915 train 0.5333 val 0.5000
+    [split 11 train 2] epoch   3 loss 0.6651 train 0.6062 val 0.5000
+    [split 11 train 2] epoch   4 loss 0.6542 train 0.6333 val 0.5125
+    [split 11 train 2] epoch   5 loss 0.6145 train 0.7458 val 0.9375
+    [split 11 train 2] epoch   6 loss 0.5922 train 0.8000 val 0.9500
+    [split 11 train 2] epoch   7 loss 0.5574 train 0.8292 val 0.8875
+    [split 11 train 2] epoch   8 loss 0.5217 train 0.8479 val 0.5125
+    [split 11 train 2] epoch   9 loss 0.4779 train 0.8854 val 0.6625
+    [split 11 train 2] epoch  10 loss 0.4169 train 0.9313 val 0.5000
+    [split 11 train 2] epoch  11 loss 0.3717 train 0.9500 val 0.5125
+    [split 11 train 2] epoch  12 loss 0.3393 train 0.9271 val 0.5125
+    [split 11 train 2] epoch  13 loss 0.2743 train 0.9708 val 0.8875
+    [split 11 train 2] epoch  14 loss 0.2376 train 0.9812 val 0.7625
+    [split 11 train 2] epoch  15 loss 0.2066 train 0.9896 val 0.8000
+    [split 11 train 2] epoch  16 loss 0.1782 train 0.9917 val 0.9875
+    [split 11 train 2] epoch  17 loss 0.1542 train 0.9875 val 0.9750
+    [split 11 train 2] epoch  18 loss 0.1425 train 0.9875 val 0.9375
+    [split 11 train 2] epoch  19 loss 0.1177 train 0.9938 val 0.9875
+    [split 11 train 2] epoch  20 loss 0.0966 train 0.9979 val 0.9750
+  -> training seed 2: train 99.79%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
 
-=== bölme tohumu 22 ===
+=== split seed 22 ===
   train : bpsk_01(-280k), bpsk_02(-280k), bpsk_04(-180k), bpsk_05(+180k), bpsk_06(+180k), bpsk_08(+280k), qpsk_01(-280k), qpsk_02(-280k), qpsk_04(-180k), qpsk_05(+180k), qpsk_06(+180k), qpsk_08(+280k)
   val   : bpsk_07(+280k), qpsk_07(+280k)
   test  : bpsk_03(-180k), qpsk_03(-180k)
-  --- sınıf x ofset kontenjans tabloları ---
-  train (12 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+  --- class x offset contingency tables ---
+  train (12 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           2         1         2         1         6
     qpsk           2         1         2         1         6
-    toplam         4         2         4         2        12
-    -> ofset ile etiket: BAĞIMSIZ
-  val (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          4         2         4         2        12
+    -> offset vs label: INDEPENDENT
+  val (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         0         0         1         1
     qpsk           0         0         0         1         1
-    toplam         0         0         0         2         2
-    -> ofset ile etiket: BAĞIMSIZ
-  test (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          0         0         0         2         2
+    -> offset vs label: INDEPENDENT
+  test (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         1         0         0         1
     qpsk           0         1         0         0         1
-    toplam         0         2         0         0         2
-    -> ofset ile etiket: BAĞIMSIZ
-  train ile val paylaşılan ofsetler (kHz): [280.0]
-  train ile test paylaşılan ofsetler (kHz): [-180.0]
-    [split 22 train 0] epoch   1 kayıp 0.7111 eğitim 0.5042 val 0.5000
-    [split 22 train 0] epoch   2 kayıp 0.6966 eğitim 0.5229 val 0.5000
-    [split 22 train 0] epoch   3 kayıp 0.6851 eğitim 0.5604 val 0.5000
-    [split 22 train 0] epoch   4 kayıp 0.6683 eğitim 0.6062 val 0.9750
-    [split 22 train 0] epoch   5 kayıp 0.6521 eğitim 0.6521 val 0.9625
-    [split 22 train 0] epoch   6 kayıp 0.6361 eğitim 0.7250 val 0.7500
-    [split 22 train 0] epoch   7 kayıp 0.6150 eğitim 0.7646 val 0.9625
-    [split 22 train 0] epoch   8 kayıp 0.6081 eğitim 0.7708 val 0.5000
-    [split 22 train 0] epoch   9 kayıp 0.5644 eğitim 0.8187 val 0.5500
-    [split 22 train 0] epoch  10 kayıp 0.5330 eğitim 0.8646 val 0.9000
-    [split 22 train 0] epoch  11 kayıp 0.4641 eğitim 0.9396 val 0.6500
-    [split 22 train 0] epoch  12 kayıp 0.4194 eğitim 0.9458 val 0.8375
-    [split 22 train 0] epoch  13 kayıp 0.3559 eğitim 0.9688 val 0.9750
-    [split 22 train 0] epoch  14 kayıp 0.3073 eğitim 0.9771 val 0.8750
-    [split 22 train 0] epoch  15 kayıp 0.2668 eğitim 0.9750 val 1.0000
-    [split 22 train 0] epoch  16 kayıp 0.2201 eğitim 0.9896 val 1.0000
-    [split 22 train 0] epoch  17 kayıp 0.1864 eğitim 0.9938 val 1.0000
-    [split 22 train 0] epoch  18 kayıp 0.1642 eğitim 0.9938 val 1.0000
-    [split 22 train 0] epoch  19 kayıp 0.1401 eğitim 0.9958 val 1.0000
-    [split 22 train 0] epoch  20 kayıp 0.1172 eğitim 0.9938 val 1.0000
-  -> eğitim tohumu 0: eğitim 99.38%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 22 train 1] epoch   1 kayıp 0.6960 eğitim 0.5312 val 0.5000
-    [split 22 train 1] epoch   2 kayıp 0.6908 eğitim 0.5271 val 0.5000
-    [split 22 train 1] epoch   3 kayıp 0.6760 eğitim 0.5667 val 0.5000
-    [split 22 train 1] epoch   4 kayıp 0.6574 eğitim 0.6562 val 0.9375
-    [split 22 train 1] epoch   5 kayıp 0.6391 eğitim 0.6854 val 0.9750
-    [split 22 train 1] epoch   6 kayıp 0.6199 eğitim 0.7375 val 0.5000
-    [split 22 train 1] epoch   7 kayıp 0.5911 eğitim 0.8063 val 0.9875
-    [split 22 train 1] epoch   8 kayıp 0.5765 eğitim 0.7812 val 0.8875
-    [split 22 train 1] epoch   9 kayıp 0.5103 eğitim 0.8708 val 0.9750
-    [split 22 train 1] epoch  10 kayıp 0.4789 eğitim 0.9167 val 0.7875
-    [split 22 train 1] epoch  11 kayıp 0.4350 eğitim 0.9062 val 0.5000
-    [split 22 train 1] epoch  12 kayıp 0.3961 eğitim 0.9250 val 0.5625
-    [split 22 train 1] epoch  13 kayıp 0.3404 eğitim 0.9604 val 1.0000
-    [split 22 train 1] epoch  14 kayıp 0.3018 eğitim 0.9708 val 0.9250
-    [split 22 train 1] epoch  15 kayıp 0.2602 eğitim 0.9729 val 0.7875
-    [split 22 train 1] epoch  16 kayıp 0.2219 eğitim 0.9771 val 0.9875
-    [split 22 train 1] epoch  17 kayıp 0.1911 eğitim 0.9833 val 1.0000
-    [split 22 train 1] epoch  18 kayıp 0.1520 eğitim 0.9938 val 1.0000
-    [split 22 train 1] epoch  19 kayıp 0.1357 eğitim 0.9958 val 1.0000
-    [split 22 train 1] epoch  20 kayıp 0.1164 eğitim 0.9938 val 0.9750
-  -> eğitim tohumu 1: eğitim 99.38%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 22 train 2] epoch   1 kayıp 0.7431 eğitim 0.5083 val 0.5000
-    [split 22 train 2] epoch   2 kayıp 0.6877 eğitim 0.5458 val 0.5000
-    [split 22 train 2] epoch   3 kayıp 0.6576 eğitim 0.5938 val 0.5000
-    [split 22 train 2] epoch   4 kayıp 0.6419 eğitim 0.6417 val 0.6875
-    [split 22 train 2] epoch   5 kayıp 0.6023 eğitim 0.7562 val 0.8375
-    [split 22 train 2] epoch   6 kayıp 0.5762 eğitim 0.7896 val 0.9125
-    [split 22 train 2] epoch   7 kayıp 0.5412 eğitim 0.8292 val 0.8500
-    [split 22 train 2] epoch   8 kayıp 0.5096 eğitim 0.8417 val 0.6000
-    [split 22 train 2] epoch   9 kayıp 0.4637 eğitim 0.8896 val 0.7000
-    [split 22 train 2] epoch  10 kayıp 0.4167 eğitim 0.9021 val 0.6500
-    [split 22 train 2] epoch  11 kayıp 0.3724 eğitim 0.9479 val 0.6125
-    [split 22 train 2] epoch  12 kayıp 0.3426 eğitim 0.9271 val 0.5000
-    [split 22 train 2] epoch  13 kayıp 0.2871 eğitim 0.9604 val 0.7000
-    [split 22 train 2] epoch  14 kayıp 0.2547 eğitim 0.9771 val 0.7750
-    [split 22 train 2] epoch  15 kayıp 0.2156 eğitim 0.9896 val 1.0000
-    [split 22 train 2] epoch  16 kayıp 0.1885 eğitim 0.9854 val 0.9375
-    [split 22 train 2] epoch  17 kayıp 0.1642 eğitim 0.9917 val 0.9875
-    [split 22 train 2] epoch  18 kayıp 0.1564 eğitim 0.9750 val 0.9875
-    [split 22 train 2] epoch  19 kayıp 0.1374 eğitim 0.9896 val 0.8750
-    [split 22 train 2] epoch  20 kayıp 0.1086 eğitim 0.9979 val 0.9500
-  -> eğitim tohumu 2: eğitim 99.79%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    total          0         2         0         0         2
+    -> offset vs label: INDEPENDENT
+  offsets shared between train and val (kHz): [280.0]
+  offsets shared between train and test (kHz): [-180.0]
+    [split 22 train 0] epoch   1 loss 0.7111 train 0.5042 val 0.5000
+    [split 22 train 0] epoch   2 loss 0.6966 train 0.5229 val 0.5000
+    [split 22 train 0] epoch   3 loss 0.6851 train 0.5604 val 0.5000
+    [split 22 train 0] epoch   4 loss 0.6683 train 0.6062 val 0.9750
+    [split 22 train 0] epoch   5 loss 0.6521 train 0.6521 val 0.9625
+    [split 22 train 0] epoch   6 loss 0.6361 train 0.7250 val 0.7500
+    [split 22 train 0] epoch   7 loss 0.6150 train 0.7646 val 0.9625
+    [split 22 train 0] epoch   8 loss 0.6081 train 0.7708 val 0.5000
+    [split 22 train 0] epoch   9 loss 0.5644 train 0.8187 val 0.5500
+    [split 22 train 0] epoch  10 loss 0.5330 train 0.8646 val 0.9000
+    [split 22 train 0] epoch  11 loss 0.4641 train 0.9396 val 0.6500
+    [split 22 train 0] epoch  12 loss 0.4194 train 0.9458 val 0.8375
+    [split 22 train 0] epoch  13 loss 0.3559 train 0.9688 val 0.9750
+    [split 22 train 0] epoch  14 loss 0.3073 train 0.9771 val 0.8750
+    [split 22 train 0] epoch  15 loss 0.2668 train 0.9750 val 1.0000
+    [split 22 train 0] epoch  16 loss 0.2201 train 0.9896 val 1.0000
+    [split 22 train 0] epoch  17 loss 0.1864 train 0.9938 val 1.0000
+    [split 22 train 0] epoch  18 loss 0.1642 train 0.9938 val 1.0000
+    [split 22 train 0] epoch  19 loss 0.1401 train 0.9958 val 1.0000
+    [split 22 train 0] epoch  20 loss 0.1172 train 0.9938 val 1.0000
+  -> training seed 0: train 99.38%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 22 train 1] epoch   1 loss 0.6960 train 0.5312 val 0.5000
+    [split 22 train 1] epoch   2 loss 0.6908 train 0.5271 val 0.5000
+    [split 22 train 1] epoch   3 loss 0.6760 train 0.5667 val 0.5000
+    [split 22 train 1] epoch   4 loss 0.6574 train 0.6562 val 0.9375
+    [split 22 train 1] epoch   5 loss 0.6391 train 0.6854 val 0.9750
+    [split 22 train 1] epoch   6 loss 0.6199 train 0.7375 val 0.5000
+    [split 22 train 1] epoch   7 loss 0.5911 train 0.8063 val 0.9875
+    [split 22 train 1] epoch   8 loss 0.5765 train 0.7812 val 0.8875
+    [split 22 train 1] epoch   9 loss 0.5103 train 0.8708 val 0.9750
+    [split 22 train 1] epoch  10 loss 0.4789 train 0.9167 val 0.7875
+    [split 22 train 1] epoch  11 loss 0.4350 train 0.9062 val 0.5000
+    [split 22 train 1] epoch  12 loss 0.3961 train 0.9250 val 0.5625
+    [split 22 train 1] epoch  13 loss 0.3404 train 0.9604 val 1.0000
+    [split 22 train 1] epoch  14 loss 0.3018 train 0.9708 val 0.9250
+    [split 22 train 1] epoch  15 loss 0.2602 train 0.9729 val 0.7875
+    [split 22 train 1] epoch  16 loss 0.2219 train 0.9771 val 0.9875
+    [split 22 train 1] epoch  17 loss 0.1911 train 0.9833 val 1.0000
+    [split 22 train 1] epoch  18 loss 0.1520 train 0.9938 val 1.0000
+    [split 22 train 1] epoch  19 loss 0.1357 train 0.9958 val 1.0000
+    [split 22 train 1] epoch  20 loss 0.1164 train 0.9938 val 0.9750
+  -> training seed 1: train 99.38%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 22 train 2] epoch   1 loss 0.7431 train 0.5083 val 0.5000
+    [split 22 train 2] epoch   2 loss 0.6877 train 0.5458 val 0.5000
+    [split 22 train 2] epoch   3 loss 0.6576 train 0.5938 val 0.5000
+    [split 22 train 2] epoch   4 loss 0.6419 train 0.6417 val 0.6875
+    [split 22 train 2] epoch   5 loss 0.6023 train 0.7562 val 0.8375
+    [split 22 train 2] epoch   6 loss 0.5762 train 0.7896 val 0.9125
+    [split 22 train 2] epoch   7 loss 0.5412 train 0.8292 val 0.8500
+    [split 22 train 2] epoch   8 loss 0.5096 train 0.8417 val 0.6000
+    [split 22 train 2] epoch   9 loss 0.4637 train 0.8896 val 0.7000
+    [split 22 train 2] epoch  10 loss 0.4167 train 0.9021 val 0.6500
+    [split 22 train 2] epoch  11 loss 0.3724 train 0.9479 val 0.6125
+    [split 22 train 2] epoch  12 loss 0.3426 train 0.9271 val 0.5000
+    [split 22 train 2] epoch  13 loss 0.2871 train 0.9604 val 0.7000
+    [split 22 train 2] epoch  14 loss 0.2547 train 0.9771 val 0.7750
+    [split 22 train 2] epoch  15 loss 0.2156 train 0.9896 val 1.0000
+    [split 22 train 2] epoch  16 loss 0.1885 train 0.9854 val 0.9375
+    [split 22 train 2] epoch  17 loss 0.1642 train 0.9917 val 0.9875
+    [split 22 train 2] epoch  18 loss 0.1564 train 0.9750 val 0.9875
+    [split 22 train 2] epoch  19 loss 0.1374 train 0.9896 val 0.8750
+    [split 22 train 2] epoch  20 loss 0.1086 train 0.9979 val 0.9500
+  -> training seed 2: train 99.79%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
 
-=== bölme tohumu 33 ===
+=== split seed 33 ===
   train : bpsk_01(-280k), bpsk_02(-280k), bpsk_03(-180k), bpsk_05(+180k), bpsk_06(+180k), bpsk_08(+280k), qpsk_01(-280k), qpsk_02(-280k), qpsk_03(-180k), qpsk_05(+180k), qpsk_06(+180k), qpsk_07(+280k)
   val   : bpsk_07(+280k), qpsk_08(+280k)
   test  : bpsk_04(-180k), qpsk_04(-180k)
-  --- sınıf x ofset kontenjans tabloları ---
-  train (12 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+  --- class x offset contingency tables ---
+  train (12 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           2         1         2         1         6
     qpsk           2         1         2         1         6
-    toplam         4         2         4         2        12
-    -> ofset ile etiket: BAĞIMSIZ
-  val (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          4         2         4         2        12
+    -> offset vs label: INDEPENDENT
+  val (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         0         0         1         1
     qpsk           0         0         0         1         1
-    toplam         0         0         0         2         2
-    -> ofset ile etiket: BAĞIMSIZ
-  test (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          0         0         0         2         2
+    -> offset vs label: INDEPENDENT
+  test (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         1         0         0         1
     qpsk           0         1         0         0         1
-    toplam         0         2         0         0         2
-    -> ofset ile etiket: BAĞIMSIZ
-  train ile val paylaşılan ofsetler (kHz): [280.0]
-  train ile test paylaşılan ofsetler (kHz): [-180.0]
-    [split 33 train 0] epoch   1 kayıp 0.7107 eğitim 0.5062 val 0.5000
-    [split 33 train 0] epoch   2 kayıp 0.6964 eğitim 0.5188 val 0.5000
-    [split 33 train 0] epoch   3 kayıp 0.6841 eğitim 0.5583 val 0.5000
-    [split 33 train 0] epoch   4 kayıp 0.6666 eğitim 0.6229 val 0.6000
-    [split 33 train 0] epoch   5 kayıp 0.6493 eğitim 0.6750 val 0.5875
-    [split 33 train 0] epoch   6 kayıp 0.6322 eğitim 0.7292 val 0.8000
-    [split 33 train 0] epoch   7 kayıp 0.6099 eğitim 0.7729 val 0.9625
-    [split 33 train 0] epoch   8 kayıp 0.6012 eğitim 0.7771 val 0.5000
-    [split 33 train 0] epoch   9 kayıp 0.5533 eğitim 0.8271 val 0.6375
-    [split 33 train 0] epoch  10 kayıp 0.5176 eğitim 0.8896 val 0.8000
-    [split 33 train 0] epoch  11 kayıp 0.4444 eğitim 0.9458 val 0.5625
-    [split 33 train 0] epoch  12 kayıp 0.3961 eğitim 0.9542 val 0.6000
-    [split 33 train 0] epoch  13 kayıp 0.3301 eğitim 0.9688 val 0.8625
-    [split 33 train 0] epoch  14 kayıp 0.2807 eğitim 0.9854 val 0.8250
-    [split 33 train 0] epoch  15 kayıp 0.2430 eğitim 0.9833 val 0.9875
-    [split 33 train 0] epoch  16 kayıp 0.2039 eğitim 0.9917 val 0.9875
-    [split 33 train 0] epoch  17 kayıp 0.1716 eğitim 0.9958 val 1.0000
-    [split 33 train 0] epoch  18 kayıp 0.1517 eğitim 0.9938 val 1.0000
-    [split 33 train 0] epoch  19 kayıp 0.1243 eğitim 0.9958 val 1.0000
-    [split 33 train 0] epoch  20 kayıp 0.1080 eğitim 0.9958 val 1.0000
-  -> eğitim tohumu 0: eğitim 99.58%  test 97.50%  (bpsk=100.00%  qpsk=95.00%)
-    [split 33 train 1] epoch   1 kayıp 0.6954 eğitim 0.5208 val 0.5000
-    [split 33 train 1] epoch   2 kayıp 0.6903 eğitim 0.5250 val 0.5000
-    [split 33 train 1] epoch   3 kayıp 0.6741 eğitim 0.5729 val 0.5000
-    [split 33 train 1] epoch   4 kayıp 0.6568 eğitim 0.6521 val 0.8250
-    [split 33 train 1] epoch   5 kayıp 0.6389 eğitim 0.6750 val 0.9500
-    [split 33 train 1] epoch   6 kayıp 0.6211 eğitim 0.7417 val 0.5000
-    [split 33 train 1] epoch   7 kayıp 0.5933 eğitim 0.8000 val 0.9750
-    [split 33 train 1] epoch   8 kayıp 0.5809 eğitim 0.7792 val 0.7750
-    [split 33 train 1] epoch   9 kayıp 0.5168 eğitim 0.8812 val 0.9750
-    [split 33 train 1] epoch  10 kayıp 0.4892 eğitim 0.8979 val 0.9750
-    [split 33 train 1] epoch  11 kayıp 0.4477 eğitim 0.9042 val 0.5000
-    [split 33 train 1] epoch  12 kayıp 0.4123 eğitim 0.9062 val 0.5375
-    [split 33 train 1] epoch  13 kayıp 0.3566 eğitim 0.9479 val 1.0000
-    [split 33 train 1] epoch  14 kayıp 0.3171 eğitim 0.9583 val 0.9375
-    [split 33 train 1] epoch  15 kayıp 0.2713 eğitim 0.9729 val 0.9375
-    [split 33 train 1] epoch  16 kayıp 0.2339 eğitim 0.9812 val 1.0000
-    [split 33 train 1] epoch  17 kayıp 0.2015 eğitim 0.9750 val 1.0000
-    [split 33 train 1] epoch  18 kayıp 0.1644 eğitim 0.9958 val 0.9125
-    [split 33 train 1] epoch  19 kayıp 0.1547 eğitim 0.9917 val 0.7125
-    [split 33 train 1] epoch  20 kayıp 0.1331 eğitim 0.9958 val 0.9625
-  -> eğitim tohumu 1: eğitim 99.58%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 33 train 2] epoch   1 kayıp 0.7421 eğitim 0.5125 val 0.5000
-    [split 33 train 2] epoch   2 kayıp 0.6868 eğitim 0.5437 val 0.5000
-    [split 33 train 2] epoch   3 kayıp 0.6562 eğitim 0.6062 val 0.5250
-    [split 33 train 2] epoch   4 kayıp 0.6406 eğitim 0.6396 val 0.9625
-    [split 33 train 2] epoch   5 kayıp 0.6006 eğitim 0.7583 val 0.5625
-    [split 33 train 2] epoch   6 kayıp 0.5736 eğitim 0.7875 val 0.8125
-    [split 33 train 2] epoch   7 kayıp 0.5369 eğitim 0.8375 val 0.6875
-    [split 33 train 2] epoch   8 kayıp 0.5050 eğitim 0.8521 val 0.5000
-    [split 33 train 2] epoch   9 kayıp 0.4564 eğitim 0.8979 val 0.5375
-    [split 33 train 2] epoch  10 kayıp 0.4101 eğitim 0.9104 val 0.5500
-    [split 33 train 2] epoch  11 kayıp 0.3644 eğitim 0.9563 val 0.5000
-    [split 33 train 2] epoch  12 kayıp 0.3340 eğitim 0.9354 val 0.5000
-    [split 33 train 2] epoch  13 kayıp 0.2743 eğitim 0.9812 val 0.5750
-    [split 33 train 2] epoch  14 kayıp 0.2460 eğitim 0.9833 val 0.6875
-    [split 33 train 2] epoch  15 kayıp 0.2067 eğitim 0.9875 val 1.0000
-    [split 33 train 2] epoch  16 kayıp 0.1814 eğitim 0.9896 val 0.8750
-    [split 33 train 2] epoch  17 kayıp 0.1560 eğitim 0.9917 val 1.0000
-    [split 33 train 2] epoch  18 kayıp 0.1442 eğitim 0.9917 val 0.9875
-    [split 33 train 2] epoch  19 kayıp 0.1278 eğitim 0.9917 val 0.9875
-    [split 33 train 2] epoch  20 kayıp 0.1017 eğitim 0.9979 val 0.9375
-  -> eğitim tohumu 2: eğitim 99.79%  test 98.75%  (bpsk=100.00%  qpsk=97.50%)
+    total          0         2         0         0         2
+    -> offset vs label: INDEPENDENT
+  offsets shared between train and val (kHz): [280.0]
+  offsets shared between train and test (kHz): [-180.0]
+    [split 33 train 0] epoch   1 loss 0.7107 train 0.5062 val 0.5000
+    [split 33 train 0] epoch   2 loss 0.6964 train 0.5188 val 0.5000
+    [split 33 train 0] epoch   3 loss 0.6841 train 0.5583 val 0.5000
+    [split 33 train 0] epoch   4 loss 0.6666 train 0.6229 val 0.6000
+    [split 33 train 0] epoch   5 loss 0.6493 train 0.6750 val 0.5875
+    [split 33 train 0] epoch   6 loss 0.6322 train 0.7292 val 0.8000
+    [split 33 train 0] epoch   7 loss 0.6099 train 0.7729 val 0.9625
+    [split 33 train 0] epoch   8 loss 0.6012 train 0.7771 val 0.5000
+    [split 33 train 0] epoch   9 loss 0.5533 train 0.8271 val 0.6375
+    [split 33 train 0] epoch  10 loss 0.5176 train 0.8896 val 0.8000
+    [split 33 train 0] epoch  11 loss 0.4444 train 0.9458 val 0.5625
+    [split 33 train 0] epoch  12 loss 0.3961 train 0.9542 val 0.6000
+    [split 33 train 0] epoch  13 loss 0.3301 train 0.9688 val 0.8625
+    [split 33 train 0] epoch  14 loss 0.2807 train 0.9854 val 0.8250
+    [split 33 train 0] epoch  15 loss 0.2430 train 0.9833 val 0.9875
+    [split 33 train 0] epoch  16 loss 0.2039 train 0.9917 val 0.9875
+    [split 33 train 0] epoch  17 loss 0.1716 train 0.9958 val 1.0000
+    [split 33 train 0] epoch  18 loss 0.1517 train 0.9938 val 1.0000
+    [split 33 train 0] epoch  19 loss 0.1243 train 0.9958 val 1.0000
+    [split 33 train 0] epoch  20 loss 0.1080 train 0.9958 val 1.0000
+  -> training seed 0: train 99.58%  test 97.50%  (bpsk=100.00%  qpsk=95.00%)
+    [split 33 train 1] epoch   1 loss 0.6954 train 0.5208 val 0.5000
+    [split 33 train 1] epoch   2 loss 0.6903 train 0.5250 val 0.5000
+    [split 33 train 1] epoch   3 loss 0.6741 train 0.5729 val 0.5000
+    [split 33 train 1] epoch   4 loss 0.6568 train 0.6521 val 0.8250
+    [split 33 train 1] epoch   5 loss 0.6389 train 0.6750 val 0.9500
+    [split 33 train 1] epoch   6 loss 0.6211 train 0.7417 val 0.5000
+    [split 33 train 1] epoch   7 loss 0.5933 train 0.8000 val 0.9750
+    [split 33 train 1] epoch   8 loss 0.5809 train 0.7792 val 0.7750
+    [split 33 train 1] epoch   9 loss 0.5168 train 0.8812 val 0.9750
+    [split 33 train 1] epoch  10 loss 0.4892 train 0.8979 val 0.9750
+    [split 33 train 1] epoch  11 loss 0.4477 train 0.9042 val 0.5000
+    [split 33 train 1] epoch  12 loss 0.4123 train 0.9062 val 0.5375
+    [split 33 train 1] epoch  13 loss 0.3566 train 0.9479 val 1.0000
+    [split 33 train 1] epoch  14 loss 0.3171 train 0.9583 val 0.9375
+    [split 33 train 1] epoch  15 loss 0.2713 train 0.9729 val 0.9375
+    [split 33 train 1] epoch  16 loss 0.2339 train 0.9812 val 1.0000
+    [split 33 train 1] epoch  17 loss 0.2015 train 0.9750 val 1.0000
+    [split 33 train 1] epoch  18 loss 0.1644 train 0.9958 val 0.9125
+    [split 33 train 1] epoch  19 loss 0.1547 train 0.9917 val 0.7125
+    [split 33 train 1] epoch  20 loss 0.1331 train 0.9958 val 0.9625
+  -> training seed 1: train 99.58%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 33 train 2] epoch   1 loss 0.7421 train 0.5125 val 0.5000
+    [split 33 train 2] epoch   2 loss 0.6868 train 0.5437 val 0.5000
+    [split 33 train 2] epoch   3 loss 0.6562 train 0.6062 val 0.5250
+    [split 33 train 2] epoch   4 loss 0.6406 train 0.6396 val 0.9625
+    [split 33 train 2] epoch   5 loss 0.6006 train 0.7583 val 0.5625
+    [split 33 train 2] epoch   6 loss 0.5736 train 0.7875 val 0.8125
+    [split 33 train 2] epoch   7 loss 0.5369 train 0.8375 val 0.6875
+    [split 33 train 2] epoch   8 loss 0.5050 train 0.8521 val 0.5000
+    [split 33 train 2] epoch   9 loss 0.4564 train 0.8979 val 0.5375
+    [split 33 train 2] epoch  10 loss 0.4101 train 0.9104 val 0.5500
+    [split 33 train 2] epoch  11 loss 0.3644 train 0.9563 val 0.5000
+    [split 33 train 2] epoch  12 loss 0.3340 train 0.9354 val 0.5000
+    [split 33 train 2] epoch  13 loss 0.2743 train 0.9812 val 0.5750
+    [split 33 train 2] epoch  14 loss 0.2460 train 0.9833 val 0.6875
+    [split 33 train 2] epoch  15 loss 0.2067 train 0.9875 val 1.0000
+    [split 33 train 2] epoch  16 loss 0.1814 train 0.9896 val 0.8750
+    [split 33 train 2] epoch  17 loss 0.1560 train 0.9917 val 1.0000
+    [split 33 train 2] epoch  18 loss 0.1442 train 0.9917 val 0.9875
+    [split 33 train 2] epoch  19 loss 0.1278 train 0.9917 val 0.9875
+    [split 33 train 2] epoch  20 loss 0.1017 train 0.9979 val 0.9375
+  -> training seed 2: train 99.79%  test 98.75%  (bpsk=100.00%  qpsk=97.50%)
 
-=== bölme tohumu 44 ===
+=== split seed 44 ===
   train : bpsk_01(-280k), bpsk_02(-280k), bpsk_04(-180k), bpsk_05(+180k), bpsk_06(+180k), bpsk_08(+280k), qpsk_01(-280k), qpsk_02(-280k), qpsk_04(-180k), qpsk_05(+180k), qpsk_06(+180k), qpsk_07(+280k)
   val   : bpsk_03(-180k), qpsk_03(-180k)
   test  : bpsk_07(+280k), qpsk_08(+280k)
-  --- sınıf x ofset kontenjans tabloları ---
-  train (12 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+  --- class x offset contingency tables ---
+  train (12 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           2         1         2         1         6
     qpsk           2         1         2         1         6
-    toplam         4         2         4         2        12
-    -> ofset ile etiket: BAĞIMSIZ
-  val (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          4         2         4         2        12
+    -> offset vs label: INDEPENDENT
+  val (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         1         0         0         1
     qpsk           0         1         0         0         1
-    toplam         0         2         0         0         2
-    -> ofset ile etiket: BAĞIMSIZ
-  test (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          0         2         0         0         2
+    -> offset vs label: INDEPENDENT
+  test (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         0         0         1         1
     qpsk           0         0         0         1         1
-    toplam         0         0         0         2         2
-    -> ofset ile etiket: BAĞIMSIZ
-  train ile val paylaşılan ofsetler (kHz): [-180.0]
-  train ile test paylaşılan ofsetler (kHz): [280.0]
-    [split 44 train 0] epoch   1 kayıp 0.7107 eğitim 0.5042 val 0.5000
-    [split 44 train 0] epoch   2 kayıp 0.6964 eğitim 0.5250 val 0.5000
-    [split 44 train 0] epoch   3 kayıp 0.6847 eğitim 0.5583 val 0.5000
-    [split 44 train 0] epoch   4 kayıp 0.6681 eğitim 0.6146 val 0.8000
-    [split 44 train 0] epoch   5 kayıp 0.6516 eğitim 0.6625 val 0.9625
-    [split 44 train 0] epoch   6 kayıp 0.6352 eğitim 0.7271 val 0.9625
-    [split 44 train 0] epoch   7 kayıp 0.6140 eğitim 0.7729 val 0.6875
-    [split 44 train 0] epoch   8 kayıp 0.6068 eğitim 0.7708 val 0.5750
-    [split 44 train 0] epoch   9 kayıp 0.5618 eğitim 0.8208 val 0.9125
-    [split 44 train 0] epoch  10 kayıp 0.5288 eğitim 0.8708 val 0.9125
-    [split 44 train 0] epoch  11 kayıp 0.4590 eğitim 0.9375 val 0.8125
-    [split 44 train 0] epoch  12 kayıp 0.4124 eğitim 0.9479 val 0.9500
-    [split 44 train 0] epoch  13 kayıp 0.3451 eğitim 0.9688 val 0.7625
-    [split 44 train 0] epoch  14 kayıp 0.2960 eğitim 0.9792 val 0.9750
-    [split 44 train 0] epoch  15 kayıp 0.2550 eğitim 0.9812 val 0.9125
-    [split 44 train 0] epoch  16 kayıp 0.2131 eğitim 0.9896 val 1.0000
-    [split 44 train 0] epoch  17 kayıp 0.1824 eğitim 0.9938 val 0.9500
-    [split 44 train 0] epoch  18 kayıp 0.1602 eğitim 0.9938 val 1.0000
-    [split 44 train 0] epoch  19 kayıp 0.1366 eğitim 0.9958 val 1.0000
-    [split 44 train 0] epoch  20 kayıp 0.1156 eğitim 0.9938 val 1.0000
-  -> eğitim tohumu 0: eğitim 99.38%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 44 train 1] epoch   1 kayıp 0.6958 eğitim 0.5250 val 0.5000
-    [split 44 train 1] epoch   2 kayıp 0.6905 eğitim 0.5250 val 0.5000
-    [split 44 train 1] epoch   3 kayıp 0.6752 eğitim 0.5687 val 0.5000
-    [split 44 train 1] epoch   4 kayıp 0.6574 eğitim 0.6604 val 0.5125
-    [split 44 train 1] epoch   5 kayıp 0.6402 eğitim 0.6813 val 0.5125
-    [split 44 train 1] epoch   6 kayıp 0.6217 eğitim 0.7375 val 0.6000
-    [split 44 train 1] epoch   7 kayıp 0.5945 eğitim 0.8042 val 0.8625
-    [split 44 train 1] epoch   8 kayıp 0.5815 eğitim 0.7729 val 0.5375
-    [split 44 train 1] epoch   9 kayıp 0.5178 eğitim 0.8708 val 0.8875
-    [split 44 train 1] epoch  10 kayıp 0.4892 eğitim 0.9062 val 0.8875
-    [split 44 train 1] epoch  11 kayıp 0.4465 eğitim 0.9042 val 0.5250
-    [split 44 train 1] epoch  12 kayıp 0.4087 eğitim 0.9042 val 0.6375
-    [split 44 train 1] epoch  13 kayıp 0.3529 eğitim 0.9521 val 0.8500
-    [split 44 train 1] epoch  14 kayıp 0.3141 eğitim 0.9604 val 0.9000
-    [split 44 train 1] epoch  15 kayıp 0.2691 eğitim 0.9708 val 0.9500
-    [split 44 train 1] epoch  16 kayıp 0.2295 eğitim 0.9771 val 1.0000
-    [split 44 train 1] epoch  17 kayıp 0.1966 eğitim 0.9771 val 1.0000
-    [split 44 train 1] epoch  18 kayıp 0.1592 eğitim 0.9938 val 1.0000
-    [split 44 train 1] epoch  19 kayıp 0.1536 eğitim 0.9896 val 1.0000
-    [split 44 train 1] epoch  20 kayıp 0.1267 eğitim 0.9917 val 1.0000
-  -> eğitim tohumu 1: eğitim 99.17%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 44 train 2] epoch   1 kayıp 0.7426 eğitim 0.5104 val 0.5000
-    [split 44 train 2] epoch   2 kayıp 0.6872 eğitim 0.5458 val 0.5000
-    [split 44 train 2] epoch   3 kayıp 0.6567 eğitim 0.6000 val 0.5000
-    [split 44 train 2] epoch   4 kayıp 0.6415 eğitim 0.6438 val 0.9750
-    [split 44 train 2] epoch   5 kayıp 0.6015 eğitim 0.7562 val 0.5000
-    [split 44 train 2] epoch   6 kayıp 0.5747 eğitim 0.7896 val 0.8375
-    [split 44 train 2] epoch   7 kayıp 0.5384 eğitim 0.8417 val 0.5000
-    [split 44 train 2] epoch   8 kayıp 0.5064 eğitim 0.8438 val 0.6500
-    [split 44 train 2] epoch   9 kayıp 0.4597 eğitim 0.8917 val 0.6500
-    [split 44 train 2] epoch  10 kayıp 0.4124 eğitim 0.9083 val 0.5625
-    [split 44 train 2] epoch  11 kayıp 0.3677 eğitim 0.9521 val 0.6000
-    [split 44 train 2] epoch  12 kayıp 0.3357 eğitim 0.9437 val 0.5375
-    [split 44 train 2] epoch  13 kayıp 0.2820 eğitim 0.9688 val 0.5375
-    [split 44 train 2] epoch  14 kayıp 0.2481 eğitim 0.9792 val 0.9875
-    [split 44 train 2] epoch  15 kayıp 0.2089 eğitim 0.9875 val 1.0000
-    [split 44 train 2] epoch  16 kayıp 0.1844 eğitim 0.9896 val 0.8625
-    [split 44 train 2] epoch  17 kayıp 0.1595 eğitim 0.9917 val 1.0000
-    [split 44 train 2] epoch  18 kayıp 0.1529 eğitim 0.9812 val 1.0000
-    [split 44 train 2] epoch  19 kayıp 0.1309 eğitim 0.9938 val 1.0000
-    [split 44 train 2] epoch  20 kayıp 0.1041 eğitim 0.9979 val 1.0000
-  -> eğitim tohumu 2: eğitim 99.79%  test 93.75%  (bpsk=100.00%  qpsk=87.50%)
+    total          0         0         0         2         2
+    -> offset vs label: INDEPENDENT
+  offsets shared between train and val (kHz): [-180.0]
+  offsets shared between train and test (kHz): [280.0]
+    [split 44 train 0] epoch   1 loss 0.7107 train 0.5042 val 0.5000
+    [split 44 train 0] epoch   2 loss 0.6964 train 0.5250 val 0.5000
+    [split 44 train 0] epoch   3 loss 0.6847 train 0.5583 val 0.5000
+    [split 44 train 0] epoch   4 loss 0.6681 train 0.6146 val 0.8000
+    [split 44 train 0] epoch   5 loss 0.6516 train 0.6625 val 0.9625
+    [split 44 train 0] epoch   6 loss 0.6352 train 0.7271 val 0.9625
+    [split 44 train 0] epoch   7 loss 0.6140 train 0.7729 val 0.6875
+    [split 44 train 0] epoch   8 loss 0.6068 train 0.7708 val 0.5750
+    [split 44 train 0] epoch   9 loss 0.5618 train 0.8208 val 0.9125
+    [split 44 train 0] epoch  10 loss 0.5288 train 0.8708 val 0.9125
+    [split 44 train 0] epoch  11 loss 0.4590 train 0.9375 val 0.8125
+    [split 44 train 0] epoch  12 loss 0.4124 train 0.9479 val 0.9500
+    [split 44 train 0] epoch  13 loss 0.3451 train 0.9688 val 0.7625
+    [split 44 train 0] epoch  14 loss 0.2960 train 0.9792 val 0.9750
+    [split 44 train 0] epoch  15 loss 0.2550 train 0.9812 val 0.9125
+    [split 44 train 0] epoch  16 loss 0.2131 train 0.9896 val 1.0000
+    [split 44 train 0] epoch  17 loss 0.1824 train 0.9938 val 0.9500
+    [split 44 train 0] epoch  18 loss 0.1602 train 0.9938 val 1.0000
+    [split 44 train 0] epoch  19 loss 0.1366 train 0.9958 val 1.0000
+    [split 44 train 0] epoch  20 loss 0.1156 train 0.9938 val 1.0000
+  -> training seed 0: train 99.38%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 44 train 1] epoch   1 loss 0.6958 train 0.5250 val 0.5000
+    [split 44 train 1] epoch   2 loss 0.6905 train 0.5250 val 0.5000
+    [split 44 train 1] epoch   3 loss 0.6752 train 0.5687 val 0.5000
+    [split 44 train 1] epoch   4 loss 0.6574 train 0.6604 val 0.5125
+    [split 44 train 1] epoch   5 loss 0.6402 train 0.6813 val 0.5125
+    [split 44 train 1] epoch   6 loss 0.6217 train 0.7375 val 0.6000
+    [split 44 train 1] epoch   7 loss 0.5945 train 0.8042 val 0.8625
+    [split 44 train 1] epoch   8 loss 0.5815 train 0.7729 val 0.5375
+    [split 44 train 1] epoch   9 loss 0.5178 train 0.8708 val 0.8875
+    [split 44 train 1] epoch  10 loss 0.4892 train 0.9062 val 0.8875
+    [split 44 train 1] epoch  11 loss 0.4465 train 0.9042 val 0.5250
+    [split 44 train 1] epoch  12 loss 0.4087 train 0.9042 val 0.6375
+    [split 44 train 1] epoch  13 loss 0.3529 train 0.9521 val 0.8500
+    [split 44 train 1] epoch  14 loss 0.3141 train 0.9604 val 0.9000
+    [split 44 train 1] epoch  15 loss 0.2691 train 0.9708 val 0.9500
+    [split 44 train 1] epoch  16 loss 0.2295 train 0.9771 val 1.0000
+    [split 44 train 1] epoch  17 loss 0.1966 train 0.9771 val 1.0000
+    [split 44 train 1] epoch  18 loss 0.1592 train 0.9938 val 1.0000
+    [split 44 train 1] epoch  19 loss 0.1536 train 0.9896 val 1.0000
+    [split 44 train 1] epoch  20 loss 0.1267 train 0.9917 val 1.0000
+  -> training seed 1: train 99.17%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 44 train 2] epoch   1 loss 0.7426 train 0.5104 val 0.5000
+    [split 44 train 2] epoch   2 loss 0.6872 train 0.5458 val 0.5000
+    [split 44 train 2] epoch   3 loss 0.6567 train 0.6000 val 0.5000
+    [split 44 train 2] epoch   4 loss 0.6415 train 0.6438 val 0.9750
+    [split 44 train 2] epoch   5 loss 0.6015 train 0.7562 val 0.5000
+    [split 44 train 2] epoch   6 loss 0.5747 train 0.7896 val 0.8375
+    [split 44 train 2] epoch   7 loss 0.5384 train 0.8417 val 0.5000
+    [split 44 train 2] epoch   8 loss 0.5064 train 0.8438 val 0.6500
+    [split 44 train 2] epoch   9 loss 0.4597 train 0.8917 val 0.6500
+    [split 44 train 2] epoch  10 loss 0.4124 train 0.9083 val 0.5625
+    [split 44 train 2] epoch  11 loss 0.3677 train 0.9521 val 0.6000
+    [split 44 train 2] epoch  12 loss 0.3357 train 0.9437 val 0.5375
+    [split 44 train 2] epoch  13 loss 0.2820 train 0.9688 val 0.5375
+    [split 44 train 2] epoch  14 loss 0.2481 train 0.9792 val 0.9875
+    [split 44 train 2] epoch  15 loss 0.2089 train 0.9875 val 1.0000
+    [split 44 train 2] epoch  16 loss 0.1844 train 0.9896 val 0.8625
+    [split 44 train 2] epoch  17 loss 0.1595 train 0.9917 val 1.0000
+    [split 44 train 2] epoch  18 loss 0.1529 train 0.9812 val 1.0000
+    [split 44 train 2] epoch  19 loss 0.1309 train 0.9938 val 1.0000
+    [split 44 train 2] epoch  20 loss 0.1041 train 0.9979 val 1.0000
+  -> training seed 2: train 99.79%  test 93.75%  (bpsk=100.00%  qpsk=87.50%)
 
-=== bölme tohumu 55 ===
+=== split seed 55 ===
   train : bpsk_01(-280k), bpsk_02(-280k), bpsk_03(-180k), bpsk_04(-180k), bpsk_05(+180k), bpsk_07(+280k), qpsk_01(-280k), qpsk_02(-280k), qpsk_03(-180k), qpsk_04(-180k), qpsk_06(+180k), qpsk_08(+280k)
   val   : bpsk_06(+180k), qpsk_05(+180k)
   test  : bpsk_08(+280k), qpsk_07(+280k)
-  --- sınıf x ofset kontenjans tabloları ---
-  train (12 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+  --- class x offset contingency tables ---
+  train (12 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           2         2         1         1         6
     qpsk           2         2         1         1         6
-    toplam         4         4         2         2        12
-    -> ofset ile etiket: BAĞIMSIZ
-  val (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          4         4         2         2        12
+    -> offset vs label: INDEPENDENT
+  val (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         0         1         0         1
     qpsk           0         0         1         0         1
-    toplam         0         0         2         0         2
-    -> ofset ile etiket: BAĞIMSIZ
-  test (2 kayıt)
-         -280k     -180k     +180k     +280k    toplam
+    total          0         0         2         0         2
+    -> offset vs label: INDEPENDENT
+  test (2 recordings)
+         -280k     -180k     +180k     +280k     total
     bpsk           0         0         0         1         1
     qpsk           0         0         0         1         1
-    toplam         0         0         0         2         2
-    -> ofset ile etiket: BAĞIMSIZ
-  train ile val paylaşılan ofsetler (kHz): [180.0]
-  train ile test paylaşılan ofsetler (kHz): [280.0]
-    [split 55 train 0] epoch   1 kayıp 0.7021 eğitim 0.5104 val 0.5000
-    [split 55 train 0] epoch   2 kayıp 0.6967 eğitim 0.5104 val 0.5000
-    [split 55 train 0] epoch   3 kayıp 0.6801 eğitim 0.5625 val 0.5000
-    [split 55 train 0] epoch   4 kayıp 0.6630 eğitim 0.6417 val 0.5000
-    [split 55 train 0] epoch   5 kayıp 0.6439 eğitim 0.6771 val 0.6000
-    [split 55 train 0] epoch   6 kayıp 0.6214 eğitim 0.7354 val 0.6000
-    [split 55 train 0] epoch   7 kayıp 0.5940 eğitim 0.8104 val 0.5125
-    [split 55 train 0] epoch   8 kayıp 0.5898 eğitim 0.7667 val 0.9375
-    [split 55 train 0] epoch   9 kayıp 0.5338 eğitim 0.8458 val 0.5000
-    [split 55 train 0] epoch  10 kayıp 0.4957 eğitim 0.8479 val 0.7625
-    [split 55 train 0] epoch  11 kayıp 0.4275 eğitim 0.8958 val 0.5000
-    [split 55 train 0] epoch  12 kayıp 0.3909 eğitim 0.9104 val 0.9250
-    [split 55 train 0] epoch  13 kayıp 0.3269 eğitim 0.9333 val 0.8375
-    [split 55 train 0] epoch  14 kayıp 0.2888 eğitim 0.9563 val 0.9375
-    [split 55 train 0] epoch  15 kayıp 0.2557 eğitim 0.9563 val 0.8125
-    [split 55 train 0] epoch  16 kayıp 0.2301 eğitim 0.9437 val 0.9875
-    [split 55 train 0] epoch  17 kayıp 0.1929 eğitim 0.9688 val 0.9875
-    [split 55 train 0] epoch  18 kayıp 0.1791 eğitim 0.9750 val 1.0000
-    [split 55 train 0] epoch  19 kayıp 0.1457 eğitim 0.9833 val 0.8625
-    [split 55 train 0] epoch  20 kayıp 0.1496 eğitim 0.9688 val 1.0000
-  -> eğitim tohumu 0: eğitim 96.88%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 55 train 1] epoch   1 kayıp 0.6936 eğitim 0.5146 val 0.5000
-    [split 55 train 1] epoch   2 kayıp 0.6901 eğitim 0.5229 val 0.5000
-    [split 55 train 1] epoch   3 kayıp 0.6708 eğitim 0.6000 val 0.5000
-    [split 55 train 1] epoch   4 kayıp 0.6525 eğitim 0.6604 val 0.9375
-    [split 55 train 1] epoch   5 kayıp 0.6315 eğitim 0.6875 val 0.5500
-    [split 55 train 1] epoch   6 kayıp 0.6104 eğitim 0.7688 val 0.5625
-    [split 55 train 1] epoch   7 kayıp 0.5795 eğitim 0.8229 val 0.7250
-    [split 55 train 1] epoch   8 kayıp 0.5572 eğitim 0.8187 val 0.8375
-    [split 55 train 1] epoch   9 kayıp 0.4838 eğitim 0.8688 val 0.5875
-    [split 55 train 1] epoch  10 kayıp 0.4589 eğitim 0.8854 val 0.5000
-    [split 55 train 1] epoch  11 kayıp 0.4088 eğitim 0.9229 val 0.5000
-    [split 55 train 1] epoch  12 kayıp 0.3698 eğitim 0.9292 val 0.5375
-    [split 55 train 1] epoch  13 kayıp 0.3184 eğitim 0.9375 val 0.7625
-    [split 55 train 1] epoch  14 kayıp 0.2812 eğitim 0.9646 val 0.8000
-    [split 55 train 1] epoch  15 kayıp 0.2450 eğitim 0.9604 val 0.6250
-    [split 55 train 1] epoch  16 kayıp 0.2143 eğitim 0.9604 val 0.6750
-    [split 55 train 1] epoch  17 kayıp 0.1992 eğitim 0.9479 val 0.9250
-    [split 55 train 1] epoch  18 kayıp 0.1691 eğitim 0.9667 val 0.8750
-    [split 55 train 1] epoch  19 kayıp 0.1506 eğitim 0.9729 val 0.9875
-    [split 55 train 1] epoch  20 kayıp 0.1372 eğitim 0.9896 val 0.9750
-  -> eğitim tohumu 1: eğitim 98.96%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
-    [split 55 train 2] epoch   1 kayıp 0.7398 eğitim 0.5062 val 0.5000
-    [split 55 train 2] epoch   2 kayıp 0.6857 eğitim 0.5396 val 0.5000
-    [split 55 train 2] epoch   3 kayıp 0.6484 eğitim 0.6375 val 0.5000
-    [split 55 train 2] epoch   4 kayıp 0.6299 eğitim 0.6646 val 0.6250
-    [split 55 train 2] epoch   5 kayıp 0.5921 eğitim 0.7750 val 0.5000
-    [split 55 train 2] epoch   6 kayıp 0.5554 eğitim 0.7937 val 0.8375
-    [split 55 train 2] epoch   7 kayıp 0.5212 eğitim 0.8333 val 0.8000
-    [split 55 train 2] epoch   8 kayıp 0.4789 eğitim 0.8771 val 0.5250
-    [split 55 train 2] epoch   9 kayıp 0.4343 eğitim 0.8917 val 0.6375
-    [split 55 train 2] epoch  10 kayıp 0.3845 eğitim 0.9271 val 0.6000
-    [split 55 train 2] epoch  11 kayıp 0.3393 eğitim 0.9396 val 0.7750
-    [split 55 train 2] epoch  12 kayıp 0.3147 eğitim 0.9375 val 0.6000
-    [split 55 train 2] epoch  13 kayıp 0.2527 eğitim 0.9812 val 0.6500
-    [split 55 train 2] epoch  14 kayıp 0.2278 eğitim 0.9646 val 0.9125
-    [split 55 train 2] epoch  15 kayıp 0.2032 eğitim 0.9708 val 0.9375
-    [split 55 train 2] epoch  16 kayıp 0.1703 eğitim 0.9729 val 0.9500
-    [split 55 train 2] epoch  17 kayıp 0.1458 eğitim 0.9875 val 0.9250
-    [split 55 train 2] epoch  18 kayıp 0.1417 eğitim 0.9833 val 0.9750
-    [split 55 train 2] epoch  19 kayıp 0.1402 eğitim 0.9833 val 0.9750
-    [split 55 train 2] epoch  20 kayıp 0.1158 eğitim 0.9812 val 0.9875
-  -> eğitim tohumu 2: eğitim 98.12%  test 91.25%  (bpsk=100.00%  qpsk=82.50%)
+    total          0         0         0         2         2
+    -> offset vs label: INDEPENDENT
+  offsets shared between train and val (kHz): [180.0]
+  offsets shared between train and test (kHz): [280.0]
+    [split 55 train 0] epoch   1 loss 0.7021 train 0.5104 val 0.5000
+    [split 55 train 0] epoch   2 loss 0.6967 train 0.5104 val 0.5000
+    [split 55 train 0] epoch   3 loss 0.6801 train 0.5625 val 0.5000
+    [split 55 train 0] epoch   4 loss 0.6630 train 0.6417 val 0.5000
+    [split 55 train 0] epoch   5 loss 0.6439 train 0.6771 val 0.6000
+    [split 55 train 0] epoch   6 loss 0.6214 train 0.7354 val 0.6000
+    [split 55 train 0] epoch   7 loss 0.5940 train 0.8104 val 0.5125
+    [split 55 train 0] epoch   8 loss 0.5898 train 0.7667 val 0.9375
+    [split 55 train 0] epoch   9 loss 0.5338 train 0.8458 val 0.5000
+    [split 55 train 0] epoch  10 loss 0.4957 train 0.8479 val 0.7625
+    [split 55 train 0] epoch  11 loss 0.4275 train 0.8958 val 0.5000
+    [split 55 train 0] epoch  12 loss 0.3909 train 0.9104 val 0.9250
+    [split 55 train 0] epoch  13 loss 0.3269 train 0.9333 val 0.8375
+    [split 55 train 0] epoch  14 loss 0.2888 train 0.9563 val 0.9375
+    [split 55 train 0] epoch  15 loss 0.2557 train 0.9563 val 0.8125
+    [split 55 train 0] epoch  16 loss 0.2301 train 0.9437 val 0.9875
+    [split 55 train 0] epoch  17 loss 0.1929 train 0.9688 val 0.9875
+    [split 55 train 0] epoch  18 loss 0.1791 train 0.9750 val 1.0000
+    [split 55 train 0] epoch  19 loss 0.1457 train 0.9833 val 0.8625
+    [split 55 train 0] epoch  20 loss 0.1496 train 0.9688 val 1.0000
+  -> training seed 0: train 96.88%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 55 train 1] epoch   1 loss 0.6936 train 0.5146 val 0.5000
+    [split 55 train 1] epoch   2 loss 0.6901 train 0.5229 val 0.5000
+    [split 55 train 1] epoch   3 loss 0.6708 train 0.6000 val 0.5000
+    [split 55 train 1] epoch   4 loss 0.6525 train 0.6604 val 0.9375
+    [split 55 train 1] epoch   5 loss 0.6315 train 0.6875 val 0.5500
+    [split 55 train 1] epoch   6 loss 0.6104 train 0.7688 val 0.5625
+    [split 55 train 1] epoch   7 loss 0.5795 train 0.8229 val 0.7250
+    [split 55 train 1] epoch   8 loss 0.5572 train 0.8187 val 0.8375
+    [split 55 train 1] epoch   9 loss 0.4838 train 0.8688 val 0.5875
+    [split 55 train 1] epoch  10 loss 0.4589 train 0.8854 val 0.5000
+    [split 55 train 1] epoch  11 loss 0.4088 train 0.9229 val 0.5000
+    [split 55 train 1] epoch  12 loss 0.3698 train 0.9292 val 0.5375
+    [split 55 train 1] epoch  13 loss 0.3184 train 0.9375 val 0.7625
+    [split 55 train 1] epoch  14 loss 0.2812 train 0.9646 val 0.8000
+    [split 55 train 1] epoch  15 loss 0.2450 train 0.9604 val 0.6250
+    [split 55 train 1] epoch  16 loss 0.2143 train 0.9604 val 0.6750
+    [split 55 train 1] epoch  17 loss 0.1992 train 0.9479 val 0.9250
+    [split 55 train 1] epoch  18 loss 0.1691 train 0.9667 val 0.8750
+    [split 55 train 1] epoch  19 loss 0.1506 train 0.9729 val 0.9875
+    [split 55 train 1] epoch  20 loss 0.1372 train 0.9896 val 0.9750
+  -> training seed 1: train 98.96%  test 100.00%  (bpsk=100.00%  qpsk=100.00%)
+    [split 55 train 2] epoch   1 loss 0.7398 train 0.5062 val 0.5000
+    [split 55 train 2] epoch   2 loss 0.6857 train 0.5396 val 0.5000
+    [split 55 train 2] epoch   3 loss 0.6484 train 0.6375 val 0.5000
+    [split 55 train 2] epoch   4 loss 0.6299 train 0.6646 val 0.6250
+    [split 55 train 2] epoch   5 loss 0.5921 train 0.7750 val 0.5000
+    [split 55 train 2] epoch   6 loss 0.5554 train 0.7937 val 0.8375
+    [split 55 train 2] epoch   7 loss 0.5212 train 0.8333 val 0.8000
+    [split 55 train 2] epoch   8 loss 0.4789 train 0.8771 val 0.5250
+    [split 55 train 2] epoch   9 loss 0.4343 train 0.8917 val 0.6375
+    [split 55 train 2] epoch  10 loss 0.3845 train 0.9271 val 0.6000
+    [split 55 train 2] epoch  11 loss 0.3393 train 0.9396 val 0.7750
+    [split 55 train 2] epoch  12 loss 0.3147 train 0.9375 val 0.6000
+    [split 55 train 2] epoch  13 loss 0.2527 train 0.9812 val 0.6500
+    [split 55 train 2] epoch  14 loss 0.2278 train 0.9646 val 0.9125
+    [split 55 train 2] epoch  15 loss 0.2032 train 0.9708 val 0.9375
+    [split 55 train 2] epoch  16 loss 0.1703 train 0.9729 val 0.9500
+    [split 55 train 2] epoch  17 loss 0.1458 train 0.9875 val 0.9250
+    [split 55 train 2] epoch  18 loss 0.1417 train 0.9833 val 0.9750
+    [split 55 train 2] epoch  19 loss 0.1402 train 0.9833 val 0.9750
+    [split 55 train 2] epoch  20 loss 0.1158 train 0.9812 val 0.9875
+  -> training seed 2: train 98.12%  test 91.25%  (bpsk=100.00%  qpsk=82.50%)
 
 ====================================================================
-SONUÇ TABLOSU — test doğruluğu
+RESULT TABLE - test accuracy
 ====================================================================
-bölme \ eğitim | seed  0 | seed  1 | seed  2 |  ort.  |  std
-------------------------------------------------------------
-    seed  11    |  95.00% | 100.00% | 100.00% | 98.33% |  2.89%
-    seed  22    | 100.00% | 100.00% | 100.00% | 100.00% |  0.00%
-    seed  33    |  97.50% | 100.00% |  98.75% | 98.75% |  1.25%
-    seed  44    | 100.00% | 100.00% |  93.75% | 97.92% |  3.61%
-    seed  55    | 100.00% | 100.00% |  91.25% | 97.08% |  5.05%
-------------------------------------------------------------
+split \ train | seed  0 | seed  1 | seed  2 |  mean  |  std
+-----------------------------------------------------------
+   seed  11    |  95.00% | 100.00% | 100.00% | 98.33% |  2.89%
+   seed  22    | 100.00% | 100.00% | 100.00% | 100.00% |  0.00%
+   seed  33    |  97.50% | 100.00% |  98.75% | 98.75% |  1.25%
+   seed  44    | 100.00% | 100.00% |  93.75% | 97.92% |  3.61%
+   seed  55    | 100.00% | 100.00% |  91.25% | 97.08% |  5.05%
+-----------------------------------------------------------
 
-tüm koşular          : ortalama 98.42%  std 2.81%  min 91.25%  maks 100.00%
-bölme tohumları arası: ortalama 98.42% ± 1.08%  (her bölmenin 3 eğitim tohumu ortalaması)
-eğitim tohumları arası: sabit bölmede ortalama std 2.56%  (en büyük 5.05%)
-baskın saçılma kaynağı: EĞİTİM tohumu
-ofset-etiket bağımsızlığı: tüm bölme tohumları ve split'lerde maks sapma 0.000 (tam bağımsız)
+all runs            : mean 98.42%  std 2.81%  min 91.25%  max 100.00%
+across split seeds  : mean 98.42% ± 1.08%  (each split's mean over 3 training seeds)
+across training seeds: mean std 2.56% at a fixed split  (largest 5.05%)
+dominant source of spread: the TRAINING seed
+offset-label independence: max deviation across every split seed and split 0.000 (fully independent)

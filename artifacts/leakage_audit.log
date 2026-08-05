@@ -1,54 +1,55 @@
-1) KAYIT AYRIKLIĞI
-   toplam kayıt: 16
-   birden fazla split'te olan: YOK
+1) RECORDING DISJOINTNESS
+   recordings: 16
+   in more than one split: NONE
 
-2) PENCERE İKİZLİĞİ (kosinüs benzerliği, mutlak)
-   val vs train : maks 0.8981  ortalama 0.5630  ikiz (>0.999): 0
-   test vs train : maks 0.8672  ortalama 0.5631  ikiz (>0.999): 0
-   train içi (örtüşen komşu pencereler): maks 0.9027
-   not: taban benzerlik yüksektir çünkü her pencere aynı +100 kHz referans
-        tonunu içerir; sızıntının imzası ~1.0 benzerlik ve ikiz sayısı > 0'dır.
+2) WINDOW TWINNING (absolute cosine similarity)
+   val vs train : max 0.8981  mean 0.5630  twins (>0.999): 0
+   test vs train : max 0.8672  mean 0.5631  twins (>0.999): 0
+   within train (overlapping neighbours): max 0.9027
+   note: the baseline is high because every window carries the same +100 kHz
+         reference tone; leakage shows up as ~1.0 similarity and twins > 0.
 
-3) SINIF x TAŞIYICI OFSET
-    train (12 kayıt)
-           -280k     -180k     +180k     +280k    toplam
+3) CLASS x CARRIER OFFSET
+    train (12 recordings)
+           -280k     -180k     +180k     +280k     total
       bpsk           1         2         2         1         6
       qpsk           1         2         2         1         6
-      -> BAĞIMSIZ
-    val (2 kayıt)
-           +280k    toplam
+      -> INDEPENDENT
+    val (2 recordings)
+           +280k     total
       bpsk           1         1
       qpsk           1         1
-      -> BAĞIMSIZ
-    test (2 kayıt)
-           -280k    toplam
+      -> INDEPENDENT
+    test (2 recordings)
+           -280k     total
       bpsk           1         1
       qpsk           1         1
-      -> BAĞIMSIZ
+      -> INDEPENDENT
 
-4) SINIF x BURST BAŞLANGICI
-    train (12 kayıt)
-            1024      3072      5120      7168    toplam
+4) CLASS x BURST START
+    train (12 recordings)
+            1024      3072      5120      7168     total
       bpsk           1         2         2         1         6
       qpsk           2         1         2         1         6
-      -> BAĞIMLI (sapma 0.50)
-    val (2 kayıt)
-            7168    toplam
+      -> DEPENDENT (dev 0.50)
+    val (2 recordings)
+            7168     total
       bpsk           1         1
       qpsk           1         1
-      -> BAĞIMSIZ
-    test (2 kayıt)
-            1024      3072    toplam
+      -> INDEPENDENT
+    test (2 recordings)
+            1024      3072     total
       bpsk           1         0         1
       qpsk           0         1         1
-      -> BAĞIMLI (sapma 0.50)
+      -> DEPENDENT (dev 0.50)
 
-ÖZET
-   kayıt sızıntısı          : YOK
-   ofset bağımsızlığı       : tam
-   burst konumu bağımsızlığı: sapma 0.50
+SUMMARY
+   recording leakage        : NONE
+   offset independence      : full
+   burst position independence: deviation 0.50
 
-   Uyarı: sınıf başına tek kayıt içeren split'lerde (val/test) hiçbir
-   kayıt-düzeyi özniteliğin bağımsızlığı GÖSTERİLEMEZ — iki kaydı ayıran
-   her alan sınıfları da 'ayırmış' görünür. n=2'de kontenjans tablosu
-   dejenere olur; buradaki sapma sızıntı kanıtı değildir.
+   Caveat: in splits holding a single recording per class (val/test) the
+   independence of NO recording-level attribute can be demonstrated - any
+   field that differs between the two recordings also appears to 'separate'
+   the classes. At n=2 the contingency table is degenerate, and a deviation
+   there is not evidence of leakage.

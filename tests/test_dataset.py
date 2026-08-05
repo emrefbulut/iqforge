@@ -1,4 +1,4 @@
-"""iqforge.dataset testleri. torch kurulu değilse atlanır."""
+"""Tests for iqforge.dataset. Skipped when torch is not installed."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-torch = pytest.importorskip("torch", reason="IQForgeDataset için torch gerekli")
+torch = pytest.importorskip("torch", reason="IQForgeDataset needs torch")
 
 from iqforge.dataset import IQForgeDataset  # noqa: E402
 from iqforge.io import IQForgeError  # noqa: E402
@@ -23,7 +23,7 @@ def _make_dataset(
     shard_max_bytes: int | None = None,
     window: int = 16,
 ) -> Path:
-    """Elle küçük bir veri seti kurar; satır i'nin ilk örneği i olur."""
+    """Build a tiny dataset by hand; row i has i as its first sample."""
     splits: dict[str, dict] = {}
     for split, rows in (("train", train_rows), ("val", 0), ("test", test_rows)):
         writer = (
@@ -54,7 +54,7 @@ def _make_dataset(
 
 
 def test_length_and_labels_follow_the_manifest(tmp_path: Path) -> None:
-    """Uzunluk ve etiketler manifest ile birebir olmalı."""
+    """Length and labels match the manifest exactly."""
     _make_dataset(tmp_path)
     data = IQForgeDataset(tmp_path, split="train")
 
@@ -65,7 +65,7 @@ def test_length_and_labels_follow_the_manifest(tmp_path: Path) -> None:
 
 
 def test_item_is_a_float32_tensor_of_the_right_shape(tmp_path: Path) -> None:
-    """`x` `(2, window)` float32 tensör olmalı (SPEC §5.8)."""
+    """`x` is a `(2, window)` float32 tensor (SPEC §5.8)."""
     _make_dataset(tmp_path, window=32)
     x, y = IQForgeDataset(tmp_path, split="train")[0]
 
@@ -76,7 +76,7 @@ def test_item_is_a_float32_tensor_of_the_right_shape(tmp_path: Path) -> None:
 
 
 def test_rows_are_returned_in_manifest_order_across_shards(tmp_path: Path) -> None:
-    """Birden fazla shard'a bölünmüş veri sırayı korumalı."""
+    """Data spread over several shards keeps its order."""
     _make_dataset(
         tmp_path, train_rows=7, shard_max_bytes=np.zeros((1, 2, 16), np.float32).nbytes * 2
     )
@@ -87,7 +87,7 @@ def test_rows_are_returned_in_manifest_order_across_shards(tmp_path: Path) -> No
 
 
 def test_negative_and_out_of_range_indices(tmp_path: Path) -> None:
-    """Negatif indis sondan saymalı, aralık dışı indis hata vermeli."""
+    """Negative indices count from the end; out-of-range indices raise."""
     _make_dataset(tmp_path, train_rows=4)
     data = IQForgeDataset(tmp_path, split="train")
 
@@ -97,7 +97,7 @@ def test_negative_and_out_of_range_indices(tmp_path: Path) -> None:
 
 
 def test_empty_split_is_rejected_with_a_hint(tmp_path: Path) -> None:
-    """Boş split sessizce sıfır uzunluk dönmemeli, ne yapılacağını söylemeli."""
+    """An empty split must not silently be length zero; it says what to do."""
     _make_dataset(tmp_path)
     with pytest.raises(IQForgeError) as exc:
         IQForgeDataset(tmp_path, split="val")
@@ -105,27 +105,27 @@ def test_empty_split_is_rejected_with_a_hint(tmp_path: Path) -> None:
 
 
 def test_unknown_split_lists_the_valid_ones(tmp_path: Path) -> None:
-    """Geçersiz split adı desteklenenleri listelemeli."""
+    """An invalid split name lists the supported ones."""
     _make_dataset(tmp_path)
     with pytest.raises(IQForgeError) as exc:
-        IQForgeDataset(tmp_path, split="deneme")
+        IQForgeDataset(tmp_path, split="nope")
     assert "train" in str(exc.value) and "test" in str(exc.value)
 
 
 def test_label_count_mismatch_is_detected(tmp_path: Path) -> None:
-    """Shard satır sayısı ile etiket sayısı uyuşmazsa sessizce devam edilmemeli."""
+    """A mismatch between shard rows and label count must not pass silently."""
     _make_dataset(tmp_path, train_rows=4)
     path = tmp_path / "manifest.json"
     manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest["splits"]["train"]["labels"] = [0, 1, 0]
     path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(IQForgeError, match="bozuk"):
+    with pytest.raises(IQForgeError, match="is corrupt"):
         IQForgeDataset(tmp_path, split="train")
 
 
 def test_works_with_a_torch_dataloader(tmp_path: Path) -> None:
-    """Standart DataLoader ile batch'lenebilmeli."""
+    """It batches through a standard DataLoader."""
     from torch.utils.data import DataLoader
 
     _make_dataset(tmp_path, train_rows=6, window=8)
@@ -137,7 +137,7 @@ def test_works_with_a_torch_dataloader(tmp_path: Path) -> None:
 
 
 def test_shards_are_memory_mapped_not_loaded(tmp_path: Path) -> None:
-    """Shard'lar memmap ile açılmalı; veri seti belleğe kopyalanmamalı."""
+    """Shards open as memmaps; the dataset is never copied into memory."""
     _make_dataset(tmp_path, train_rows=4)
     data = IQForgeDataset(tmp_path, split="train")
     data[0]

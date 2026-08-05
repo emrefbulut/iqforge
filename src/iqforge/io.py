@@ -1,7 +1,7 @@
-"""SigMF kayıtlarının okunması ve veri tipi dönüşümleri.
+"""Reading SigMF recordings and converting sample datatypes.
 
-Metadata ayrıştırması `sigmf` (sigmf-python) kütüphanesine bırakılır; bu modül
-yalnızca ham örnek verisini `complex64` olarak, bellek dostu biçimde sunar.
+Metadata parsing is delegated to the `sigmf` (sigmf-python) library; this module
+only exposes the raw samples as `complex64` in a memory-friendly way.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from sigmf import SigMFFile
 
-#: Desteklenen `core:datatype` değerleri -> (numpy dtype, tam ölçek böleni)
+#: Supported `core:datatype` values -> (numpy dtype, full-scale divisor)
 SUPPORTED_DATATYPES: dict[str, tuple[str, float]] = {
     "cf32_le": ("<f4", 1.0),
     "ci16_le": ("<i2", 32768.0),
@@ -28,22 +28,22 @@ DATA_EXT = ".sigmf-data"
 
 
 class IQForgeError(Exception):
-    """iqforge'in kullanıcıya gösterilebilir hataları."""
+    """An error meant to be shown to the user."""
 
 
 @dataclass(frozen=True)
 class Annotation:
-    """Tek bir SigMF annotation kaydı.
+    """A single SigMF annotation.
 
     Attributes:
-        sample_start: Annotation'ın başladığı örnek indisi.
-        sample_count: Annotation'ın kapsadığı örnek sayısı.
-        label: `core:label` alanı; yoksa None.
-        freq_lower_edge: Alt frekans sınırı (Hz); yoksa None.
-        freq_upper_edge: Üst frekans sınırı (Hz); yoksa None.
-        description: `core:description` alanı; yoksa None.
-        raw: Annotation'ın ham SigMF sözlüğü. Yukarıda ayrıştırılmayan alanlara
-            (uzantı anahtarları dahil) erişmek için; `--balance-by` bunu kullanır.
+        sample_start: Sample index where the annotation begins.
+        sample_count: Number of samples the annotation spans.
+        label: The `core:label` field, or None.
+        freq_lower_edge: Lower frequency edge in Hz, or None.
+        freq_upper_edge: Upper frequency edge in Hz, or None.
+        description: The `core:description` field, or None.
+        raw: The annotation's raw SigMF dictionary. Gives access to fields not
+            parsed above, including extension keys; `--balance-by` uses this.
     """
 
     sample_start: int
@@ -56,16 +56,16 @@ class Annotation:
 
     @property
     def sample_end(self) -> int:
-        """Annotation'ın bittiği (dahil olmayan) örnek indisi."""
+        """Sample index just past the end of the annotation."""
         return self.sample_start + self.sample_count
 
 
 @dataclass
 class Recording:
-    """Açılmış bir SigMF kayıt çifti (`.sigmf-meta` + `.sigmf-data`).
+    """An opened SigMF recording pair (`.sigmf-meta` + `.sigmf-data`).
 
-    Örnek verisi `numpy.memmap` üzerinden tembel okunur; dosyanın tamamı
-    belleğe alınmaz.
+    Sample data is read lazily through `numpy.memmap`; the file is never loaded
+    into memory in one piece.
     """
 
     meta_path: Path
@@ -79,26 +79,25 @@ class Recording:
 
     @property
     def duration_seconds(self) -> float:
-        """Kaydın saniye cinsinden süresi."""
+        """Length of the recording in seconds."""
         return self.num_samples / self.sample_rate
 
     def read(self, start: int = 0, count: int | None = None) -> np.ndarray:
-        """Kayıttan `complex64` örnekler okur.
+        """Read `complex64` samples from the recording.
 
         Args:
-            start: Okumaya başlanacak örnek indisi.
-            count: Okunacak örnek sayısı; None ise kaydın sonuna kadar.
+            start: Sample index to start reading from.
+            count: Number of samples to read; None reads to the end.
 
         Returns:
-            `complex64` tipinde tek boyutlu dizi.
+            A one-dimensional `complex64` array.
 
         Raises:
-            IQForgeError: `start` kayıt sınırlarının dışındaysa.
+            IQForgeError: If `start` lies outside the recording.
         """
         if start < 0 or start > self.num_samples:
             raise IQForgeError(
-                f"Başlangıç indisi {start} kayıt sınırlarının dışında. "
-                f"Geçerli aralık: 0..{self.num_samples}."
+                f"Start index {start} is outside the recording. Valid range: 0..{self.num_samples}."
             )
         available = self.num_samples - start
         n = available if count is None else min(count, available)
@@ -120,7 +119,7 @@ class Recording:
 
 
 def _resolve_paths(path: str | Path) -> tuple[Path, Path]:
-    """Verilen yoldan meta ve data dosya yollarını türetir."""
+    """Derive the metadata and data file paths from the given path."""
     p = Path(path)
     if p.suffix == META_EXT:
         meta = p
@@ -131,30 +130,31 @@ def _resolve_paths(path: str | Path) -> tuple[Path, Path]:
 
     if not meta.exists():
         raise IQForgeError(
-            f"SigMF metadata dosyası bulunamadı: {meta}. "
-            f"Bir '{META_EXT}' dosyası veya uzantısız kayıt adı verin."
+            f"SigMF metadata file not found: {meta}. "
+            f"Pass a '{META_EXT}' file or a recording name without an extension."
         )
     data = meta.with_suffix(DATA_EXT)
     if not data.exists():
         raise IQForgeError(
-            f"SigMF veri dosyası bulunamadı: {data}. "
-            f"'{meta.name}' ile aynı klasörde '{data.name}' bulunmalı."
+            f"SigMF data file not found: {data}. "
+            f"'{data.name}' must sit in the same directory as '{meta.name}'."
         )
     return meta, data
 
 
 def load(path: str | Path) -> Recording:
-    """Bir SigMF kaydını açar ve metadata'sını doğrular.
+    """Open a SigMF recording and validate its metadata.
 
     Args:
-        path: `.sigmf-meta` dosyası, `.sigmf-data` dosyası veya uzantısız kayıt adı.
+        path: A `.sigmf-meta` file, a `.sigmf-data` file, or a recording name
+            without an extension.
 
     Returns:
-        Açılmış `Recording`.
+        The opened `Recording`.
 
     Raises:
-        IQForgeError: Dosya yoksa, veri tipi desteklenmiyorsa veya zorunlu
-            metadata alanları eksikse.
+        IQForgeError: If a file is missing, the datatype is unsupported, or a
+            required metadata field is absent.
     """
     meta_path, data_path = _resolve_paths(path)
 
@@ -162,37 +162,35 @@ def load(path: str | Path) -> Recording:
         raw = json.loads(meta_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         raise IQForgeError(
-            f"'{meta_path.name}' geçerli JSON değil: {exc}. "
-            "SigMF metadata dosyası UTF-8 kodlu bir JSON nesnesi olmalı."
+            f"'{meta_path.name}' is not valid JSON: {exc}. "
+            "A SigMF metadata file must be a UTF-8 encoded JSON object."
         ) from exc
 
-    # Şema doğrulaması sigmf kütüphanesine bırakılır; örnek verisini bu modül
-    # memmap ile kendi okur, bu yüzden veri dosyası kütüphaneye bağlanmaz.
+    # Schema validation is left to the sigmf library. This module reads the
+    # samples itself via memmap, so the data file is never bound to the library.
     try:
         handle = SigMFFile(metadata=raw)
-    except Exception as exc:  # sigmf çeşitli hata tipleri fırlatabilir
-        raise IQForgeError(f"SigMF metadata okunamadı ({meta_path}): {exc}") from exc
+    except Exception as exc:  # sigmf raises several different error types
+        raise IQForgeError(f"Could not read SigMF metadata ({meta_path}): {exc}") from exc
 
     global_info = dict(handle.get_global_info())
 
     datatype = global_info.get("core:datatype")
     if datatype is None:
         raise IQForgeError(
-            f"'{meta_path.name}' içinde zorunlu 'core:datatype' alanı yok. "
-            f"Desteklenenler: {', '.join(SUPPORTED_DATATYPES)}."
+            f"'{meta_path.name}' has no required 'core:datatype' field. "
+            f"Supported: {', '.join(SUPPORTED_DATATYPES)}."
         )
     if datatype not in SUPPORTED_DATATYPES:
         raise IQForgeError(
-            f"Desteklenmeyen veri tipi '{datatype}'. "
-            f"Desteklenenler: {', '.join(SUPPORTED_DATATYPES)}."
+            f"Unsupported datatype '{datatype}'. Supported: {', '.join(SUPPORTED_DATATYPES)}."
         )
 
     sample_rate = global_info.get("core:sample_rate")
     if sample_rate is None:
         raise IQForgeError(
-            f"'{meta_path.name}' içinde 'core:sample_rate' yok. "
-            "Örnekleme hızı olmadan zaman/frekans ekseni hesaplanamaz; "
-            "metadata'ya bu alanı ekleyin."
+            f"'{meta_path.name}' has no 'core:sample_rate'. Without a sample rate the "
+            "time and frequency axes cannot be computed; add the field to the metadata."
         )
 
     np_dtype, _ = SUPPORTED_DATATYPES[datatype]
@@ -200,8 +198,8 @@ def load(path: str | Path) -> Recording:
     file_bytes = data_path.stat().st_size
     if file_bytes % bytes_per_sample != 0:
         raise IQForgeError(
-            f"'{data_path.name}' boyutu ({file_bytes} bayt) '{datatype}' için örnek "
-            f"başına {bytes_per_sample} bayta tam bölünmüyor. Dosya bozuk olabilir."
+            f"The size of '{data_path.name}' ({file_bytes} bytes) is not a whole multiple "
+            f"of {bytes_per_sample} bytes per sample for '{datatype}'. The file may be corrupt."
         )
     num_samples = file_bytes // bytes_per_sample
 

@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
-# iqforge tanıtım kaydı için komut dizisi.
+# Command sequence for the iqforge demo recording.
 #
-# asciinema ile kaydedilmek üzere yazılmıştır; kayıt alma talimatları
-# docs/demo.md içindedir. Script kesme istemez, baştan sona kendi akar.
+# Written to be captured with asciinema; the recording instructions live in
+# docs/demo.md. The script needs no interaction, it runs start to finish.
 #
-# Idempotent: her çalıştırmada çıktı klasörlerini baştan siler, böylece
-# kayıt tekrar alındığında ekranda "klasör zaten var" gibi gürültü çıkmaz.
+# Idempotent: output directories are removed at the start of every run, so a
+# re-recording never shows "directory already exists" noise.
 
 set -uo pipefail
 
-# Terminal genişliği sabit: rich COLUMNS'u okur, böylece tablolar ve
-# spektrogram kaydın genişliğinden bağımsız olarak hep aynı görünür.
+# Fixed terminal width: rich reads COLUMNS, so the tables and the spectrogram
+# always look the same regardless of the recording width.
 export COLUMNS=100
 export LINES=34
 
-# Spektrogram yarım blok karakteri (U+2580) ve tablolar kutu çizim karakterleri
-# kullanır. Çıktı bir dosyaya yönlendirildiğinde Python varsayılan olarak yerel
-# kod sayfasına düşer ve bu karakterler kaybolur; UTF-8'i açıkça zorla.
+# The spectrogram uses the upper half block (U+2580) and the tables use box
+# drawing characters. When output is redirected to a file Python falls back to
+# the local code page and those characters are lost; force UTF-8.
 export PYTHONIOENCODING=utf-8
 
 DATASET_DIR="${DATASET_DIR:-/tmp/ds}"
 SINGLE_DIR="${SINGLE_DIR:-/tmp/ds-single}"
 
-# Çalıştırıcıyı hızdan yavaşa doğru seç. `uv run` her çağrıda ortamı yeniden
-# çözdüğü için komut başına ~2 saniye ekler; altı komutta bu 12 saniye eder ve
-# kaydı gereksiz uzatır. Doğrudan binary varsa onu kullan.
+# Pick the runner fastest first. `uv run` re-resolves the environment on every
+# call, adding about 2 seconds per command; across six commands that is 12
+# seconds of needless recording. Use the binary directly when there is one.
 if command -v iqforge >/dev/null 2>&1; then
     IQ=(iqforge)
 elif [ -x .venv/bin/iqforge ]; then
@@ -37,7 +37,7 @@ fi
 
 rm -rf "$DATASET_DIR" "$SINGLE_DIR"
 
-# Komutu ekranda gösterip çalıştırır, ardından verilen kadar duraklar.
+# Echo the command, run it, then pause for the given number of seconds.
 run() {
     local pause="$1"
     shift
@@ -46,25 +46,26 @@ run() {
     sleep "$pause"
 }
 
-# 1. Kayıtta ne var?
+# 1. What is in the recording?
 run 1.5 info examples/bpsk_01.sigmf-meta
 
-# 2. Sinyale bak. Spektrogramın okunması için daha uzun duraklama.
+# 2. Look at the signal. Longer pause so the spectrogram can be read.
 run 4 inspect examples/bpsk_01.sigmf-meta
 
-# 3. Pencerele, etiketle, böl, yaz.
+# 3. Window, label, split, write.
 run 1.5 build examples/ -o "$DATASET_DIR" --balance-by core:freq_lower_edge
 
-# 4. Ne kurduk?
+# 4. What did we just build?
 run 2.5 stats "$DATASET_DIR"
 
-# 5. Veri seti gerçekten eğitilebilir mi?
+# 5. Is the dataset actually trainable?
 run 2 train "$DATASET_DIR" --epochs 20
 
-# 6. Asıl mesele: yapamayacağı şeyi sessizce yapmıyor.
-#    Tek kayıtla kayıt bazlı bölme mümkün değil, `build` hata verip duruyor.
-printf '\n\033[1;33m# Tek kayıtla kayıt bazlı bölme yapılamaz.\033[0m\n'
-printf '\033[1;33m# iqforge sessizce pencere bazlı bölmeye DÜŞMEZ, durur:\033[0m\n'
+# 6. The point: it does not quietly do what it cannot do.
+#    Recording-level splitting is impossible with one recording, so `build`
+#    stops with an error.
+printf '\n\033[1;33m# Recording-level splitting is impossible with one recording.\033[0m\n'
+printf '\033[1;33m# iqforge does NOT fall back to window-level splitting - it stops:\033[0m\n'
 run 3 build examples/bpsk_01.sigmf-meta -o "$SINGLE_DIR" || true
 
 rm -rf "$SINGLE_DIR"
