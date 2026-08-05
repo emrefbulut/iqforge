@@ -3,6 +3,12 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/emrefbulut/iqforge/actions/workflows/ci.yml"><img src="https://github.com/emrefbulut/iqforge/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+">
+</p>
+
+<p align="center">
   <img src="docs/demo.gif" alt="iqforge demo: inspect a capture, build a dataset, train a baseline" width="100%">
 </p>
 
@@ -91,6 +97,11 @@ files, and which recording landed in which split. Same seed, same bytes.
 
 This is the part that matters.
 
+<p align="center">
+  <img src="docs/linkedin/split_card.png" width="720"
+       alt="The same recording split two ways. Above, a colour bar assigns individual windows to train, validation and test at random, producing a scattered stripe. Below, every window of a recording carries one colour, so no recording is divided between splits.">
+</p>
+
 Windows from the same recording always land in the **same** split. Never train here
 and test there. Splitting is stratified by class at the *recording* level, not the
 window level.
@@ -130,14 +141,17 @@ visible whether or not you asked for balancing.
 
 ## Roadmap
 
+See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
+
 - [x] SigMF reading, metadata inspection
 - [x] Terminal spectrogram
 - [x] Windowing, labelling, recording-level splitting, sharded storage
 - [x] `torch.utils.data.Dataset` + baseline classifier
 - [x] Packaging (wheel + sdist), GitHub Actions CI
-- [ ] PyPI release
-- [ ] Live capture from RTL-SDR / HackRF / PlutoSDR
-- [ ] Kitty and iTerm graphics protocols for the inspector
+- [ ] PyPI release (`0.1.0`)
+- [ ] Leakage measurement (recording-level vs window-level)
+- [ ] Real SigMF verification (public files, then hardware)
+- [ ] Live capture / richer inspector — later, see ROADMAP.md
 
 ## How this relates to other tools
 
