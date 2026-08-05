@@ -5,7 +5,7 @@
 | File | Size | Shows |
 |---|---|---|
 | `linkedin.png` | 1200×627 | Spectrogram fracturing into windows. Used for the first post. |
-| `split_card.png` | 1200×1200 | Random window split vs recording-level split, side by side. |
+| `../split_card.png` | 1200×1200 | Random window split vs recording-level split, side by side. Also the diagram in the README. |
 
 `split_card.png` is the one to use for a post about the split guarantee: it draws
 the claim rather than illustrating the domain. A reader who never opens the repo
@@ -19,7 +19,7 @@ Regenerate with:
 
 ```bash
 uv run python docs/linkedin/make_linkedin.py     # linkedin.png
-uv run python docs/linkedin/make_split_card.py   # split_card.png
+uv run python docs/make_split_card.py             # ../split_card.png
 ```
 
 ---

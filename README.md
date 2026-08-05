@@ -98,7 +98,7 @@ files, and which recording landed in which split. Same seed, same bytes.
 This is the part that matters.
 
 <p align="center">
-  <img src="docs/linkedin/split_card.png" width="720"
+  <img src="docs/split_card.png" width="720"
        alt="The same recording split two ways. Above, a colour bar assigns individual windows to train, validation and test at random, producing a scattered stripe. Below, every window of a recording carries one colour, so no recording is divided between splits.">
 </p>
 
