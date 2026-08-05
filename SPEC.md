@@ -45,6 +45,22 @@ Mevcut ekosistemle (IQEngine, GNU Radio, TorchSig) uyumluluk bu projenin en
 
 Bu maddelerden birini yapmak cazip gelirse yapma. Kapsam dışı.
 
+**`scripts/` bu listeye tabi değildir.** Oradaki araçlar geliştirme
+araçlarıdır: paketlenen bir özellik değil, projeyi üretmek ve doğrulamak için
+kullanılan yardımcılardır. Wheel'e girmezler (`[tool.hatch.build.targets.wheel]`
+yalnızca `src/iqforge` paketler), CLI'dan erişilemezler ve kullanıcının
+kurulumunda bulunmazlar.
+
+Bu ayrım özellikle `scripts/make_example.py` için önemli: sentetik sinyal
+üretiyor, yani yukarıdaki listede yasaklanan işi yapıyor. Yasak, aracın
+**kullanıcıya sunduğu** yetenekler içindir — iqforge sentetik veri üretmez,
+mevcut kayıtları işler. Örnek kayıtlar ise §7'nin gerektirdiği test verisidir
+ve depoya bir kez üretilip sabitlenir.
+
+Aynı gerekçe `scripts/run_seed_grid.py` için de geçerli: "eğitim döngüsü ve
+hyperparameter arama" kapsam dışıdır, ama Faz 4 sonuçlarını raporlayan bir
+ölçüm scripti yazmak kapsam dışı değildir.
+
 ---
 
 ## 3. Teknoloji seçimleri
