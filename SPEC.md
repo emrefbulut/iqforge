@@ -509,9 +509,12 @@ GitHub Actions CI (lint + test, Python 3.11 ve 3.12).
 **Doğrulama:**
 ```
 uv build
-pipx install dist/iqforge-0.1.0-py3-none-any.whl
-iqforge info examples/sample.sigmf-meta
+uv tool install --from dist/iqforge-0.1.0-py3-none-any.whl iqforge
+iqforge info examples/bpsk_01.sigmf-meta
 ```
+(`uv tool install` yerine `pipx install dist/iqforge-0.1.0-py3-none-any.whl`
+de olur; ikisi de wheel'i izole bir ortama kurup komutu PATH'e koyar. Depo
+zaten `uv` kullandığı için doğrulama `uv tool` ile yapılmıştır.)
 Temiz bir ortamda kurulup çalışmalı.
 
 ---
