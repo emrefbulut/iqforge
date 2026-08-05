@@ -1,63 +1,29 @@
-# LinkedIn post — iqforge v0.1.0 alpha
+# LinkedIn post — iqforge
 
-Copy the text below. Attach `docs/linkedin/linkedin.png` (or export from `linkedin.svg`).
-
----
-
-**Post text (recommended):**
-
-I built **iqforge** — a CLI that turns real SDR captures (SigMF) into PyTorch-ready datasets you can actually trust.
-
-The gap in RF/ML today:
-→ TorchSig generates synthetic data
-→ IQEngine inspects recordings in the browser
-→ But the step between "I have a capture" and "I can train on it" is where things quietly go wrong
-
-Window your signal randomly and neighbouring windows land in both train and test. Accuracy looks great. The model gets worse. Nothing warns you.
-
-**iqforge** makes the dangerous decisions explicit:
-• Recording-level train/val/test splits (no window leakage)
-• Refuses to run instead of silently falling back to a broken split
-• `--balance-by` to spread nuisance variables (carrier freq, hardware) across splits
-• SigMF-native: cf32_le, ci16_le, ci8 with memory-mapped I/O
-
-```bash
-iqforge info    capture.sigmf-meta
-iqforge inspect capture.sigmf-meta
-iqforge build   recordings/ -o dataset/ --balance-by core:freq_lower_edge
-iqforge stats   dataset/
-iqforge train   dataset/ --epochs 20
-```
-
-Ships with 16 example recordings — no hardware needed to try it.
-
-Open source (MIT): https://github.com/emrefbulut/iqforge
-
-#SoftwareDefinedRadio #MachineLearning #PyTorch #SignalProcessing #OpenSource #RF #SigMF #Python
+Attach `docs/linkedin/linkedin.png`.
 
 ---
 
-**Short variant (if character limit matters):**
+**Post text:**
 
-New project: **iqforge** — turn SigMF SDR captures into leak-safe PyTorch datasets.
+I am releasing **iqforge**, an open-source CLI that converts SigMF SDR recordings into labelled PyTorch datasets.
 
-Recording-level splits. No silent window leakage. Errors instead of inflated accuracy.
+Most RF/ML tooling either generates synthetic data or visualises captures. The step from a real recording to a trustworthy train/val/test set is still easy to get wrong: window-level splits leak neighbouring samples across splits and inflate reported accuracy without warning.
 
-Open source: https://github.com/emrefbulut/iqforge
+iqforge addresses this directly. Splits are performed at the **recording level**, not the window level. When a valid stratified split is impossible, the tool fails with an explicit error rather than falling back silently. Optional `--balance-by` spreads nuisance variables such as carrier frequency across splits while preserving class stratification.
 
-#SDR #MachineLearning #PyTorch #OpenSource
+Built on SigMF (`cf32_le`, `ci16_le`, `ci8`), with memory-mapped I/O, terminal inspection, and an optional PyTorch Dataset interface.
+
+Repository: https://github.com/emrefbulut/iqforge
+
+#SoftwareDefinedRadio #MachineLearning #PyTorch #SignalProcessing #SigMF #OpenSource
 
 ---
 
-**First comment (optional, paste after posting):**
-
-Clone and run in ~2 minutes:
+**First comment (optional):**
 
 ```
 git clone https://github.com/emrefbulut/iqforge
-cd iqforge
-uv sync --extra torch
+cd iqforge && uv sync --extra torch
 uv run iqforge build examples/ -o dataset/ --balance-by core:freq_lower_edge
 ```
-
-PyPI coming soon — for now install from source.
