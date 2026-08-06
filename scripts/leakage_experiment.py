@@ -45,6 +45,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -61,13 +62,16 @@ from iqforge.training import train_baseline  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS = ROOT / "artifacts"
 
-#: Noise levels to sweep, as the standard deviation per quadrature. The first
-#: is what `examples/` uses; the rest make the task progressively harder.
-#: Resolution is concentrated between the ceiling and the floor: at 0.02 the
-#: honest split already scores ~100% so nothing can inflate, and by 0.25 it is
-#: at chance so there is nothing left to inflate either. Leakage can only show
-#: up in between, which is where the extra levels go.
-NOISE_LEVELS = (0.02, 0.05, 0.08, 0.11, 0.15, 0.25)
+#: Noise levels to sweep, as the standard deviation per quadrature.
+#:
+#: Every level here is in the band where the answer can vary. A first run swept
+#: 0.02 to 0.25 and measured both arms at 99-100% for 0.02, 0.05 and 0.08 alike:
+#: with the honest split already at the ceiling, a leaky one cannot beat it and
+#: half the compute bought a row of zeros. 0.08 is kept as the ceiling anchor --
+#: the curve needs one end where the gap is provably absent -- and the rest of
+#: the resolution goes below it, where the model starts needing the shortcut.
+#: `examples/` ships at 0.02, well inside the flat region.
+NOISE_LEVELS = (0.08, 0.11, 0.14, 0.17, 0.20, 0.25)
 
 #: Ratios and dataset size are chosen together so that every carrier offset is
 #: present in both train and test, for every split seed used below -- measured,
@@ -272,9 +276,22 @@ def train_once(dataset: Path, train_seed: int) -> tuple[float, float, int, int]:
 
 
 def run_grid(
-    noise_levels: tuple[float, ...], split_seeds: list[int], train_seeds: list[int]
+    noise_levels: tuple[float, ...],
+    split_seeds: list[int],
+    train_seeds: list[int],
+    checkpoint: Callable[[list[Run]], None] | None = None,
 ) -> list[Run]:
-    """Run the full experiment."""
+    """Run the full experiment.
+
+    Args:
+        noise_levels: Noise standard deviations to sweep.
+        split_seeds: Seeds for the recording-level split.
+        train_seeds: Seeds for weight init and batch order.
+        checkpoint: Called with the runs so far after every run. The full grid
+            takes the better part of an hour; without this, a run that is
+            interrupted at 31 of 72 leaves nothing on disk, which is exactly
+            what happened the first time.
+    """
     runs: list[Run] = []
     work = Path(tempfile.mkdtemp(prefix="iqforge-leakage-"))
     total = len(noise_levels) * len(split_seeds) * len(train_seeds) * 2
@@ -307,6 +324,8 @@ def run_grid(
                             )
                         )
                         done += 1
+                        if checkpoint is not None:
+                            checkpoint(runs)
                         rate = (time.time() - started) / done
                         print(
                             f"  [{done:3d}/{total}] snr={snr:+5.1f}dB {strategy:15s} "
@@ -353,7 +372,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.quick:
-        noise_levels = (0.02, 0.25)
+        noise_levels = (0.08, 0.25)
         split_seeds = [42]
         train_seeds = [0]
     else:
@@ -361,25 +380,29 @@ def main() -> None:
         split_seeds = [42, 7, 1234]
         train_seeds = [0, 1]
 
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    suffix = "_quick" if args.quick else ""
+    runs_path = ARTIFACTS / f"leakage_runs{suffix}.json"
+    table_path = ARTIFACTS / f"leakage_table{suffix}.md"
+
+    def checkpoint(runs: list[Run]) -> None:
+        """Persist after every run so an interruption keeps what it earned."""
+        runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
+        table_path.write_text(summarise(runs) + "\n", encoding="utf-8")
+
     print(
         f"grid: {len(noise_levels)} SNR x {len(split_seeds)} split seeds x "
         f"{len(train_seeds)} train seeds x 2 strategies "
         f"= {len(noise_levels) * len(split_seeds) * len(train_seeds) * 2} runs",
         flush=True,
     )
-    runs = run_grid(noise_levels, split_seeds, train_seeds)
+    runs = run_grid(noise_levels, split_seeds, train_seeds, checkpoint=checkpoint)
 
     table = summarise(runs)
     print()
     print(table)
-
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    suffix = "_quick" if args.quick else ""
-    (ARTIFACTS / f"leakage_runs{suffix}.json").write_text(
-        json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8"
-    )
-    (ARTIFACTS / f"leakage_table{suffix}.md").write_text(table + "\n", encoding="utf-8")
-    print(f"\nwrote artifacts/leakage_runs{suffix}.json and leakage_table{suffix}.md")
+    checkpoint(runs)
+    print(f"\nwrote {runs_path.name} and {table_path.name}")
 
 
 if __name__ == "__main__":
