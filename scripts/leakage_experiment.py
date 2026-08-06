@@ -84,6 +84,21 @@ SPLIT_RATIOS = "0.6,0.2,0.2"
 RECORDS_PER_CELL = 6
 EPOCHS = 20
 
+#: Window length held fixed for the stride sweep, so overlap is the only thing
+#: that moves.
+WINDOW = 1024
+
+#: Strides to sweep, at a fixed SNR. Overlap is the actual MECHANISM of the
+#: leak: at stride 1024 windows are disjoint and a window-level split can only
+#: put *different* samples on both sides, while at stride 128 each window shares
+#: 7/8 of its samples with its neighbour and the test set is nearly a copy of
+#: the training set. The SNR sweep shows when leakage matters; this shows why.
+STRIDES = (1024, 768, 512, 256, 128)
+
+#: Fixed noise for the stride sweep: -0.8 dB, in the band where the SNR sweep
+#: found the largest inflation, so there is room for overlap to move the number.
+STRIDE_NOISE = 0.17
+
 
 def burst_snr_db(noise_sigma: float) -> float:
     """SNR of the burst against the additive noise, in dB.
@@ -107,6 +122,8 @@ class Run:
     train_accuracy: float
     train_windows: int
     test_windows: int
+    #: None for the SNR sweep, which leaves the tool's default stride alone.
+    stride: int | None = None
 
 
 def generate_recordings(noise_sigma: float, out_dir: Path) -> None:
@@ -116,8 +133,14 @@ def generate_recordings(noise_sigma: float, out_dir: Path) -> None:
         gen.write_record(plan, gen.build_signal(plan, noise_sigma=noise_sigma), out_dir)
 
 
-def build_recording_level(records: Path, out: Path, seed: int) -> None:
+def build_recording_level(records: Path, out: Path, seed: int, stride: int | None = None) -> None:
     """Build a dataset the normal way, through the CLI.
+
+    Args:
+        records: Directory of SigMF recordings.
+        out: Dataset output directory.
+        seed: Split seed.
+        stride: Step between windows. `None` keeps the tool's default.
 
     Raises:
         RuntimeError: If iqforge warns that the nuisance variable could not be
@@ -129,22 +152,25 @@ def build_recording_level(records: Path, out: Path, seed: int) -> None:
     """
     if out.exists():
         shutil.rmtree(out)
+    argv = [
+        sys.executable,
+        "-m",
+        "iqforge",
+        "build",
+        str(records),
+        "-o",
+        str(out),
+        "--split",
+        SPLIT_RATIOS,
+        "--seed",
+        str(seed),
+        "--balance-by",
+        "core:freq_lower_edge",
+    ]
+    if stride is not None:
+        argv += ["--window", str(WINDOW), "--stride", str(stride)]
     completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "iqforge",
-            "build",
-            str(records),
-            "-o",
-            str(out),
-            "--split",
-            SPLIT_RATIOS,
-            "--seed",
-            str(seed),
-            "--balance-by",
-            "core:freq_lower_edge",
-        ],
+        argv,
         check=True,
         capture_output=True,
         text=True,
@@ -276,15 +302,18 @@ def train_once(dataset: Path, train_seed: int) -> tuple[float, float, int, int]:
 
 
 def run_grid(
-    noise_levels: tuple[float, ...],
+    cells: list[tuple[float, int | None]],
     split_seeds: list[int],
     train_seeds: list[int],
     checkpoint: Callable[[list[Run]], None] | None = None,
 ) -> list[Run]:
-    """Run the full experiment.
+    """Run the experiment over a list of cells.
 
     Args:
-        noise_levels: Noise standard deviations to sweep.
+        cells: `(noise_sigma, stride)` pairs. `stride=None` keeps the tool's
+            default, which is what the SNR sweep uses; the stride sweep holds
+            the noise fixed and varies the stride instead. One loop serves both
+            so the two sweeps cannot drift apart in how they build or train.
         split_seeds: Seeds for the recording-level split.
         train_seeds: Seeds for weight init and batch order.
         checkpoint: Called with the runs so far after every run. The full grid
@@ -294,18 +323,20 @@ def run_grid(
     """
     runs: list[Run] = []
     work = Path(tempfile.mkdtemp(prefix="iqforge-leakage-"))
-    total = len(noise_levels) * len(split_seeds) * len(train_seeds) * 2
+    total = len(cells) * len(split_seeds) * len(train_seeds) * 2
     done = 0
     started = time.time()
     try:
-        for noise in noise_levels:
+        for noise, stride in cells:
             records = work / f"records_{noise:.2f}"
-            generate_recordings(noise, records)
+            if not records.exists():
+                generate_recordings(noise, records)
             snr = burst_snr_db(noise)
+            tag = f"{noise:.2f}_{stride}"
             for split_seed in split_seeds:
-                rec_ds = work / f"rec_{noise:.2f}_{split_seed}"
-                win_ds = work / f"win_{noise:.2f}_{split_seed}"
-                build_recording_level(records, rec_ds, split_seed)
+                rec_ds = work / f"rec_{tag}_{split_seed}"
+                win_ds = work / f"win_{tag}_{split_seed}"
+                build_recording_level(records, rec_ds, split_seed, stride=stride)
                 build_window_level(rec_ds, win_ds, split_seed)
                 for strategy, dataset in (("recording-level", rec_ds), ("window-level", win_ds)):
                     for train_seed in train_seeds:
@@ -321,24 +352,70 @@ def run_grid(
                                 train_accuracy=train_acc,
                                 train_windows=n_train,
                                 test_windows=n_test,
+                                stride=stride,
                             )
                         )
                         done += 1
                         if checkpoint is not None:
                             checkpoint(runs)
                         rate = (time.time() - started) / done
+                        label = f"snr={snr:+5.1f}dB" if stride is None else f"stride={stride:4d}"
                         print(
-                            f"  [{done:3d}/{total}] snr={snr:+5.1f}dB {strategy:15s} "
+                            f"  [{done:3d}/{total}] {label} {strategy:15s} "
                             f"split={split_seed} train={train_seed}  "
                             f"test={acc:6.2%}  (~{rate * (total - done) / 60:.0f} min left)",
                             flush=True,
                         )
                 shutil.rmtree(rec_ds, ignore_errors=True)
                 shutil.rmtree(win_ds, ignore_errors=True)
-            shutil.rmtree(records, ignore_errors=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return runs
+
+
+def _sd(values: list[float]) -> float:
+    """Standard deviation, 0 for a single sample (the --quick smoke grid)."""
+    return statistics.stdev(values) if len(values) > 1 else 0.0
+
+
+def summarise_strides(runs: list[Run]) -> str:
+    """Build the stride-sweep table.
+
+    Overlap is the mechanism. At stride == window the windows are disjoint, so a
+    window-level split still separates distinct samples and there is little to
+    gain; as the stride shrinks each window shares more of itself with its
+    neighbours, until the test set is close to a copy of the training set.
+    """
+    lines = [
+        "| stride | overlap | recording-level | window-level | inflation (paired) | n |",
+        "|---|---|---|---|---|---|",
+    ]
+    for stride in sorted({r.stride for r in runs if r.stride is not None}, reverse=True):
+        at = [r for r in runs if r.stride == stride]
+        rec = [r.test_accuracy for r in at if r.strategy == "recording-level"]
+        win = [r.test_accuracy for r in at if r.strategy == "window-level"]
+        diffs = paired_differences(at)
+        if not rec or not win:
+            # Checkpointing writes this table mid-cell, before the second arm
+            # has run. Leave the row out until both sides exist.
+            continue
+        mean_diff = statistics.mean(diffs) if diffs else float("nan")
+        stderr = (statistics.stdev(diffs) / math.sqrt(len(diffs))) if len(diffs) > 1 else 0.0
+        overlap = 1.0 - stride / WINDOW
+        lines.append(
+            f"| {stride} | {overlap:.0%} | "
+            f"{statistics.mean(rec):.1%} ± {_sd(rec):.1%} | "
+            f"{statistics.mean(win):.1%} ± {_sd(win):.1%} | "
+            f"**{mean_diff * 100:+.1f} pp** ± {stderr * 100:.1f} | {len(diffs)} |"
+        )
+    lines.append("")
+    lines.append(
+        f"Window fixed at {WINDOW} samples; noise fixed at sigma={STRIDE_NOISE} "
+        f"({burst_snr_db(STRIDE_NOISE):+.1f} dB burst SNR), the region where the SNR "
+        "sweep found the largest inflation. Inflation is the mean paired difference "
+        "± its standard error."
+    )
+    return "\n".join(lines)
 
 
 def summarise(runs: list[Run]) -> str:
@@ -402,40 +479,54 @@ def paired_differences(runs: list[Run]) -> list[float]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quick", action="store_true", help="Small grid, for a smoke test")
+    parser.add_argument(
+        "--sweep",
+        choices=("snr", "stride"),
+        default="snr",
+        help="snr: vary noise at the default stride. stride: vary overlap at a fixed SNR.",
+    )
     args = parser.parse_args()
 
+    # 15 pairs per cell. A first pass used 3 x 2 = 6 and the paired standard
+    # error came out near 6 pp against an effect around 10 pp -- the direction
+    # was clear, the magnitude was not. Seed scatter is the dominant noise
+    # source in this project, so the fix is more seeds.
+    split_seeds = [42, 7, 1234, 2026, 99]
+    train_seeds = [0, 1, 2]
+
+    if args.sweep == "stride":
+        cells = [(STRIDE_NOISE, s) for s in STRIDES]
+        summary = summarise_strides
+        stem = "leakage_stride"
+    else:
+        cells = [(n, None) for n in NOISE_LEVELS]
+        summary = summarise
+        stem = "leakage"
+
     if args.quick:
-        noise_levels = (0.08, 0.25)
+        cells = cells[:2]
         split_seeds = [42]
         train_seeds = [0]
-    else:
-        noise_levels = NOISE_LEVELS
-        # 15 pairs per SNR. A first pass used 3 x 2 = 6 and the paired standard
-        # error came out near 6 pp against an effect around 10 pp -- the
-        # direction was clear, the magnitude was not. Seed scatter is the
-        # dominant noise source in this project, so the fix is more seeds.
-        split_seeds = [42, 7, 1234, 2026, 99]
-        train_seeds = [0, 1, 2]
 
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     suffix = "_quick" if args.quick else ""
-    runs_path = ARTIFACTS / f"leakage_runs{suffix}.json"
-    table_path = ARTIFACTS / f"leakage_table{suffix}.md"
+    runs_path = ARTIFACTS / f"{stem}_runs{suffix}.json"
+    table_path = ARTIFACTS / f"{stem}_table{suffix}.md"
 
     def checkpoint(runs: list[Run]) -> None:
         """Persist after every run so an interruption keeps what it earned."""
         runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
-        table_path.write_text(summarise(runs) + "\n", encoding="utf-8")
+        table_path.write_text(summary(runs) + "\n", encoding="utf-8")
 
     print(
-        f"grid: {len(noise_levels)} SNR x {len(split_seeds)} split seeds x "
+        f"{args.sweep} sweep: {len(cells)} cells x {len(split_seeds)} split seeds x "
         f"{len(train_seeds)} train seeds x 2 strategies "
-        f"= {len(noise_levels) * len(split_seeds) * len(train_seeds) * 2} runs",
+        f"= {len(cells) * len(split_seeds) * len(train_seeds) * 2} runs",
         flush=True,
     )
-    runs = run_grid(noise_levels, split_seeds, train_seeds, checkpoint=checkpoint)
+    runs = run_grid(cells, split_seeds, train_seeds, checkpoint=checkpoint)
 
-    table = summarise(runs)
+    table = summary(runs)
     print()
     print(table)
     checkpoint(runs)

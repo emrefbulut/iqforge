@@ -139,10 +139,20 @@ size — only the split assignment differs, over 15 seed pairs per point:
 | −4.1 dB | 51.4% | 59.9% | **+8.5 pp** ± 2.2 |
 
 Splitting at the window level buys you up to **13 points of accuracy that
-isn't there**. The effect disappears when the task is easy — above +3 dB both
-splits sit near the ceiling and there is nothing left to inflate — and it is
-largest exactly where you would be relying on the number: when the signal is
-marginal and a few points decide whether an approach looks viable.
+isn't there**.
+
+The curve is an inverted U, and both ends matter. Above +3 dB it flattens to
+nothing: the honest split is already at the ceiling, so there is nothing left to
+inflate. Below −2 dB it falls off again: the task is hard enough that even a
+leaky test set cannot rescue the model. The damage peaks in between — where the
+signal is marginal and a few points decide whether an approach looks viable,
+which is exactly when you would be leaning on the number.
+
+Read the shape, not the peak. Where your own data sits on this curve depends on
+your SNR, your window length and your stride; what transfers is that the
+inflation is largest precisely where the measurement matters most, and that
+benchmarking a leaky split on easy data will tell you the problem does not
+exist.
 
 Synthetic BPSK/QPSK, so read it as the shape of the problem rather than a
 constant for your data. Reproduce with
