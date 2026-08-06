@@ -199,6 +199,43 @@ the split is still valid, you just need to know what's left. `iqforge stats` pri
 the carrier offset of every recording and a per-split summary, so the skew is
 visible whether or not you asked for balancing.
 
+## Known limitations
+
+Both of these are measured, and both are consequences of decisions made on
+purpose. They are here so you can tell before you start whether `iqforge` fits
+your recording.
+
+**Labelling is time-based, so busy recordings yield few windows.** A window is
+labelled by the annotation whose sample range contains it. When several signals
+are on air at once — separate in frequency, overlapping in time — every window
+in that stretch falls inside more than one annotation, and those windows are
+dropped and counted rather than assigned to whichever annotation happened to
+come first.
+
+On a real 40 MS/s capture of cellular downlink
+(`cellular_downlink_880MHz` from the GNU Radio SigMF repository, 8 annotations),
+that leaves **293 usable windows out of 39 061 — 0.75%**. The one annotation
+that survived is the only one that does not share its time range with another.
+
+The alternative would be to pick a winner by some heuristic — narrowest band,
+strongest signal — which produces a full dataset of confidently wrong labels.
+Dropping is recoverable; a silently mislabelled dataset is not. Frequency-aware
+labelling is the real fix and is on the [roadmap](ROADMAP.md); until then, a
+recording with one signal at a time works well and a dense spectrum does not.
+
+**A datatype that lies cannot be caught.** `iqforge` derives the sample count
+from the data file's size and the declared `core:datatype`, and checks that the
+size divides evenly. That catches truncation. It cannot catch a file whose real
+sample width differs from the declared one — 64-bit complex data labelled
+`cf32_le`, for instance, reads as twice as many samples of garbage, and every
+size check passes because the arithmetic is self-consistent.
+
+This is not fixable from the metadata alone: SigMF has no independent sample-count
+field to cross-check against. It is worth knowing about because the failure is
+silent, and because at least one published dataset ships this way and documents
+it only in prose on its download page. If a recording loads with a plausible
+duration but the spectrogram is noise, suspect the datatype first.
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
