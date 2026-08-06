@@ -270,3 +270,42 @@ def test_declared_version_survives_the_sigmf_library(tmp_path: Path) -> None:
     rec = load(meta_path)
 
     assert rec.declared_version == "1.0.0"
+
+
+def test_annotation_past_the_end_is_detected(tmp_path: Path) -> None:
+    """An annotation claiming samples the file does not hold is a contradiction.
+
+    The sample count is derived from the file size, so this needs no threshold
+    and no judgement: either the annotation fits or the metadata and the data
+    disagree. It usually means a truncated data file, or metadata copied from a
+    longer capture.
+    """
+    samples = (np.arange(100) + 1j * np.arange(100)).astype(np.complex64)
+    meta_path = write_record(
+        tmp_path,
+        samples,
+        name="past_end",
+        annotations=[
+            {"core:sample_start": 0, "core:sample_count": 50, "core:label": "fits"},
+            {"core:sample_start": 90, "core:sample_count": 500, "core:label": "overruns"},
+        ],
+    )
+
+    rec = load(meta_path)
+
+    beyond = rec.annotations_beyond_end
+    assert [a.label for a in beyond] == ["overruns"]
+    assert rec.num_samples == 100
+
+
+def test_annotation_ending_exactly_at_the_end_is_not_flagged(tmp_path: Path) -> None:
+    """The boundary case is valid: sample_end == num_samples fits exactly."""
+    samples = (np.arange(100) + 1j * np.arange(100)).astype(np.complex64)
+    meta_path = write_record(
+        tmp_path,
+        samples,
+        name="exact",
+        annotations=[{"core:sample_start": 0, "core:sample_count": 100, "core:label": "whole"}],
+    )
+
+    assert load(meta_path).annotations_beyond_end == []

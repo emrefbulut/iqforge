@@ -24,6 +24,92 @@ DEFAULT_EXCLUDE_LABELS = ("ref_tone",)
 UNLABELED = "unlabeled"
 
 
+#: Annotation keys that hold structure rather than a name, so finding text in
+#: them says nothing about where a label might be hiding.
+_NON_LABEL_KEYS = frozenset(
+    {
+        "core:label",
+        "core:sample_start",
+        "core:sample_count",
+        "core:freq_lower_edge",
+        "core:freq_upper_edge",
+        "core:uuid",
+        "core:generator",
+        "core:comment",
+    }
+)
+
+
+@dataclass
+class AnnotationLabelSurvey:
+    """What the annotations look like, gathered so a failure can explain itself.
+
+    `--labels annotations` reads `core:label` and nothing else, on purpose: a
+    tool that guesses which field means "class" will eventually guess wrong and
+    silently mislabel a dataset. But when nothing matches, the user deserves to
+    know WHY rather than being told only that it did not work. Real recorders
+    disagree about where the class goes -- OmniSIG writes it to
+    `core:description` -- so the message names what was actually found.
+
+    Attributes:
+        recordings: Recordings scanned.
+        annotations: Annotations seen across them.
+        with_label: Annotations carrying a non-empty `core:label`.
+        text_fields: Other keys whose value is non-empty text, and how often.
+        examples: One sample value per such key, to make the hint concrete.
+    """
+
+    recordings: int = 0
+    annotations: int = 0
+    with_label: int = 0
+    text_fields: Counter[str] = field(default_factory=Counter)
+    examples: dict[str, str] = field(default_factory=dict)
+
+    def observe(self, rec: Recording) -> None:
+        """Fold one recording's annotations into the survey."""
+        self.recordings += 1
+        for annotation in rec.annotations:
+            self.annotations += 1
+            if annotation.label:
+                self.with_label += 1
+            for key, value in annotation.raw.items():
+                if key in _NON_LABEL_KEYS or not isinstance(value, str) or not value.strip():
+                    continue
+                self.text_fields[key] += 1
+                self.examples.setdefault(key, value.strip())
+
+    def hint(self) -> str:
+        """A sentence or three explaining what the annotations contain."""
+        if self.annotations == 0:
+            return (
+                f"Scanned {self.recordings} recording(s); none of them has any annotation. "
+                "Label from the directory name (--labels dirname) or a CSV (--labels csv)."
+            )
+        lines = [
+            f"Scanned {self.recordings} recording(s) with {self.annotations} annotation(s); "
+            f"{self.with_label} carry a non-empty 'core:label'."
+        ]
+        if self.with_label and not self.text_fields:
+            lines.append(
+                "The labels exist, so every window was dropped for another reason: check the "
+                "unmatched and ambiguous counts above, and --exclude-label."
+            )
+            return " ".join(lines)
+        if self.text_fields:
+            found = ", ".join(
+                f"'{key}' ({count}x, e.g. {self.examples[key]!r})"
+                for key, count in self.text_fields.most_common(3)
+            )
+            lines.append(f"Text was found in {found}.")
+            lines.append(
+                "iqforge labels from 'core:label' only and will not guess which other field "
+                "means 'class' -- guessing wrong mislabels a dataset silently. If one of the "
+                "fields above is your class, copy it into 'core:label', or label from the "
+                "directory name (--labels dirname) or a CSV (--labels csv)."
+            )
+        return " ".join(lines)
+
+
 @dataclass
 class LabelingStats:
     """Summary of what happened while labelling one recording.

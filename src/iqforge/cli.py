@@ -19,6 +19,7 @@ from iqforge.display import render_inspect
 from iqforge.io import META_EXT, IQForgeError, Recording, load
 from iqforge.labeling import (
     LABEL_SOURCES,
+    AnnotationLabelSurvey,
     LabelingStats,
     annotation_field_value,
     carrier_offset_hz,
@@ -195,6 +196,13 @@ def info(
         console.print(_render_annotations(rec))
     else:
         console.print("[dim]The recording has no annotations.[/]")
+
+    for annotation in rec.annotations_beyond_end:
+        err_console.print(
+            f"[yellow]warning[/] annotation {annotation.sample_start}..{annotation.sample_end} "
+            f"runs past the end of the recording ({rec.num_samples} samples). "
+            f"The metadata and the data file disagree."
+        )
 
 
 @app.command()
@@ -438,9 +446,18 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
     work: dict[str, _RecordWork] = {}
     totals = LabelingStats()
     skipped: list[str] = []
+    survey = AnnotationLabelSurvey()
 
     for meta in metas:
         rec = load(meta)
+        survey.observe(rec)
+        for annotation in rec.annotations_beyond_end:
+            console.print(
+                f"[yellow]warning[/] {escape(meta.name)}: annotation "
+                f"{annotation.sample_start}..{annotation.sample_end} runs past the end of the "
+                f"recording ({rec.num_samples} samples). The metadata and the data file "
+                f"disagree; windows in that range cannot be labelled."
+            )
         starts = window_starts(rec.num_samples, window, stride)
         if starts.size == 0:
             skipped.append(
@@ -482,10 +499,13 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
         console.print(f"[yellow]skipped[/] {escape(note)}")
     if not work:
         excluded = ", ".join(sorted(exclude)) or "(none)"
-        raise IQForgeError(
+        message = (
             "No recording produced a labelled window. "
             f"Label source '{source}', excluded labels: {excluded}."
         )
+        if source == "annotations":
+            message = f"{message}\n\n{survey.hint()}"
+        raise IQForgeError(message)
 
     record_groups: dict[str, str] | None = None
     if balance_by is not None:

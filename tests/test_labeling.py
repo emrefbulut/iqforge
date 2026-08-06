@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from iqforge.io import IQForgeError, Recording
+from iqforge.io import Annotation, IQForgeError, Recording
 from iqforge.labeling import (
     DEFAULT_EXCLUDE_LABELS,
     UNLABELED,
+    AnnotationLabelSurvey,
     annotation_field_value,
     carrier_offset_hz,
     dominant_label,
@@ -267,3 +270,53 @@ def test_exclude_label_default_is_ref_tone() -> None:
     assert resolve_exclude_labels(None) == frozenset({"ref_tone"})
     assert resolve_exclude_labels([]) == frozenset({"ref_tone"})
     assert resolve_exclude_labels(["a", "b"]) == frozenset({"a", "b"})
+
+
+def test_survey_names_the_field_that_holds_the_text() -> None:
+    """A failed annotation labelling must say what it DID find.
+
+    Recorders disagree about where the class goes -- OmniSIG writes it to
+    `core:description` -- and being told only "no labels" leaves the user
+    staring at a file that visibly has eight annotations.
+    """
+    rec = SimpleNamespace(
+        annotations=[
+            Annotation(sample_start=0, sample_count=10, raw={"core:description": "LTE"}),
+            Annotation(sample_start=10, sample_count=10, raw={"core:description": "CDMA"}),
+        ]
+    )
+    survey = AnnotationLabelSurvey()
+    survey.observe(rec)  # type: ignore[arg-type]
+
+    hint = survey.hint()
+    assert "2 annotation(s)" in hint
+    assert "0 carry a non-empty 'core:label'" in hint
+    assert "core:description" in hint
+    assert "'LTE'" in hint
+    # The behaviour must not change: the hint tells, it does not relabel.
+    assert "will not guess" in hint
+
+
+def test_survey_does_not_point_at_structural_fields() -> None:
+    """Frequency edges and sample indices are not candidate label fields."""
+    rec = SimpleNamespace(
+        annotations=[
+            Annotation(
+                sample_start=0,
+                sample_count=10,
+                raw={"core:sample_start": 0, "core:freq_lower_edge": 1.0, "core:uuid": "abc-123"},
+            )
+        ]
+    )
+    survey = AnnotationLabelSurvey()
+    survey.observe(rec)  # type: ignore[arg-type]
+
+    assert survey.text_fields == Counter()
+
+
+def test_survey_reports_no_annotations_at_all() -> None:
+    """A recording with no annotations gets a different, correct explanation."""
+    survey = AnnotationLabelSurvey()
+    survey.observe(SimpleNamespace(annotations=[]))  # type: ignore[arg-type]
+
+    assert "none of them has any annotation" in survey.hint()

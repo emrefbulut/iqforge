@@ -90,6 +90,18 @@ class Recording:
         """Length of the recording in seconds."""
         return self.num_samples / self.sample_rate
 
+    @property
+    def annotations_beyond_end(self) -> list[Annotation]:
+        """Annotations that claim samples the data file does not contain.
+
+        The sample count comes from the file size, so an annotation ending past
+        it is an unambiguous contradiction between the metadata and the data --
+        no judgement call, no threshold. Worth surfacing rather than silently
+        ignoring: it usually means the data file was truncated, or the metadata
+        belongs to a longer capture the file is an excerpt of.
+        """
+        return [a for a in self.annotations if a.sample_end > self.num_samples]
+
     def read(self, start: int = 0, count: int | None = None) -> np.ndarray:
         """Read `complex64` samples from the recording.
 
