@@ -352,18 +352,51 @@ def summarise(runs: list[Run]) -> str:
         return statistics.mean(values), spread
 
     lines = [
-        "| burst SNR | recording-level | window-level | inflation |",
-        "|---|---|---|---|",
+        "| burst SNR | recording-level | window-level | inflation (paired) | n |",
+        "|---|---|---|---|---|",
     ]
     for noise in sorted({r.noise_sigma for r in runs}, reverse=True):
         at = [r for r in runs if r.noise_sigma == noise]
         rec_mean, rec_sd = stats([r for r in at if r.strategy == "recording-level"])
         win_mean, win_sd = stats([r for r in at if r.strategy == "window-level"])
+        diffs = paired_differences(at)
+        if diffs:
+            mean_diff = statistics.mean(diffs)
+            stderr = (statistics.stdev(diffs) / math.sqrt(len(diffs))) if len(diffs) > 1 else 0.0
+            inflation = f"**{mean_diff * 100:+.1f} pp** ± {stderr * 100:.1f}"
+        else:
+            inflation = "-"
         lines.append(
             f"| {at[0].snr_db:+.1f} dB | {rec_mean:.1%} ± {rec_sd:.1%} | "
-            f"{win_mean:.1%} ± {win_sd:.1%} | **{(win_mean - rec_mean) * 100:+.1f} pp** |"
+            f"{win_mean:.1%} ± {win_sd:.1%} | {inflation} | {len(diffs)} |"
         )
+    lines.append("")
+    lines.append(
+        "Accuracy columns are mean ± standard deviation across runs. The inflation "
+        "column is the mean PAIRED difference ± its standard error: each pair is one "
+        "split seed and one training seed, so both arms saw the same recordings and "
+        "the same initialisation. Comparing the two means directly would fold in the "
+        "between-seed scatter, which is the largest source of variation here and "
+        "cancels in the pairing."
+    )
     return "\n".join(lines)
+
+
+def paired_differences(runs: list[Run]) -> list[float]:
+    """Window-level minus recording-level accuracy, per (split seed, train seed).
+
+    The design is paired by construction: for one split seed and one training
+    seed, both arms use the same recordings, the same window pool, the same
+    split sizes and the same weight initialisation. Only the assignment differs,
+    so the difference within a pair isolates the effect while the seed-to-seed
+    scatter -- which dominates everything else in this project -- cancels.
+    """
+    paired: dict[tuple[int, int], dict[str, float]] = {}
+    for run in runs:
+        paired.setdefault((run.split_seed, run.train_seed), {})[run.strategy] = run.test_accuracy
+    return [
+        arms["window-level"] - arms["recording-level"] for arms in paired.values() if len(arms) == 2
+    ]
 
 
 def main() -> None:
@@ -377,8 +410,12 @@ def main() -> None:
         train_seeds = [0]
     else:
         noise_levels = NOISE_LEVELS
-        split_seeds = [42, 7, 1234]
-        train_seeds = [0, 1]
+        # 15 pairs per SNR. A first pass used 3 x 2 = 6 and the paired standard
+        # error came out near 6 pp against an effect around 10 pp -- the
+        # direction was clear, the magnitude was not. Seed scatter is the
+        # dominant noise source in this project, so the fix is more seeds.
+        split_seeds = [42, 7, 1234, 2026, 99]
+        train_seeds = [0, 1, 2]
 
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     suffix = "_quick" if args.quick else ""
