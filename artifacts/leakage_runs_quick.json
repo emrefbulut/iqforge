@@ -1,0 +1,46 @@
+[
+  {
+    "noise_sigma": 0.02,
+    "snr_db": 17.817553746524688,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 1.0,
+    "train_accuracy": 0.9991071428571429,
+    "train_windows": 1120,
+    "test_windows": 400
+  },
+  {
+    "noise_sigma": 0.02,
+    "snr_db": 17.817553746524688,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.9975,
+    "train_accuracy": 0.9982142857142857,
+    "train_windows": 1120,
+    "test_windows": 400
+  },
+  {
+    "noise_sigma": 0.25,
+    "snr_db": -4.12064651363644,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.5,
+    "train_accuracy": 0.8723214285714286,
+    "train_windows": 1120,
+    "test_windows": 400
+  },
+  {
+    "noise_sigma": 0.25,
+    "snr_db": -4.12064651363644,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.5475,
+    "train_accuracy": 0.8294642857142858,
+    "train_windows": 1120,
+    "test_windows": 400
+  }
+]

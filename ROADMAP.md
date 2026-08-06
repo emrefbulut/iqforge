@@ -17,19 +17,23 @@ Done recently (keep green):
 - [x] Publish workflow gated behind tests + Trusted Publishing docs
 - [x] Honest status: no fake `v0.1.0` claim until tagged
 - [x] Contributor history cleaned; tool-local ignore kept out of the repo
+- [x] **Leakage measurement.** `scripts/leakage_experiment.py`, 180 runs, in the
+      README. Window-level splitting inflates reported accuracy by up to
+      **+13.6 pp**; the effect vanishes above +3 dB, where both splits sit at the
+      ceiling, and peaks where the signal is marginal. The wrong split lives in
+      the script, never in the CLI.
 
 Do next, in this order:
 
 1. **Publish `0.1.0`.** Chore, not a level-up — removes install friction.
    Follow [docs/publishing.md](docs/publishing.md) (pending Trusted Publisher on
    PyPI, then tag `v0.1.0`).
-2. **Run the leakage measurement.** Same data, recording-level vs window-level
-   split, report the accuracy gap. Keep the bad split **out of the CLI** — a
-   script under `scripts/` (e.g. extend or pair with `audit_leakage.py`). One
-   number strengthens the README claim, the LinkedIn post, and any later paper.
-3. **Run the pipeline on a public real SigMF recording** (SigMF examples /
+2. **Run the pipeline on a public real SigMF recording** (SigMF examples /
    IQEngine-hosted captures). Validates `ci16_le` / `ci8` without buying
    hardware. Document what worked and what did not.
+3. **Repeat the leakage measurement on that real recording.** The current number
+   is synthetic BPSK/QPSK; the same curve on a real capture is what turns it
+   from an illustration into a result worth publishing.
 
 ---
 
@@ -93,6 +97,6 @@ experiment can feed both; they are not the same deliverable.
 |---|---|
 | On PyPI | Installable (chore) |
 | Public + hardware SigMF green | Domain-credible |
-| Leakage number in README | Claim is evidenced |
+| Leakage number in README | Claim is evidenced — **done**, synthetic; real capture still pending |
 | 3 external users / issues from real captures | Not building in a vacuum |
 | Stable API + JOSS or cited experiment | Research-adjacent tooling |

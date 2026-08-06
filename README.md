@@ -124,6 +124,33 @@ Options:
   - build a training set only: --split 1.0,0,0
 ```
 
+### How much does it actually inflate?
+
+Measured, not asserted. The same windows, the same model, the same training-set
+size — only the split assignment differs, over 15 seed pairs per point:
+
+| burst SNR | recording-level | window-level | inflation |
+|---|---|---|---|
+| +5.8 dB | 98.4% | 98.9% | +0.5 pp ± 0.3 |
+| +3.0 dB | 96.0% | 97.7% | +1.7 pp ± 1.1 |
+| +0.9 dB | 88.5% | 95.7% | **+7.2 pp** ± 2.3 |
+| −0.8 dB | 74.9% | 86.4% | **+11.5 pp** ± 4.0 |
+| −2.2 dB | 59.0% | 72.5% | **+13.6 pp** ± 3.7 |
+| −4.1 dB | 51.4% | 59.9% | **+8.5 pp** ± 2.2 |
+
+Splitting at the window level buys you up to **13 points of accuracy that
+isn't there**. The effect disappears when the task is easy — above +3 dB both
+splits sit near the ceiling and there is nothing left to inflate — and it is
+largest exactly where you would be relying on the number: when the signal is
+marginal and a few points decide whether an approach looks viable.
+
+Synthetic BPSK/QPSK, so read it as the shape of the problem rather than a
+constant for your data. Reproduce with
+[`scripts/leakage_experiment.py`](scripts/leakage_experiment.py); full runs in
+[`artifacts/leakage_table.md`](artifacts/leakage_table.md).
+
+### Balancing the nuisance variables
+
 Balanced classes are not enough. A variable that carries no class information —
 carrier frequency, receiver hardware, capture date — can still end up split along
 with the data, so the model is evaluated on a condition it never trained on.
@@ -149,7 +176,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] `torch.utils.data.Dataset` + baseline classifier
 - [x] Packaging (wheel + sdist), GitHub Actions CI
 - [ ] PyPI release (`0.1.0`)
-- [ ] Leakage measurement (recording-level vs window-level)
+- [x] Leakage measurement (recording-level vs window-level)
 - [ ] Real SigMF verification (public files, then hardware)
 - [ ] Live capture / richer inspector — later, see ROADMAP.md
 
