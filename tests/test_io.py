@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -250,3 +251,22 @@ def test_example_reference_tone_is_exactly_plus_100_khz(path: Path) -> None:
     assert power_plus > 100.0 * power_minus, (
         f"+100 kHz / -100 kHz power ratio too low: {power_plus / power_minus:.1f}x"
     )
+
+
+def test_declared_version_survives_the_sigmf_library(tmp_path: Path) -> None:
+    """The version reported must be the file's, not the reader's.
+
+    `SigMFFile(metadata=...)` mutates the dict it is given, replacing
+    `core:version` with the spec version the installed library implements. Real
+    captures declaring 1.0.0 were being reported as 1.2.6, which is the one
+    number a compatibility investigation cannot afford to have wrong.
+    """
+    samples = (np.arange(16) + 1j * np.arange(16)).astype(np.complex64)
+    meta_path = write_record(tmp_path, samples, name="declared")
+    raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    raw["global"]["core:version"] = "1.0.0"
+    meta_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    rec = load(meta_path)
+
+    assert rec.declared_version == "1.0.0"

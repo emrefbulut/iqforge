@@ -110,6 +110,24 @@ def _format_hz(value: float | None) -> str:
     return f"{value:.0f} Hz"
 
 
+def _version_cell(rec: Recording) -> str:
+    """What to print for `core:version`.
+
+    The recording's own value comes first, because that is the one a user is
+    looking for. The sigmf library rewrites the field with the spec version it
+    implements, so when the two differ both are shown rather than silently
+    presenting the reader's version as the recording's -- real captures
+    declaring 1.0.0 were being reported as 1.2.6.
+    """
+    declared = rec.declared_version
+    parsed = rec.global_info.get("core:version")
+    if declared is None:
+        return "-" if parsed is None else f"{parsed} (from reader; file declares none)"
+    if parsed is not None and str(parsed) != declared:
+        return f"{declared} (file); {parsed} (reader)"
+    return declared
+
+
 def _render_overview(rec: Recording) -> Table:
     """Build a table of the recording's basic metadata."""
     table = Table(title=escape(rec.meta_path.name), title_style="bold", show_header=False)
@@ -126,7 +144,7 @@ def _render_overview(rec: Recording) -> Table:
     table.add_row("Hardware", escape(str(g.get("core:hw", "-"))))
     table.add_row("Author", escape(str(g.get("core:author", "-"))))
     table.add_row("Recorder", escape(str(g.get("core:recorder", "-"))))
-    table.add_row("SigMF version", escape(str(g.get("core:version", "-"))))
+    table.add_row("SigMF version", escape(_version_cell(rec)))
     if g.get("core:description"):
         table.add_row("Description", escape(str(g["core:description"])))
     return table

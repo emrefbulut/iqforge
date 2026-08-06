@@ -77,6 +77,14 @@ class Recording:
     annotations: list[Annotation]
     global_info: dict[str, Any]
 
+    #: `core:version` exactly as written in the file, before the sigmf library
+    #: touches it. The library replaces the field with the spec version IT
+    #: implements, so `global_info["core:version"]` reports the reader, not the
+    #: recording -- measured against real captures that declare 1.0.0 and are
+    #: reported as 1.2.6. Anyone debugging a compatibility problem needs the
+    #: number the writer actually put there. `None` if the file omits it.
+    declared_version: str | None = None
+
     @property
     def duration_seconds(self) -> float:
         """Length of the recording in seconds."""
@@ -166,6 +174,12 @@ def load(path: str | Path) -> Recording:
             "A SigMF metadata file must be a UTF-8 encoded JSON object."
         ) from exc
 
+    # Must happen BEFORE SigMFFile: the library mutates the dict it is handed,
+    # overwriting core:version with the spec version it implements. Reading it
+    # afterwards -- from `raw` or from the handle -- returns the reader's
+    # version for every file. Verified against captures that declare 1.0.0.
+    declared_version = _declared_version(raw)
+
     # Schema validation is left to the sigmf library. This module reads the
     # samples itself via memmap, so the data file is never bound to the library.
     try:
@@ -232,4 +246,19 @@ def load(path: str | Path) -> Recording:
         num_samples=num_samples,
         annotations=annotations,
         global_info=global_info,
+        declared_version=declared_version,
     )
+
+
+def _declared_version(raw: dict[str, Any]) -> str | None:
+    """Read `core:version` straight from the parsed file.
+
+    Deliberately reads `raw` rather than the sigmf handle: the library
+    overwrites the field with the spec version it implements, so going through
+    it would return the reader's version for every file ever written.
+    """
+    global_section = raw.get("global")
+    if not isinstance(global_section, dict):
+        return None
+    version = global_section.get("core:version")
+    return str(version) if version is not None else None
