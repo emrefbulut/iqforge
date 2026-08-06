@@ -154,6 +154,29 @@ inflation is largest precisely where the measurement matters most, and that
 benchmarking a leaky split on easy data will tell you the problem does not
 exist.
 
+**Overlap is the mechanism.** Windows that overlap share samples, so a
+window-level split puts pieces of the same signal on both sides. Holding the
+window at 1024 and the SNR at −0.8 dB and varying only the stride:
+
+| stride | overlap | recording-level | window-level | inflation |
+|---|---|---|---|---|
+| 1024 | 0% | 59.6% | 59.8% | +0.2 pp ± 2.7 |
+| 768 | 25% | 71.8% | 72.3% | +0.5 pp ± 2.8 |
+| 512 | 50% | 74.9% | 86.4% | **+11.5 pp** ± 4.0 |
+| 256 | 75% | 71.3% | 94.1% | **+22.9 pp** ± 4.5 |
+| 128 | 88% | 82.2% | 95.6% | **+13.4 pp** ± 3.1 |
+
+At **zero overlap the inflation vanishes** — +0.2 pp, indistinguishable from
+noise. That is the cleanest statement of the mechanism: without shared samples
+there is nothing to leak, and window-level splitting is merely unwise rather
+than wrong. Every stride below the window length leaks, and the default
+`--stride 512` already sits in the range that costs you 11 points.
+
+One caveat on reading down the column: changing the stride also changes how many
+windows exist, so the last row's smaller gap is partly the honest baseline
+improving on 8× more training data, not overlap mattering less. Within each row
+the comparison is exact — same windows, same count, only the assignment differs.
+
 Synthetic BPSK/QPSK, so read it as the shape of the problem rather than a
 constant for your data. Reproduce with
 [`scripts/leakage_experiment.py`](scripts/leakage_experiment.py); full runs in
