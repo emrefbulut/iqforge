@@ -17,6 +17,10 @@ Draft only. Review before opening at https://github.com/sigmf/sigmf-python/issue
 installed library implements. After construction there is no way to recover what
 the file actually said, from either the dict or the handle.
 
+This is specific to the `metadata=` path, which reads an *existing* recording.
+The `global_info=` path, which creates a *new* one, is not affected and should
+not change; see "Relation to #76" below.
+
 ### Reproduction
 
 ```python
@@ -65,40 +69,59 @@ expect. Tools that read it back after construction — the obvious thing to do �
 report the reader's version for every file, so every recording looks like it was
 written against whatever the local library implements.
 
-Concretely: three public captures from the GNU Radio / IQEngine repository all
-declare `"core:version": "1.0.0"` and are reported as `1.2.6`.
+This is not hypothetical. `cellular_downlink_880MHz`, a public 40 MS/s USRP B210
+capture in the GNU Radio SigMF collection, declares `"core:version": "1.0.0"` and
+is reported as `1.2.6`:
+
+```
+https://www.iqengine.org/api/datasources/local/local/cellular_downlink_880MHz.sigmf-meta
+```
+
+(browsable at https://www.iqengine.org). Two others from the same collection —
+`space/GNSS L1 E1 band recording` and
+`estevez/Vega-C MEO Cubesats/ASTROBIO_2022-07-24T19_25_49` — behave identically.
 
 The in-place mutation is the wider problem. A caller that parses the JSON itself,
 hands the dict to `SigMFFile` for validation, and then keeps using its own dict —
 which is not an unusual pattern — silently gets different data back than it
 parsed.
 
+### Relation to #76
+
+[#76](https://github.com/sigmf/sigmf-python/issues/76) asked for the opposite and
+was right to: when building a new file from `global_info=`, the library should
+fill in `core:version` and `core:num_channels` rather than leaving them out. That
+behaviour is correct and this report does not ask for it to change.
+
+The two paths differ in what the version means. Creating a file, there is no
+declared version and supplying the current one is the only sensible choice.
+Reading a file, the version is data — the writer's statement about which
+revision of the spec the recording follows — and overwriting it destroys the
+only record of that.
+
+```python
+SigMFFile(global_info={...})   # no version present -> filling it in is correct
+SigMFFile(metadata={...})      # version present    -> overwriting it loses data
+```
+
 ### Suggested fix
 
 Either of, in order of preference:
 
-1. Deep-copy the metadata on construction, so the caller's dict is untouched.
-   `SigMFFile(metadata=copy.deepcopy(meta))` already avoids the problem today,
+1. Deep-copy the metadata on construction, so the caller's dict is untouched, and
+   leave an existing `core:version` as the file declared it.
+   `SigMFFile(metadata=copy.deepcopy(meta))` already avoids the mutation today,
    which suggests the copy belongs inside the constructor.
-2. Keep filling in defaults, but leave `core:version` as the file declared it,
-   and expose the implemented spec version separately (e.g. `sigmf.__specification__`).
+2. Keep the current behaviour but expose the declared value separately, so the
+   information is at least recoverable.
 
 ### Environment
 
-- sigmf 1.11.1
-- Python 3.12
-- Windows 11 (not platform specific)
+- sigmf 1.11.1 (latest on PyPI at the time of writing)
+- Python 3.11 and 3.12
+- Reproduced on Windows 11 and on Linux (ubuntu-latest, GitHub Actions)
 
 ---
 
-## Workaround in iqforge
-
-`iqforge.io.load` reads `core:version` from the parsed JSON *before* handing the
-dict to `SigMFFile`, and `iqforge info` shows both values when they differ:
-
-```
-│ SigMF version │ 1.0.0 (file); 1.2.6 (reader) │
-```
-
-Covered by `tests/test_io.py::test_declared_version_survives_the_sigmf_library`,
-which fails if the read is moved after the constructor.
+Worked around downstream by reading `core:version` out of the parsed JSON before
+the dict is handed to `SigMFFile`.
