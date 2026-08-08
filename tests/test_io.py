@@ -7,6 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import sigmf
+from sigmf import SigMFFile
 
 from helpers import write_record
 from iqforge.io import Annotation, IQForgeError, Recording, load
@@ -309,3 +311,27 @@ def test_annotation_ending_exactly_at_the_end_is_not_flagged(tmp_path: Path) -> 
     )
 
     assert load(meta_path).annotations_beyond_end == []
+
+
+def test_sigmf_library_overwrites_the_declared_version() -> None:
+    """Pin the upstream behaviour that `declared_version` exists to work around.
+
+    `SigMFFile(metadata=d)` mutates `d` in place and replaces `core:version`
+    with the spec version the installed library implements. This test asserts
+    the bug, not the fix: if sigmf-python ever stops doing it, this fails and
+    the workaround in `load()` can be reconsidered.
+
+    Reported upstream in docs/sigmf-python-issue-draft.md. Runs on Linux in CI,
+    which is what backs the claim that the behaviour is not platform specific.
+    """
+    metadata = {
+        "global": {"core:datatype": "cf32_le", "core:version": "1.0.0"},
+        "captures": [],
+        "annotations": [],
+    }
+
+    handle = SigMFFile(metadata=metadata)
+
+    assert metadata["global"]["core:version"] != "1.0.0", "caller's dict was not mutated"
+    assert handle.get_global_info()["core:version"] == metadata["global"]["core:version"]
+    assert sigmf.__version__ == "1.11.1", "sigmf version changed; recheck the upstream report"
