@@ -99,7 +99,7 @@ Reading a file, the version is data — the writer's statement about which
 revision of the spec the recording follows — and overwriting it destroys the
 only record of that.
 
-```python
+```text
 SigMFFile(global_info={...})   # no version present -> filling it in is correct
 SigMFFile(metadata={...})      # version present    -> overwriting it loses data
 ```
