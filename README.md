@@ -182,6 +182,10 @@ constant for your data. Reproduce with
 [`scripts/leakage_experiment.py`](scripts/leakage_experiment.py); full runs in
 [`artifacts/leakage_table.md`](artifacts/leakage_table.md).
 
+[**docs/methodology.md**](docs/methodology.md) documents how both measurements
+were designed, what was validated against real captures, the silent bugs found
+along the way, and what the numbers do not cover.
+
 ### Balancing the nuisance variables
 
 Balanced classes are not enough. A variable that carries no class information —

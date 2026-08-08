@@ -1,0 +1,406 @@
+# Methodology
+
+How the claims `iqforge` makes were measured, what the measurements returned, and
+what they do not cover.
+
+Everything below is reproducible from this repository. Where a number appears it
+came from a run whose output is in [`artifacts/`](../artifacts/); where a
+statement has no number behind it, it is described as a design decision rather
+than a finding.
+
+---
+
+## 1. The problem
+
+An IQ recording is cut into fixed-length windows. Those windows become the
+examples in a dataset, and the dataset is split into train, validation and test.
+
+The natural implementation splits the windows: shuffle them, deal them out in the
+requested proportions. It is the same code you would write for images, and for
+independent images it is correct.
+
+IQ windows are not independent. `iqforge` defaults to a window of 1024 samples
+and a stride of 512, so consecutive windows share half their samples. Window *k*
+and window *k+1* are two views of one stretch of signal — the same symbols, the
+same noise realisation, the same fading state, offset by half a window. A
+window-level split puts one of them in train and can put the other in test.
+
+The test set then contains material the model has already seen. Test accuracy
+measures memorisation as much as generalisation, and it moves in the wrong
+direction: it goes **up** as the leak gets worse, so nothing about the number
+looks alarming.
+
+`iqforge` splits at the level of the **recording** instead. Every window from one
+recording goes to one split, and the split is stratified by class over recordings.
+When the requested ratios cannot be satisfied that way, `build` stops with an
+error rather than falling back.
+
+Sections 2 and 3 measure what that refusal buys.
+
+---
+
+## 2. Measurement 1 — accuracy inflation against SNR
+
+**Setup.** 48 synthetic recordings, two classes (BPSK, QPSK) matched in symbol
+rate, occupied bandwidth, burst duration and mean burst power, so modulation is
+the only class-carrying difference. Four carrier offsets, balanced across splits.
+Split 0.6/0.2/0.2 at the recording level, giving 28/10/10 recordings. The same
+window pool is then split two ways — once by recording, once by window with the
+per-split window counts and class balance held identical — and both are trained
+with the same model for the same 20 epochs. 15 seed pairs per SNR, 180 runs.
+
+Noise is additive complex Gaussian. "Burst SNR" is the burst power against the
+noise power in the full band, `10·log10(BURST_RMS² / 2σ²)`.
+
+| burst SNR | recording-level | window-level | inflation (paired) | n |
+|---|---|---|---|---|
+| −4.1 dB | 51.4% ± 1.9% | 59.9% ± 7.7% | **+8.5 pp** ± 2.2 | 15 |
+| −2.2 dB | 59.0% ± 9.1% | 72.5% ± 12.4% | **+13.6 pp** ± 3.7 | 15 |
+| −0.8 dB | 74.9% ± 15.7% | 86.4% ± 8.1% | **+11.5 pp** ± 4.0 | 15 |
+| +0.9 dB | 88.5% ± 9.3% | 95.7% ± 1.9% | **+7.2 pp** ± 2.3 | 15 |
+| +3.0 dB | 96.0% ± 4.4% | 97.7% ± 1.6% | **+1.7 pp** ± 1.1 | 15 |
+| +5.8 dB | 98.4% ± 1.4% | 98.9% ± 0.8% | **+0.5 pp** ± 0.3 | 15 |
+
+Accuracy columns are mean ± standard deviation across runs. The inflation column
+is the mean **paired** difference ± its standard error (§4).
+
+**Shape.** The inflation is an inverted U. It is near zero at both ends and
+largest in the middle, peaking at +13.6 pp around −2.2 dB.
+
+Both ends are compressed, for different reasons:
+
+- **At high SNR the honest split is already at the ceiling.** At +5.8 dB the
+  recording-level arm scores 98.4%. There are 1.6 points available, so no split
+  strategy can gain more than that, whatever it does.
+- **At low SNR neither arm can do much.** At −4.1 dB the honest arm sits at
+  51.4%, near chance for two balanced classes. The leak still helps — +8.5 pp —
+  but the task is hard enough that a memorised test window is not worth as much,
+  because there is less signal in it to memorise.
+
+The peak is in between, where the model has enough signal to learn something but
+not enough to solve the task outright. That is the regime where a few points
+decide whether an approach looks viable, and it is where the number is least
+trustworthy.
+
+**Read the shape, not the peak.** +13.6 pp is a property of this signal pair,
+this architecture and this window length, not a constant to be quoted. What
+transfers is the shape: the inflation is largest exactly where the measurement
+matters most, and it is smallest where a benchmark is easiest to run. Anyone who
+evaluates a leaky split on easy data will conclude the concern is overblown, and
+their measurement will honestly support that conclusion.
+
+Reproduce: `uv run python scripts/leakage_experiment.py`. Raw runs in
+[`artifacts/leakage_runs.json`](../artifacts/leakage_runs.json).
+
+---
+
+## 3. Measurement 2 — accuracy inflation against overlap
+
+Section 2 shows *when* window-level splitting inflates accuracy. It does not show
+*why*. If overlap is the mechanism, then removing the overlap should remove the
+effect, and that is a prediction the experiment can be pointed at directly.
+
+**Setup.** Identical to §2 except that the noise is fixed at σ = 0.17 (−0.8 dB
+burst SNR, chosen because §2 found a large gap there, so there is room for the
+stride to move the number) and the window is fixed at 1024 samples. Only the
+stride varies. 15 seed pairs per stride, 150 runs.
+
+| stride | overlap | recording-level | window-level | inflation (paired) | n |
+|---|---|---|---|---|---|
+| 1024 | 0% | 59.6% ± 7.2% | 59.8% ± 9.8% | **+0.2 pp** ± 2.7 | 15 |
+| 768 | 25% | 71.8% ± 6.4% | 72.3% ± 11.4% | **+0.5 pp** ± 2.8 | 15 |
+| 512 | 50% | 74.9% ± 15.7% | 86.4% ± 8.1% | **+11.5 pp** ± 4.0 | 15 |
+| 256 | 75% | 71.3% ± 13.8% | 94.1% ± 10.0% | **+22.9 pp** ± 4.5 | 15 |
+| 128 | 88% | 82.2% ± 12.1% | 95.6% ± 4.8% | **+13.4 pp** ± 3.1 | 15 |
+
+**At zero overlap the inflation is +0.2 pp ± 2.7 — indistinguishable from
+noise.** When windows share no samples, a window-level split separates genuinely
+distinct material, and splitting by window rather than by recording costs
+nothing measurable. This is the cleanest statement the experiment produces: the
+leak is not a property of window-level splitting in the abstract, it is a
+property of window-level splitting **applied to overlapping windows**.
+
+At 25% overlap the gap is still within noise (+0.5 pp ± 2.8). From 50% it is
+unmistakable. `iqforge`'s own default stride of 512 sits at 50% overlap, in the
+row that costs 11 points.
+
+**One caveat on reading down the column.** Shrinking the stride does not only
+increase overlap — it also multiplies the number of windows. At stride 128 there
+are eight times as many windows as at stride 1024, so the recording-level arm is
+training on eight times more data and improves on its own (59.6% → 82.2%). The
+smaller gap in the last row is partly that catching-up, not overlap mattering
+less. The column is therefore not a clean dose-response curve for overlap alone.
+
+Within each row the comparison is exact — same windows, same counts, same class
+balance, only the assignment differs — so each row's inflation figure stands on
+its own. The zero-overlap row is the one that carries the causal claim, and it
+needs no cross-row comparison to do so.
+
+Reproduce: `uv run python scripts/leakage_experiment.py --sweep stride`.
+
+---
+
+## 4. Experimental design
+
+**The wrong split lives outside the tool.** `iqforge build` refuses to split at
+the window level. Demonstrating why that refusal is right requires doing the
+wrong thing deliberately, so the leaky splitter lives in
+[`scripts/leakage_experiment.py`](../scripts/leakage_experiment.py) and is never
+reachable from the CLI. Users cannot produce a leaky dataset with this tool even
+by accident.
+
+**Pairing.** For one split seed and one training seed, both arms use the same
+recordings, the same window pool, the same per-split window counts, the same
+class balance and the same weight initialisation. Only the assignment of windows
+to splits differs. The difference within such a pair isolates the effect.
+
+This matters because seed-to-seed scatter dominates everything else here. At
+−2.2 dB the two arms have per-arm standard deviations of 9.1 and 12.4 points
+against an effect of 13.6. Comparing the two group means folds that scatter into
+the comparison; pairing cancels it, because both members of a pair drew the same
+recordings into train. The tables therefore report the mean paired difference and
+its standard error, not the difference of the two means.
+
+**Why n went from 6 to 15.** The first full grid used 3 split seeds × 2 training
+seeds = 6 pairs per SNR. It produced a paired standard error near 6 pp against an
+effect around 10 pp — the direction was clear, the magnitude was not. More
+seriously, two of the six rows came out with the **wrong sign**: at +3.0 dB the
+n=6 grid measured −1.7 pp ± 0.6, and at n=15 the same cell measures +1.7 pp ± 1.1.
+
+That sign flip is the reason the grid grew rather than a curiosity about it. Six
+pairs was not enough to distinguish a small positive effect from noise, and a
+confidently reported negative number would have been worse than no number at all.
+At 15 pairs (5 split seeds × 3 training seeds) the SNR curve has a single sign
+throughout and both ends behave as the mechanism predicts.
+
+**Preconditions are asserted, not assumed.** The recording-level arm is only a
+fair baseline if it is not handicapped by something other than the split. An
+early version of this experiment used ratios under which every carrier offset
+landed in exactly one split, so the honest arm was tested on carriers it had
+never trained on and sat at chance — a distribution shift, not leakage, and one
+that would have swamped the effect. `iqforge` warned about it; the script had
+captured the subprocess output and never looked at it.
+
+The script now aborts if `build` emits any warning, and separately verifies from
+the manifest that every carrier offset present in test also appears in train.
+The second check is not redundant: `iqforge` warns when a split collapses to a
+single group, but a *partially* confounded split passes that check while still
+leaving some evaluation on unseen carriers.
+
+---
+
+## 5. Validation against real recordings
+
+The synthetic experiments say nothing about whether the reader is correct. Three
+public recordings from the GNU Radio SigMF collection (browsable at
+[iqengine.org](https://www.iqengine.org)) were used to check that.
+
+| | datatype | hardware | size |
+|---|---|---|---|
+| `space/GNSS L1 E1 band recording` | `ci8` | Ettus B210, 6 MS/s | 12 000 000 B |
+| `estevez/Vega-C MEO Cubesats/ASTROBIO_2022-07-24T19_25_49` | `ci16_le` | USRP B205mini, 40 kS/s | 11 170 468 B |
+| `cellular_downlink_880MHz` | `ci16_le` | USRP B210, 40 MS/s | 80 000 000 B |
+
+**Integer conversion, checked against the bytes.** The `ci16_le` and `ci8`
+conversion paths had until then only been exercised by synthetic round-trips —
+tests that confirm the reader agrees with the writer that wrote the same
+assumption. Reading the files independently with `numpy.fromfile` and comparing
+sample by sample:
+
+- `ci8`: raw `[-8, 3, 4, -1, …]` → `[-0.0625+0.0234375j, …]`, ratio exactly
+  **128** on every non-zero sample.
+- `ci16_le`: ratio exactly **32768**.
+
+Both are full-scale normalisation, matching the divisors declared in `io.py`.
+Interleaving is correct in both: `raw[0]` becomes the real part, `raw[1]` the
+imaginary part. Sample counts derived from file size match the declared datatype
+in all three files.
+
+**Frequency metadata, checked against the signal.** `cellular_downlink_880MHz`
+carries 8 annotations with frequency edges. Averaging the spectrogram over time
+and separating bins by whether any annotation covers them:
+
+| | mean power |
+|---|---|
+| bins inside an annotated band | −46.15 dB |
+| bins outside every annotation | −77.98 dB |
+| **difference** | **+31.83 dB** |
+
+Every gap between annotations is a genuine spectral null — −11.21…−10.59 MHz at
+−78.2 dB, +2.27…+3.24 MHz at −78.1 dB, +13.55…+19.96 MHz at −79.0 dB. This is an
+end-to-end check rather than a metadata check: if the integer scaling, the I/Q
+order or the byte layout were wrong, the energy would not land where the
+metadata says it should.
+
+**What the annotation path does on a real recording.** Labelling
+`cellular_downlink_880MHz` from its annotations yields **293 usable windows out
+of 39 061 (0.75%)**: 38 085 unmatched and 683 dropped as ambiguous. Five of the
+eight annotations share one time range and differ only in frequency, so every
+window in that stretch falls inside more than one of them. Labelling is
+time-based, so those windows cannot be assigned without guessing, and they are
+dropped and counted instead. The one annotation that survives is the only one
+that does not share its time range with another.
+
+This is the designed behaviour meeting its limit on real data rather than a
+defect, and it is recorded in the README's known limitations. Frequency-aware
+labelling is the fix and is not implemented.
+
+---
+
+## 6. Silent failures found along the way
+
+Each of these produced plausible output. None was found by reading code.
+
+**Class bandwidth inequality.** The synthetic generator initially used
+`BPSK_SYMBOL_RATE = 64_000` and `QPSK_SYMBOL_RATE = 128_000`. The two classes
+therefore differed by a factor of two in occupied bandwidth, and a classifier
+could separate them from the spectrum alone without learning anything about
+modulation. Any accuracy measured on that data would have been real and
+meaningless. *Why it was silent:* the numbers would have looked good. Nothing in
+a training curve distinguishes "learned the modulation" from "learned the
+bandwidth". *How it was found:* by auditing what the two classes were allowed to
+differ in, before trusting any result from them. Both classes now share symbol
+rate, occupied bandwidth (86.4 kHz), burst duration and mean burst power.
+
+**A nuisance-variable balancer that manufactured a shortcut.** The first
+`--balance-by` implementation shared group counters across classes so that splits
+would "complement each other". The effect was that within a split, carrier offset
+predicted the class exactly — train held BPSK at positive offsets and QPSK at
+negative ones, with the relationship inverted in test. The model learned the
+shortcut, reached 100% on training data and **0% on test**, below chance for two
+classes. *Why it was silent:* the class distribution was perfect and the split
+report looked correct; the defect was in the joint distribution of class and
+offset within each split, which no per-class count reveals. *How it was found:*
+by an accuracy far enough below chance to be impossible under an honest split —
+0% is not bad luck, it is an inverted rule. The rule is now that group and label
+must be independent **within** each split, and a regression test checks it across
+seeds.
+
+**Terminal markup deleting part of a command.** `rich` interprets bracketed text
+as style tags. The error message telling a user to run
+`pip install 'iqforge[torch]'` was printed as `pip install 'iqforge'` — a valid
+command that installs the wrong thing. *Why it was silent:* the source string was
+correct, and the rendered string was still a runnable command. *How it was found:*
+by testing what reached the screen instead of what was in the source. Measurement
+showed `[not a tag]`, `label[a]` and `core:hw[ext]` are consumed as well, while
+`['x']` and `[1024]` survive, so every user-derived value flowing into `rich` is
+now escaped. A regression test captures the rendered output and asserts `[torch]`
+is present in it.
+
+**A library mutating its caller's data.** `SigMFFile(metadata=d)` modifies `d`
+in place, replacing `core:version` with the spec version the installed library
+implements. Three real captures declaring `1.0.0` were reported as `1.2.6`.
+*Why it was silent:* the reported version is a plausible version, and it is the
+same for every file, so nothing looks inconsistent. *How it was found:* by
+comparing `iqforge info` output against the raw JSON of a downloaded file. The
+version is now read before the dict is handed over, and `info` shows both values
+when they differ. A test pins the upstream behaviour so that a future fix
+upstream is noticed; an issue draft is in
+[`docs/sigmf-python-issue-draft.md`](sigmf-python-issue-draft.md).
+
+---
+
+## 7. Methods
+
+**Mutation testing.** A test that has never failed has not been shown to test
+anything. Each of the guarantees below was verified by deliberately breaking the
+implementation and confirming the test fails:
+
+- swapping I and Q in the reader — the reference-tone test must fail, and must
+  fail on the *sign* of the frequency offset, not merely its magnitude
+- moving the `core:version` read to after the library constructor
+- disabling the UTF-8 stream reconfiguration
+- changing `__version__` so it disagrees with the packaged metadata
+
+**Control experiments.** A check that fires is only meaningful if it also stays
+quiet when it should. The out-of-range annotation warning was tested against an
+annotation ending exactly at the last sample (no warning); the locale encoding
+tests include a UTF-8 case that must pass while the cp1254, cp1252 and ASCII
+cases fail without the fix.
+
+**Treating an implausible accuracy as a symptom, in either direction.** A
+standing rule during development: a test accuracy above 98% is a prompt to audit,
+not to celebrate. It prompted the leakage audit script, which checks recording
+disjointness, cosine similarity between test and training windows, and the class
+× nuisance contingency per split.
+
+The same reflex applied downward caught the balancer bug in §6: 0% on two
+balanced classes is not bad luck, because bad luck averages to 50%. A score that
+far below chance means the model learned a rule that is *inverted* in the test
+set, which points straight at the joint distribution rather than at the model.
+
+**Never swallowing a warning.** The experiment harness captures subprocess output
+and inspects it; any warning from `build` aborts the run. This exists because the
+first version discarded that output and consequently measured a confounded split
+for an entire grid. A warning that no one reads is equivalent to no warning.
+
+**Measuring rather than reasoning.** Where a claim could be checked by running
+something, it was — including claims that turned out to be wrong. The initial
+diagnosis of a "uniform spectrogram bug" on the cellular recording was incorrect:
+the renderer was working and the terminal capture had stripped the colour that
+carries the information. Counting the distinct colours in a forced-colour render
+(338) settled it in one step.
+
+---
+
+## 8. Limits
+
+The measurements in §2 and §3 are narrow. They should be read as a demonstration
+of a mechanism, not as an estimate of an effect size that transfers.
+
+**One architecture.** A single baseline CNN, 13 490 parameters, global average
+pooling, 20 epochs, Adam. Nothing here says how the effect scales with model
+capacity. A larger model memorises more readily and would plausibly show a larger
+gap, but that is a hypothesis, not a result.
+
+**One window length.** 1024 samples throughout. The stride sweep varies overlap
+at that fixed length; it does not vary the length itself.
+
+**One signal pair, synthetic.** BPSK against QPSK, root-raised-cosine shaped,
+additive white Gaussian noise, no fading, no interference, no hardware
+impairments, one receiver. Real captures were used to validate the *reader*
+(§5), not to measure leakage.
+
+**One SNR definition.** Burst power against noise power in the full band. The
+burst occupies a fraction of the band and a fraction of each recording, so the
+in-band, in-burst SNR is higher than the quoted figure. The numbers are
+comparable within these tables and not directly comparable with SNR figures
+computed differently elsewhere.
+
+**The stride sweep confounds overlap with dataset size** (§3). The zero-overlap
+row is unaffected by this and carries the causal claim on its own.
+
+Open questions this repository does not answer:
+
+- How large is the inflation on a real capture, with real channel effects? The
+  same experiment on a real recording is the obvious next measurement and has not
+  been run.
+- How does it scale with model capacity, window length, or the number of
+  recordings?
+- Does recording-level splitting remain sufficient when recordings share a
+  receiver, a session, or a calibration? Recording-level splitting removes
+  within-recording leakage; it says nothing about correlations *between*
+  recordings, which is what `--balance-by` addresses partially and imperfectly.
+- Is 0.75% usable windows typical for dense real spectrum, or particular to this
+  capture? One recording is not a sample.
+
+---
+
+## Reproducing
+
+```bash
+git clone https://github.com/emrefbulut/iqforge && cd iqforge
+uv sync --extra torch
+
+uv run python scripts/leakage_experiment.py                  # section 2
+uv run python scripts/leakage_experiment.py --sweep stride   # section 3
+```
+
+Both write to `artifacts/`. Neither touches `examples/`; the experiment generates
+its own recordings at each noise level. The two grids are 180 and 150 training
+runs; runtime is dominated by training on CPU and is measured in hours rather
+than minutes. Results are checkpointed after every run, so an interrupted grid
+keeps what it has completed.
+
+See also the [README](../README.md) for what the tool does and its known
+limitations.
