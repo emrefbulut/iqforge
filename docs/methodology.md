@@ -247,7 +247,104 @@ labelling is the fix and is not implemented.
 
 ---
 
-## 6. Silent failures found along the way
+## 6. Why the measurement was not repeated on real data
+
+The obvious next step after §2 and §3 is to run the same comparison on a real
+capture. Three public datasets were assessed for it. None was usable, and the
+reasons are worth recording because they are not accidents of this particular
+search.
+
+A leakage measurement needs three things: real hardware, several **independent**
+recordings per class — enough that a recording-level split has something to
+split — and a format the reader can be trusted on. The third turned out to be
+the easy one.
+
+**AirID** (GENESYS Lab, 4 UAV transmitters with deliberately distinct IQ
+imbalances). Recording count is not the problem: the sibling *hovering-uavs*
+release is 7 UAVs × 4 distances × 4 bursts × ~140 transmissions, ~13k files. The
+format is. GENESYS's own converter writes `"core:datatype": "cf16_le"` and
+`"core:version": "0.0.1"`. The SigMF schema constrains the datatype to
+`^(c|r)(f32|f64|i32|i16|u32|u16|i8|u8)(_le|_be)?` — there is no `f16`, and
+`0.0.1` is not a spec version either. `iqforge` rejects the file, correctly:
+
+```
+Unsupported datatype 'cf16_le'. Supported: cf32_le, ci16_le, ci8.
+```
+
+The class label sits in `core:device_id_genesys_lab`, a key invented for the
+dataset, so annotation labelling finds nothing. No licence is stated. Each
+obstacle is surmountable — convert to `cf32_le`, copy the label — but each
+conversion is a step where the data can be altered between the publisher and the
+measurement, which is precisely what the measurement is trying to be careful
+about.
+
+**Vega-C MEO Cubesats** (GNU Radio SigMF collection, 5 satellites, `ci16_le`,
+CC BY 4.0). Format is ideal: `iqforge` reads it as shipped, and the byte-level
+check in §5 was done on a recording from this collection. There are 3 recordings
+per satellite — at the bottom of what a three-way split can use. The structure is
+what rules it out: all five satellites carry the *same three* capture timestamps,
+`2022-07-24T18_47_38`, `19_25_49` and `19_29_02`, with identical file sizes. The
+sessions are crossed perfectly with class. Splitting by recording therefore puts
+a different pass — different Doppler, elevation and SNR — in each split. That is
+distribution shift, and it is the failure that invalidated the first version of
+the SNR grid (§4). Measuring leakage on top of it would measure the sum of the
+two.
+
+**DASH7 `ds_indoor`** (Zenodo 10961311, `ci16_le`, CC BY 4.0, USRP B210). This
+one passed the count and still failed, which is the instructive case.
+
+Its published description gives 10 locations, "60 packets per location, 10
+packets per file pair" and "3 Lo-Rate channel recordings per location" — 6 file
+pairs per location. Six independent recordings per class clears any reasonable
+threshold. The archive layout agrees: 10 nested zips, one per location, each
+~1.39 GB, holding files of exactly 245,760,000 bytes — 8.0 s at 7.68 MS/s.
+
+The filenames do not agree. The first two channel-0 recordings at location 1 are
+timestamped `11.35.36` and `11.36.19`: **43 seconds apart**, 8 seconds long, in a
+static indoor setup, same antenna, same position, same channel. They are separate
+recorder invocations, so by any structural definition they are two independent
+recordings. Physically they are near-duplicates — the multipath a room presents
+does not change in 43 seconds. Put one in train and the other in test and the
+model sees the same channel realisation on both sides.
+
+Grouping those pairs, as physical independence requires, leaves 3 units per
+location, which is the Vega-C situation again. And the three differ only by
+channel, which is a carrier offset within one captured band: every file declares
+`core:frequency: 866500000.0`, so the distinction that separates the three units
+is **not in the metadata at all** and `--balance-by` cannot see it.
+
+### What this actually shows
+
+The recurring obstacle was not licensing, size or format. It was that **none of
+the three datasets documents its recording structure** — which published files
+came from one continuous capture, and which are genuinely separate acquisitions.
+
+That had to be reconstructed indirectly in every case:
+
+- reading the ZIP64 central directory over HTTP range requests, to see that
+  `ds_indoor.zip` is ten nested per-location archives rather than a flat set;
+- reading the GNU Radio flowgraphs that produced the data — a `blocks_head`
+  limiting each run to a fixed duration, a `blocks_file_source` with
+  `length: 61440000` cutting an 8-second strip out of a longer raw file, and a
+  filename built from `datetime.now()` at record time, which is what makes the
+  timestamps mean anything;
+- arithmetic on those timestamps and on file sizes, to decide whether two files
+  are two captures or two slices of one.
+
+A leak-free split requires knowing which recordings are independent. Published RF
+datasets state how many files they contain; they do not state which of those
+files share an acquisition. The two are not the same number, and only the second
+one is the one a split needs.
+
+The DASH7 case takes it one step further. There the documented structure was
+sufficient — six separate recorder runs per location, verifiable, not a matter of
+interpretation. Physical independence still was not, and no amount of reading the
+description would have revealed it; the 43-second gap only became visible after
+recovering the filenames from inside a 13.9 GB archive. **Counting recordings is
+not enough.** Independence is a property of how the data was acquired, and it
+survives into the published artefact only if someone writes it down.
+
+## 7. Silent failures found along the way
 
 Each of these produced plausible output. None was found by reading code.
 
@@ -300,7 +397,7 @@ upstream is noticed; an issue draft is in
 
 ---
 
-## 7. Methods
+## 8. Methods
 
 **Mutation testing.** A test that has never failed has not been shown to test
 anything. Each of the guarantees below was verified by deliberately breaking the
@@ -324,7 +421,7 @@ not to celebrate. It prompted the leakage audit script, which checks recording
 disjointness, cosine similarity between test and training windows, and the class
 × nuisance contingency per split.
 
-The same reflex applied downward caught the balancer bug in §6: 0% on two
+The same reflex applied downward caught the balancer bug in §7: 0% on two
 balanced classes is not bad luck, because bad luck averages to 50%. A score that
 far below chance means the model learned a rule that is *inverted* in the test
 set, which points straight at the joint distribution rather than at the model.
@@ -343,7 +440,7 @@ carries the information. Counting the distinct colours in a forced-colour render
 
 ---
 
-## 8. Limits
+## 9. Limits
 
 The measurements in §2 and §3 are narrow. They should be read as a demonstration
 of a mechanism, not as an estimate of an effect size that transfers.
@@ -372,15 +469,23 @@ row is unaffected by this and carries the causal claim on its own.
 
 Open questions this repository does not answer:
 
-- How large is the inflation on a real capture, with real channel effects? The
-  same experiment on a real recording is the obvious next measurement and has not
-  been run.
+- **How large is the inflation on a real capture, with real channel effects?**
+  Attempted, not achieved. Three public datasets were assessed and each was
+  ruled out — AirID on format, Vega-C on sessions crossed with class, DASH7 on
+  recordings that are structurally independent and physically near-duplicate.
+  §6 gives the reasoning for each. The blocker is that published RF datasets do
+  not state which of their files share an acquisition, so the independence a
+  recording-level split depends on has to be inferred, and inference is not a
+  basis for a measurement about leakage.
 - How does it scale with model capacity, window length, or the number of
   recordings?
 - Does recording-level splitting remain sufficient when recordings share a
-  receiver, a session, or a calibration? Recording-level splitting removes
-  within-recording leakage; it says nothing about correlations *between*
-  recordings, which is what `--balance-by` addresses partially and imperfectly.
+  receiver, a session, or a calibration? The DASH7 case in §6 says probably not:
+  two captures 43 seconds apart in a static room are separate recordings and the
+  same channel realisation. Recording-level splitting removes within-recording
+  leakage; it says nothing about correlations *between* recordings, and
+  `--balance-by` spreads a nuisance variable rather than keeping related
+  recordings together. How much that residual costs has not been measured.
 - Is 0.75% usable windows typical for dense real spectrum, or particular to this
   capture? One recording is not a sample.
 
