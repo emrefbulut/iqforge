@@ -51,31 +51,32 @@ After Now is done — still reliability-first:
       public-file work, not a blocker for it. One device proves one path, not all
       integer/I/Q conventions.
 - [ ] Frequency-aware labeling (SPEC §5.3 deferred item)
-- [ ] **`--group-by`: keep related recordings together.** Not implemented, and
-      not the same thing as `--balance-by`.
+- [x] **`--group-by`: keep related recordings together.** Shipped with two
+      schemes, `path:<regex>` and `csv:<file>`. Recordings sharing a key become
+      one indivisible unit; the unit replaces the recording as the thing being
+      allocated, and no unit can span two splits.
 
-      The manifest records which recording went to which split, so the split is
-      auditable. What it cannot express is a dependency *between* recordings —
-      that two of them came from one acquisition and must not be separated.
-      `--balance-by` does the opposite by design: it spreads a nuisance variable
-      **across** splits. There is no way to say "these two are twins, keep them
-      on the same side".
-
-      Found by trying to use real data, not by reading the code. In DASH7
-      `ds_indoor` two recordings at the same location, same channel, 43 seconds
-      apart are separate recorder runs by every structural test and the same
-      channel realisation physically; splitting them apart leaks. In AirID the
-      ~140 transmissions inside one burst are slices of one continuous capture.
-      Both are cases where the honest unit of independence is coarser than the
-      file, and the tool currently has no vocabulary for it. See
+      Motivated by real data rather than by reading the code. In DASH7
+      `ds_indoor` two recordings at the same location and channel, 43 seconds
+      apart, are separate recorder runs by every structural test and the same
+      channel realisation physically. In AirID the transmissions inside one
+      burst are slices of one continuous capture. See
       [docs/methodology.md](docs/methodology.md) §6.
 
-      Shape it would take: a key read the same way `--balance-by` reads one —
-      any SigMF field, or a path component — with the splitter treating each
-      group as indivisible. Note the interaction: grouping reduces the number of
-      independent units, so the SPEC §5.6 error for "not enough recordings per
-      class" gets easier to hit, which is correct behaviour and should be said
-      out loud rather than worked around.
+- [ ] **`--group-by` by SigMF field.** Deliberately not in the first release.
+
+      The obvious third scheme would read a metadata key, the way
+      `--balance-by` does. It was left out because it would have solved none of
+      the three datasets that motivated the feature: DASH7 keeps the location
+      in a directory and the channel in the file name while every file declares
+      the same centre frequency, AirID encodes the burst in the file name, and
+      the Vega-C recordings carry their session as a timestamp. Shipping a
+      scheme that answers no known case is surface area without users.
+
+      Worth adding when a dataset turns up that does record its acquisition in
+      metadata — a session UUID, `core:hw` for the receiver. The resolution
+      logic already exists in `annotation_field_value`, so it is a small
+      addition once there is a reason.
 - [ ] Surface leakage / balance diagnostics in `stats` (or a thin `audit` wrapper
       around the existing script)
 - [ ] Find **~3 people who work with real RF data** and watch them use iqforge.

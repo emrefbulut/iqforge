@@ -16,6 +16,7 @@ from rich.table import Table
 
 from iqforge import TORCH_REQUIRED, __version__
 from iqforge.display import render_inspect
+from iqforge.grouping import grouping_warnings, resolve_group_keys
 from iqforge.io import META_EXT, IQForgeError, Recording, load
 from iqforge.labeling import (
     LABEL_SOURCES,
@@ -388,6 +389,13 @@ def build(  # noqa: PLR0913 — the CLI options are defined in SPEC §4
             help="SigMF field to spread across splits, e.g. core:freq_lower_edge",
         ),
     ] = None,
+    group_by: Annotated[
+        str | None,
+        typer.Option(
+            "--group-by",
+            help="Keep related recordings in one split: path:<regex> or csv:<file>",
+        ),
+    ] = None,
     representation: Annotated[
         str, typer.Option("--repr", help=f"Representation: {', '.join(REPRESENTATIONS)}")
     ] = "iq2ch",
@@ -410,6 +418,7 @@ def build(  # noqa: PLR0913 — the CLI options are defined in SPEC §4
             split=split,
             seed=seed,
             balance_by=balance_by,
+            group_by=group_by,
             representation=representation,
             normalize=normalize,
         )
@@ -431,6 +440,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
     split: str,
     seed: int,
     balance_by: str | None,
+    group_by: str | None,
     representation: str,
     normalize: bool,
 ) -> None:
@@ -541,8 +551,25 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
                 f"group: {escape(', '.join(sorted(missing)))}"
             )
 
+    record_units: dict[str, str] | None = None
+    if group_by is not None:
+        if group_by == balance_by:
+            raise IQForgeError(
+                f"--group-by and --balance-by were both given '{group_by}'. Grouping keeps "
+                "recordings that share a key together; balancing spreads them apart. One key "
+                "cannot do both."
+            )
+        record_units = resolve_group_keys(sorted(work), group_by)
+        for warning in grouping_warnings(record_units, group_by):
+            console.print(f"[yellow]warning[/] {escape(warning)}")
+
     plan = stratified_record_split(
-        {k: v.dominant for k, v in work.items()}, ratios, seed, record_groups
+        {k: v.dominant for k, v in work.items()},
+        ratios,
+        seed,
+        record_groups,
+        record_units=record_units,
+        group_by=group_by,
     )
     if balance_by is not None:
         for warning in balance_warnings(plan, balance_by):
@@ -593,6 +620,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
                     "windows": len(work[record_id].labels),
                     "carrier_offset_hz": work[record_id].offset_hz,
                     "balance_group": work[record_id].group,
+                    "group": plan.units.get(record_id),
                 }
                 for record_id in plan.records_in(name)
             ],
@@ -612,6 +640,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             "exclude_labels": sorted(exclude),
             "keep_unlabeled": keep_unlabeled,
             "balance_by": balance_by,
+            "group_by": group_by,
         },
         label_map=label_map,
         source_files=[work[r].recording.meta_path.as_posix() for r in sorted(work)],
@@ -710,6 +739,7 @@ def stats(
     console.print(distribution)
 
     balanced = config.get("balance_by")
+    grouped = config.get("group_by")
     records = Table(title="Recordings per split", title_style="bold")
     records.add_column("Split", style="cyan", no_wrap=True)
     records.add_column("Recording", style="white")
@@ -718,11 +748,14 @@ def stats(
     records.add_column("Windows", justify="right")
     if balanced:
         records.add_column(f"Group ({escape(str(balanced))})", style="yellow")
+    if grouped:
+        records.add_column(f"Unit ({escape(str(grouped))})", style="blue")
 
+    extra = ([""] if balanced else []) + ([""] if grouped else [])
     for name in SPLIT_NAMES:
         listed = manifest["splits"][name].get("records", [])
         if not listed:
-            records.add_row(name, "[dim]- empty -[/]", "", "", "0", *([""] if balanced else []))
+            records.add_row(name, "[dim]- empty -[/]", "", "", "0", *extra)
             continue
         for i, entry in enumerate(listed):
             row = [
@@ -734,9 +767,62 @@ def stats(
             ]
             if balanced:
                 row.append(escape(str(entry.get("balance_group") or "-")))
+            if grouped:
+                row.append(escape(str(entry.get("group") or "-")))
             records.add_row(*row)
     console.print(records)
     console.print(_render_offset_summary(manifest))
+    if grouped:
+        for line in _grouping_summary(manifest, str(grouped), bool(balanced)):
+            console.print(line)
+
+
+def _grouping_summary(manifest: dict[str, Any], group_by: str, balanced: bool) -> list[str]:
+    """Lines reporting what `--group-by` did, and whether it held.
+
+    Three things a reader wants confirmed: how much the grouping actually
+    collapsed, that no unit ended up straddling a split — the one invariant
+    grouping exists to provide, and checkable from the manifest alone — and,
+    when balancing is also on, how many units came out `(mixed)`. A run where
+    most units are mixed is a run where `--balance-by` is not doing its job,
+    and that is invisible without counting.
+    """
+    where: dict[str, set[str]] = {}
+    values: dict[str, set[str]] = {}
+    total = 0
+    for name in SPLIT_NAMES:
+        for entry in manifest["splits"][name].get("records", []):
+            unit = entry.get("group")
+            if unit is None:
+                continue
+            total += 1
+            where.setdefault(unit, set()).add(name)
+            values.setdefault(unit, set()).add(str(entry.get("balance_group")))
+
+    if not where:
+        return []
+    lines = [f"[dim]grouping:[/] {escape(group_by)} -> {total} recordings in {len(where)} unit(s)"]
+
+    straddling = sorted(u for u, splits in where.items() if len(splits) > 1)
+    if straddling:
+        lines.append(
+            f"[bold red]warning[/] {len(straddling)} unit(s) span more than one split: "
+            f"{escape(', '.join(straddling[:3]))} - grouping did not hold"
+        )
+    else:
+        lines.append("[dim]         no unit spans more than one split[/]")
+
+    if balanced:
+        # A unit is mixed when its members disagree on the balancing field, so
+        # it carries no single value into its split. Derived here rather than
+        # stored: the manifest already holds the per-recording values, and a
+        # second copy could drift from them.
+        mixed = sum(1 for members in values.values() if len(members) > 1)
+        note = " - --balance-by has little left to work with" if mixed * 2 >= len(where) else ""
+        lines.append(
+            f"[dim]         {mixed} of {len(where)} unit(s) mixed for --balance-by{note}[/]"
+        )
+    return lines
 
 
 @app.command()

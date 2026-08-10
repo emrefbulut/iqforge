@@ -38,6 +38,11 @@ class SplitPlan:
     seed: int
     groups: dict[str, str] = field(default_factory=dict)
 
+    #: Recording id -> the `--group-by` unit it belongs to; empty when the
+    #: recording was its own unit. Recorded so the manifest can show, and a
+    #: reader can verify, that no unit spans more than one split.
+    units: dict[str, str] = field(default_factory=dict)
+
     def records_in(self, split: str) -> list[str]:
         """Return the recording ids in a split, sorted."""
         return sorted(rid for rid, name in self.assignment.items() if name == split)
@@ -190,11 +195,53 @@ def _assign_balanced(
     return assignment
 
 
+#: Balance value given to a unit whose members disagree. Such a unit cannot
+#: help spread the nuisance variable, but it is still a valid unit to split.
+MIXED_BALANCE = "(mixed)"
+
+
+def _units_by_label(
+    record_labels: dict[str, str], record_units: dict[str, str] | None
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """Group recordings into indivisible units, keyed by label.
+
+    Returns `(by_label, unit_members)`: label -> unit keys, and unit key ->
+    recording ids. Without grouping every recording is its own unit, which
+    keeps the ungrouped path identical to what it was.
+
+    Raises:
+        IQForgeError: If one unit holds recordings of more than one class. The
+            unit has to go to a single split, so it would have to carry two
+            strata at once; picking the majority would mislabel the minority
+            silently, and the tool does not guess.
+    """
+    members: dict[str, list[str]] = defaultdict(list)
+    for record_id in record_labels:
+        members[record_id if record_units is None else record_units[record_id]].append(record_id)
+
+    by_label: dict[str, list[str]] = defaultdict(list)
+    for unit, record_ids in members.items():
+        labels = {record_labels[r] for r in record_ids}
+        if len(labels) > 1:
+            listed = ", ".join(sorted(record_ids)[:4])
+            raise IQForgeError(
+                f"Group '{unit}' holds recordings of more than one class "
+                f"({', '.join(sorted(labels))}): {listed}"
+                f"{' …' if len(record_ids) > 4 else ''}.\n\n"
+                "A group goes to one split as a whole, so it cannot belong to two classes "
+                "at once. Either the grouping key is wrong, or the labels are."
+            )
+        by_label[labels.pop()].append(unit)
+    return by_label, members
+
+
 def stratified_record_split(
     record_labels: dict[str, str],
     ratios: tuple[float, float, float],
     seed: int,
     record_groups: dict[str, str] | None = None,
+    record_units: dict[str, str] | None = None,
+    group_by: str | None = None,
 ) -> SplitPlan:
     """Distribute recordings across splits, stratified by label.
 
@@ -204,36 +251,56 @@ def stratified_record_split(
     If `record_groups` is given, the nuisance variable is also spread across the
     splits while the stratification is preserved (see `--balance-by`).
 
+    If `record_units` is given, recordings sharing a unit key are never
+    separated (see `--group-by`), and the unit replaces the recording as the
+    thing being allocated. The two can be combined: grouping is applied first
+    and balancing then works over units, because keeping non-independent
+    recordings together is a correctness constraint while spreading a nuisance
+    variable is a quality one.
+
     Args:
         record_labels: Recording id -> that recording's dominant label.
         ratios: `(train, val, test)` ratios.
         seed: Seed for deterministic shuffling.
         record_groups: Recording id -> the group value to balance.
+        record_units: Recording id -> the key of the unit it may not leave.
+        group_by: The `--group-by` argument, used only in the error message.
 
     Returns:
         The recording assignment.
 
     Raises:
-        IQForgeError: If a class has too few recordings to fill the non-empty
-            splits the ratios ask for.
+        IQForgeError: If a class has too few units to fill the non-empty splits
+            the ratios ask for, or if a unit spans several classes.
     """
     if not record_labels:
         raise IQForgeError("Nothing to split: no labelled windows were found in the input.")
 
     active = [i for i, r in enumerate(ratios) if r > 0]
-    by_label: dict[str, list[str]] = defaultdict(list)
-    for record_id, label in record_labels.items():
-        by_label[label].append(record_id)
+    by_label, members = _units_by_label(record_labels, record_units)
+    grouped = record_units is not None
 
     for label in sorted(by_label):
         available = len(by_label[label])
         if available < len(active):
             needed = ", ".join(f"{SPLIT_NAMES[i]}={ratios[i]:g}" for i in active)
+            noun = "group" if grouped else "recording"
+            # Without grouping this message is unchanged, byte for byte: the
+            # README quotes it verbatim and a test pins that.
+            extra = ""
+            if grouped:
+                collapsed = sum(len(members[u]) for u in by_label[label])
+                extra = (
+                    f"\n\n--group-by '{group_by}' collapsed {collapsed} recording(s) of class "
+                    f"'{label}' into {available} group(s); recordings in one group must not be "
+                    f"split, so groups are the unit here."
+                )
             raise IQForgeError(
                 f"Cannot stratify by recording: class '{label}' has only {available} "
-                f"recording{'' if available == 1 else 's'}, but a "
+                f"{noun}{'' if available == 1 else 's'}, but a "
                 f"{'/'.join(f'{r:g}' for r in ratios)} split needs at least "
-                f"{len(active)} ({needed}).\n\n"
+                f"{len(active)} ({needed})."
+                f"{extra}\n\n"
                 "Windows from one recording must not appear in more than one split "
                 "(SPEC §5.6); falling back to window-level splitting inflates test "
                 "accuracy.\n\n"
@@ -241,27 +308,57 @@ def stratified_record_split(
                 "  - provide more recordings per class (pass a directory)\n"
                 "  - reduce the split ratios, e.g. --split 0.5,0.25,0.25\n"
                 "  - build a training set only: --split 1.0,0,0"
+                + (
+                    "\n  - relax the grouping, if those recordings are independent"
+                    if grouped
+                    else ""
+                )
             )
 
     rng = np.random.default_rng(seed)
 
     if record_groups is not None:
-        assignment = _assign_balanced(by_label, record_groups, ratios, active, rng)
-        return SplitPlan(
-            assignment=assignment, ratios=ratios, seed=seed, groups=dict(record_groups)
-        )
+        unit_groups = _unit_balance_values(members, record_groups)
+        unit_assignment = _assign_balanced(by_label, unit_groups, ratios, active, rng)
+    else:
+        unit_assignment = {}
+        for label in sorted(by_label):
+            shuffled = _shuffled(by_label[label], rng)
+            counts = _allocate(len(shuffled), ratios, active)
+            cursor = 0
+            for split_index in range(3):
+                for unit in shuffled[cursor : cursor + counts[split_index]]:
+                    unit_assignment[unit] = SPLIT_NAMES[split_index]
+                cursor += counts[split_index]
 
-    assignment = {}
-    for label in sorted(by_label):
-        shuffled = _shuffled(by_label[label], rng)
-        counts = _allocate(len(shuffled), ratios, active)
-        cursor = 0
-        for split_index in range(3):
-            for record_id in shuffled[cursor : cursor + counts[split_index]]:
-                assignment[record_id] = SPLIT_NAMES[split_index]
-            cursor += counts[split_index]
+    assignment = {
+        record_id: split for unit, split in unit_assignment.items() for record_id in members[unit]
+    }
+    return SplitPlan(
+        assignment=assignment,
+        ratios=ratios,
+        seed=seed,
+        groups=dict(record_groups) if record_groups is not None else {},
+        units=dict(record_units) if record_units is not None else {},
+    )
 
-    return SplitPlan(assignment=assignment, ratios=ratios, seed=seed)
+
+def _unit_balance_values(
+    members: dict[str, list[str]], record_groups: dict[str, str]
+) -> dict[str, str]:
+    """Collapse each unit's balance values to one, or mark the unit mixed.
+
+    A unit moves as a whole, so it carries one value into whichever split it
+    lands in. When its members disagree there is no such value; the unit is
+    marked `(mixed)` and simply cannot help balance anything. That is reported
+    rather than hidden, because a run where most units are mixed is a run where
+    `--balance-by` is not doing its job.
+    """
+    values: dict[str, str] = {}
+    for unit, record_ids in members.items():
+        distinct = {record_groups[r] for r in record_ids if r in record_groups}
+        values[unit] = distinct.pop() if len(distinct) == 1 else MIXED_BALANCE
+    return values
 
 
 def balance_warnings(plan: SplitPlan, field_name: str) -> list[str]:

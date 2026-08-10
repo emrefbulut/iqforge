@@ -82,7 +82,8 @@ iqforge build <input> -o <output_dir>
               [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
               [--exclude-label <label>] [--split 0.7,0.15,0.15] [--seed 42]
-              [--balance-by <sigmf field>]
+              [--balance-by <sigmf field>] [--group-by {path:<re>,csv:<file>}]
+              [--dirname-level 1]
               [--repr {iq2ch,complex,magphase}] [--normalize/--no-normalize]
     --exclude-label: annotations with this label are completely ignored during
               labeling. Repeatable. Default: `ref_tone`. See 5.3 for details.
@@ -90,6 +91,11 @@ iqforge build <input> -o <output_dir>
               while preserving class stratification. Prevents systematic
               distribution of a nuisance variable across splits.
               See 5.6 for details.
+    --group-by: recordings sharing the key become one indivisible unit that
+              cannot be split across splits. The counterpart of --balance-by,
+              which spreads; this holds together. See 5.6 for details.
+    --dirname-level: which ancestor directory --labels dirname reads. 1 is the
+              recording's own directory, 2 its parent. See 5.3.
     <input> can be a single .sigmf-meta file OR a directory containing multiple
     recordings. If a directory, scans recursively.
     Output: shard files + manifest.json inside <output_dir>
@@ -199,7 +205,7 @@ Balancing may not hold structurally (if group count exceeds the smallest split, 
 
 Carrier offset per recording is stored in `manifest.json` in the `carrier_offset_hz` field and shown in `stats` output both per recording and as a split summary; imbalance is visible even without `--balance-by`.
 
-**Known gap: there is no way to say two recordings are not independent.** `--balance-by` spreads a nuisance variable **across** splits, which is the opposite of what is needed when two recordings came from one acquisition and must stay on the same side. The manifest records where each recording went, so a split is auditable after the fact, but nothing in the format or the CLI expresses a dependency *between* recordings. This is a real limit, found while assessing public datasets rather than by reading the code: in DASH7 `ds_indoor` two captures at the same location and channel 43 seconds apart are separate recorder runs by every structural test and the same channel realisation physically, and in AirID the transmissions inside one burst are slices of a single continuous capture. A `--group-by` counterpart is the candidate fix and is **not implemented**; see `ROADMAP.md` (Next) and `docs/methodology.md` §6. Note the interaction if it is built: grouping lowers the number of independent units per class, so the error rule above fires more often — which is correct, not a regression to be worked around.
+**Known gap: there is no way to say two recordings are not independent.** `--balance-by` spreads a nuisance variable **across** splits, which is the opposite of what is needed when two recordings came from one acquisition and must stay on the same side. The manifest records where each recording went, so a split is auditable after the fact, but nothing in the format or the CLI expresses a dependency *between* recordings. This is a real limit, found while assessing public datasets rather than by reading the code: in DASH7 `ds_indoor` two captures at the same location and channel 43 seconds apart are separate recorder runs by every structural test and the same channel realisation physically, and in AirID the transmissions inside one burst are slices of a single continuous capture. `--group-by` is the counterpart and **is implemented**: `path:<regex>` or `csv:<file>` maps each recording to a unit, units are indivisible, and the split allocates units instead of recordings. A unit spanning two classes is an error (it would have to carry two strata into one split). When both flags are given, grouping is applied first and balancing then works over units, because keeping non-independent recordings together is a correctness constraint while spreading a nuisance variable is a quality one; a unit whose members disagree on the balancing field is marked `(mixed)` and `stats` reports how many there are. See `ROADMAP.md` and `docs/methodology.md` §6. Note the interaction if it is built: grouping lowers the number of independent units per class, so the error rule above fires more often — which is correct, not a regression to be worked around.
 
 ### 5.7 Disk format
 
