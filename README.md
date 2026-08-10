@@ -14,10 +14,10 @@
 
 ---
 
-> **Status: pre-release.** The capture → dataset pipeline works end to end and is
-> covered by tests. `0.1.0` is not tagged or on PyPI yet — see
-> [docs/publishing.md](docs/publishing.md) and the [Roadmap](#roadmap).
-> Interfaces may change before `0.1.0`.
+> **Status: `0.1.0`, first release.** On PyPI, tagged, CI green. The capture →
+> dataset pipeline works end to end and is covered by tests. Interfaces may still
+> change within `0.x` — see the [Roadmap](#roadmap) for what is planned and what
+> is deliberately out of scope.
 
 ## The problem
 
@@ -43,10 +43,10 @@ uv sync --extra torch            # pulls torch — expect a few minutes the firs
 alias iqforge='uv run iqforge'   # so the commands below work as written
 ```
 
-**From PyPI** — not published yet; see [docs/publishing.md](docs/publishing.md):
+**From PyPI** — the tool, without the example recordings:
 
 ```bash
-pip install 'iqforge[torch]'   # coming soon
+pip install 'iqforge[torch]'
 ```
 
 Either way:
@@ -249,7 +249,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] Windowing, labelling, recording-level splitting, sharded storage
 - [x] `torch.utils.data.Dataset` + baseline classifier
 - [x] Packaging (wheel + sdist), GitHub Actions CI
-- [ ] PyPI release (`0.1.0`)
+- [x] PyPI release (`0.1.0`)
 - [x] Leakage measurement (recording-level vs window-level)
 - [x] Real SigMF verification with public captures
 - [ ] Verification with own hardware capture

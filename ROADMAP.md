@@ -23,17 +23,23 @@ Done recently (keep green):
       ceiling, and peaks where the signal is marginal. The wrong split lives in
       the script, never in the CLI.
 
+- [x] **Published `0.1.0`** to PyPI, tagged `v0.1.0`. A chore rather than a
+      level-up, as billed: it removes install friction and proves nothing about
+      quality.
+- [x] **Real SigMF verification with public captures.** Three recordings from
+      the GNU Radio collection. `ci8` and `ci16_le` checked against the raw
+      bytes (exact ÷128 and ÷32768, correct I/Q order); annotated bands measured
+      31.8 dB above unannotated ones. Limits found on real data are in the
+      README.
+
 Do next, in this order:
 
-1. **Publish `0.1.0`.** Chore, not a level-up — removes install friction.
-   Follow [docs/publishing.md](docs/publishing.md) (pending Trusted Publisher on
-   PyPI, then tag `v0.1.0`).
-2. **Run the pipeline on a public real SigMF recording** (SigMF examples /
-   IQEngine-hosted captures). Validates `ci16_le` / `ci8` without buying
-   hardware. Document what worked and what did not.
-3. **Repeat the leakage measurement on that real recording.** The current number
-   is synthetic BPSK/QPSK; the same curve on a real capture is what turns it
-   from an illustration into a result worth publishing.
+1. **Repeat the leakage measurement on a real recording.** The current number is
+   synthetic BPSK/QPSK; the same curve on a real capture is what turns it from
+   an illustration into a result worth publishing.
+2. **Verification with an own hardware capture.** One device end to end. Public
+   files validated the reader; they cannot validate against the conventions of a
+   radio nobody here has run.
 
 ---
 
