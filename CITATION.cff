@@ -13,10 +13,10 @@ authors:
 repository-code: "https://github.com/emrefbulut/iqforge"
 url: "https://github.com/emrefbulut/iqforge"
 license: MIT
-version: "0.1.0"
-# date-released is deliberately absent: 0.1.0 is not tagged or released yet.
-# Add it when the release exists, or this file dates a version nobody can fetch.
-# docs/publishing.md carries this in the pre-release checklist.
+version: "0.2.0"
+# date-released is deliberately absent until the version above is tagged, so this
+# file never dates a release nobody can fetch. docs/publishing.md carries it in
+# the pre-release checklist.
 keywords:
   - software-defined-radio
   - sigmf

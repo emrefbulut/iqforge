@@ -3,8 +3,8 @@
 Pre-release checklist, PyPI setup, GitHub release, and repository metadata.
 
 A PyPI version number is permanent. A bad upload can be yanked, but the number
-can never be reused — `0.1.0` would be burned and the fix would have to ship as
-`0.1.1`. Everything below exists to keep that from happening.
+can never be reused — `0.2.0` would be burned and the fix would have to ship as
+`0.2.1`. Everything below exists to keep that from happening.
 
 ## Pre-release checklist
 
@@ -20,12 +20,15 @@ uv build
 Confirm:
 
 - [ ] `__version__` in `src/iqforge/__init__.py` matches the tag you are about to
-      push (`0.1.0` → `v0.1.0`). This is the only place the version is written;
+      push (`0.2.0` → `v0.2.0`). This is the only place the version is written;
       `pyproject.toml` reads it from there and `tests/test_packaging.py` checks
       they agree.
 - [ ] `CITATION.cff`: `version` matches, and `date-released` is filled in with
       the actual release date (it is intentionally absent until then)
-- [ ] README status line and roadmap no longer say "not on PyPI yet"
+- [ ] `CHANGELOG.md` has a dated section for this version and an empty
+      `[Unreleased]` above it
+- [ ] `docs/release-notes/v<version>.md` exists — `gh release create` reads it
+- [ ] README status line names the version being released
 - [ ] CI is green on `main` — the publish workflow re-runs these checks and will
       refuse to upload otherwise, but finding out before you tag is cheaper
 - [ ] PyPI Trusted Publisher is configured (below)
@@ -35,16 +38,17 @@ Confirm:
 There is no API token to create or store. PyPI verifies the workflow's OIDC
 identity instead, so nothing long-lived can leak from the repository secrets.
 
-Because `iqforge` does not exist on PyPI yet, register a **pending** publisher:
+This was configured for the `0.1.0` release and stays in place; there is nothing
+to redo per release. To check or change it, go to the project's *Publishing*
+settings on PyPI. The publisher is:
 
-1. Go to https://pypi.org/manage/account/publishing/
-2. Under "Add a new pending publisher", fill in:
-   - PyPI Project Name: `iqforge`
-   - Owner: `emrefbulut`
-   - Repository name: `iqforge`
-   - Workflow name: `publish.yml`
-   - Environment name: `pypi`
-3. Save.
+- Owner: `emrefbulut`
+- Repository name: `iqforge`
+- Workflow name: `publish.yml`
+- Environment name: `pypi`
+
+(For a brand-new project the same values are entered under "Add a new pending
+publisher" before the first upload exists.)
 
 The environment name must match `environment: pypi` in
 [`.github/workflows/publish.yml`](../.github/workflows/publish.yml). GitHub
@@ -61,9 +65,9 @@ suite, and a check that the tag matches `__version__` before it builds or
 uploads anything.
 
 ```bash
-git tag -a v0.1.0 -m "v0.1.0"
-git push origin v0.1.0
-gh release create v0.1.0 --title "v0.1.0" --notes-file docs/release-notes/v0.1.0.md
+git tag -a v0.2.0 -m "v0.2.0"
+git push origin v0.2.0
+gh release create v0.2.0 --title "v0.2.0" --notes-file docs/release-notes/v0.2.0.md
 ```
 
 Watch the run:
@@ -76,7 +80,7 @@ If the verify job fails, delete the tag before retrying — a tag that never
 published is not a release:
 
 ```bash
-git tag -d v0.1.0 && git push origin :refs/tags/v0.1.0
+git tag -d v0.2.0 && git push origin :refs/tags/v0.2.0
 ```
 
 ### Manual upload
@@ -93,7 +97,7 @@ uv publish --token pypi-...
 
 ```bash
 uv build
-uv tool install --from dist/iqforge-0.1.0-py3-none-any.whl iqforge
+uv tool install --from dist/iqforge-0.2.0-py3-none-any.whl iqforge
 
 iqforge info examples/bpsk_01.sigmf-meta
 iqforge build examples/ -o /tmp/iqforge-smoke --balance-by core:freq_lower_edge

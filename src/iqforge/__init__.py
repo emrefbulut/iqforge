@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from iqforge.io import Annotation, IQForgeError, Recording, load
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 #: Message shown when an optional-torch entry point is reached without torch.
 #: Kept here so the CLI and the library say the same thing; `{what}` names the
