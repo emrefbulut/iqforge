@@ -35,7 +35,15 @@ and refuses to guess when it can't.
 
 ## Quickstart
 
-**From a clone** — works today, and brings the example recordings with it:
+**From PyPI** — the tool itself, to point at your own recordings:
+
+```bash
+pip install 'iqforge[torch]'
+iqforge info /path/to/your.sigmf-meta
+```
+
+**From a clone** — the same tool plus the 16 example recordings, so you can run
+the walkthrough below without any hardware:
 
 ```bash
 git clone https://github.com/emrefbulut/iqforge && cd iqforge
@@ -43,13 +51,8 @@ uv sync --extra torch            # pulls torch — expect a few minutes the firs
 alias iqforge='uv run iqforge'   # so the commands below work as written
 ```
 
-**From PyPI** — the tool, without the example recordings:
-
-```bash
-pip install 'iqforge[torch]'
-```
-
-Either way:
+The examples are not in the wheel — they would put 5 MB of IQ data in every
+install — so these paths need the clone. Everything else works either way:
 
 ```bash
 iqforge info    examples/bpsk_01.sigmf-meta   # what's in this recording?
@@ -67,9 +70,10 @@ x, y = train[0]  # x: torch.Tensor (2, 1024) float32 — I and Q channels
 train.label_map  # {"bpsk": 0, "qpsk": 1}
 ```
 
-Sample recordings ship with the repo, so you can run all of the above without any
-hardware. `torch` is only needed for `IQForgeDataset` and `iqforge train`; drop
+`torch` is only needed for `IQForgeDataset` and `iqforge train`; drop
 `--extra torch` (or install plain `iqforge`) if you only want to build datasets.
+The sdist on PyPI does bundle `examples/`, so `pip download --no-binary :all:`
+gets them too if you would rather not clone.
 
 ## What it does
 
