@@ -1,3 +1,5 @@
+Filed as sigmf/sigmf-python#159 on 10.08.2026
+
 # Issue draft for sigmf-python — NOT FILED
 
 Draft only. Review before opening at https://github.com/sigmf/sigmf-python/issues.
