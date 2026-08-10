@@ -11,6 +11,7 @@ import pytest
 from iqforge.io import IQForgeError
 from iqforge.storage import (
     MANIFEST_NAME,
+    MANIFEST_SCHEMA,
     ShardWriter,
     dataset_size_bytes,
     read_manifest,
@@ -136,3 +137,78 @@ def test_dataset_size_counts_every_file(tmp_path: Path) -> None:
     (tmp_path / MANIFEST_NAME).write_bytes(b"y" * 50)
 
     assert dataset_size_bytes(tmp_path) == 150
+
+
+def _manifest(root: Path, **overrides: object) -> Path:
+    """Write a minimal manifest, with fields overridden or removed."""
+    write_manifest(
+        root,
+        version="0.1.0",
+        config={},
+        label_map={"a": 0},
+        source_files=[],
+        splits={s: {"shards": [], "labels": [], "count": 0} for s in ("train", "val", "test")},
+    )
+    path = root / "manifest.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for key, value in overrides.items():
+        if value is _MISSING:
+            data.pop(key, None)
+        else:
+            data[key] = value
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+_MISSING = object()
+
+
+def test_manifest_records_its_schema(tmp_path: Path) -> None:
+    """A reader must be able to tell which format it is looking at.
+
+    `iqforge_version` cannot answer that: it moves on every release whether the
+    format changed or not.
+    """
+    _manifest(tmp_path)
+
+    assert read_manifest(tmp_path)["manifest_schema"] == MANIFEST_SCHEMA
+
+
+def test_older_schema_is_readable(tmp_path: Path) -> None:
+    """A dataset built by an earlier version stays usable."""
+    _manifest(tmp_path, manifest_schema=MANIFEST_SCHEMA - 1)
+
+    assert read_manifest(tmp_path)["manifest_schema"] == MANIFEST_SCHEMA - 1
+
+
+def test_manifest_without_a_schema_is_treated_as_zero(tmp_path: Path) -> None:
+    """Every dataset built before the field existed still opens."""
+    _manifest(tmp_path, manifest_schema=_MISSING)
+
+    manifest = read_manifest(tmp_path)
+    assert "manifest_schema" not in manifest
+
+
+def test_newer_schema_is_refused(tmp_path: Path) -> None:
+    """Refused, not read with fingers crossed.
+
+    A newer schema may record a constraint this version does not know to look
+    for; ignoring it would produce a plausible and wrong reading of the split.
+    """
+    _manifest(tmp_path, manifest_schema=MANIFEST_SCHEMA + 1)
+
+    with pytest.raises(IQForgeError) as exc:
+        read_manifest(tmp_path)
+
+    message = str(exc.value)
+    assert f"schema {MANIFEST_SCHEMA + 1}" in message
+    assert "newer version" in message
+    assert "upgrade" in message
+
+
+def test_non_integer_schema_is_refused(tmp_path: Path) -> None:
+    """A string or float there means the file was not written by iqforge."""
+    _manifest(tmp_path, manifest_schema="1.0")
+
+    with pytest.raises(IQForgeError, match="non-integer 'manifest_schema'"):
+        read_manifest(tmp_path)

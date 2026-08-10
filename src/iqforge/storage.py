@@ -9,9 +9,22 @@ from typing import Any
 
 import numpy as np
 
+from iqforge import __version__
 from iqforge.io import IQForgeError
 
 MANIFEST_NAME = "manifest.json"
+
+#: Version of the manifest FORMAT, independent of the package version.
+#:
+#: Bumped when the shape of `manifest.json` changes in a way a reader must know
+#: about: a field whose absence would change how the file is interpreted, or a
+#: field whose meaning changes. Adding a purely informational field does not
+#: need a bump — an older reader ignoring it still reads the file correctly.
+#:
+#: `iqforge_version` cannot serve this purpose: it moves on every release
+#: whether the format changed or not, so a reader cannot tell a format change
+#: from a bug fix.
+MANIFEST_SCHEMA = 1
 
 #: Upper bound on the size of one shard file (SPEC §5.7).
 SHARD_MAX_BYTES = 256 * 1024 * 1024
@@ -98,6 +111,7 @@ def write_manifest(
     """
     root.mkdir(parents=True, exist_ok=True)
     manifest = {
+        "manifest_schema": MANIFEST_SCHEMA,
         "iqforge_version": version,
         "created": dt.datetime.now(dt.UTC).isoformat().replace("+00:00", "Z"),
         "config": config,
@@ -111,11 +125,22 @@ def write_manifest(
 
 
 def read_manifest(root: Path) -> dict[str, Any]:
-    """Read a dataset's manifest.
+    """Read a dataset's manifest, checking that its schema is one we understand.
+
+    Older schemas are read: a dataset written by an earlier iqforge stays
+    usable, and fields added later are simply absent. A NEWER schema is
+    refused, because the difference between "this field is missing" and "this
+    field is missing and it mattered" is not knowable from here — a future
+    version could add a constraint whose absence changes what the split means,
+    and reading it anyway would produce a plausible, wrong answer.
+
+    A manifest with no `manifest_schema` is treated as schema 0, which is every
+    dataset built before the field existed.
 
     Raises:
-        IQForgeError: If the directory or manifest is missing, or the JSON is
-            malformed.
+        IQForgeError: If the directory or manifest is missing, the JSON is
+            malformed, the schema is not an integer, or it is newer than this
+            version can read.
     """
     path = Path(root) / MANIFEST_NAME
     if not path.exists():
@@ -124,9 +149,28 @@ def read_manifest(root: Path) -> dict[str, Any]:
             "Run `iqforge build <input> -o <dir>` first."
         )
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        manifest = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise IQForgeError(f"'{path}' is not valid JSON: {exc}") from exc
+
+    schema = manifest.get("manifest_schema", 0)
+    if not isinstance(schema, int) or isinstance(schema, bool):
+        raise IQForgeError(
+            f"'{path}' has a non-integer 'manifest_schema' ({schema!r}). "
+            f"This version writes schema {MANIFEST_SCHEMA}."
+        )
+    if schema > MANIFEST_SCHEMA:
+        raise IQForgeError(
+            f"'{path}' uses manifest schema {schema}, but this iqforge "
+            f"({__version__}) reads up to {MANIFEST_SCHEMA}. The dataset was built by a "
+            f"newer version.\n\n"
+            "Reading it anyway could misinterpret the split: a newer schema may record "
+            "constraints this version does not know to look for.\n\n"
+            "Options:\n"
+            "  - upgrade: pip install --upgrade iqforge\n"
+            "  - rebuild the dataset with this version"
+        )
+    return manifest
 
 
 def dataset_size_bytes(root: Path) -> int:

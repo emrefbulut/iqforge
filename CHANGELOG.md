@@ -33,6 +33,11 @@ can tell whether the format it is looking at is one it understands.
   were scanned, how many carry `core:label`, and which other keys hold text,
   with an example. Behaviour is unchanged — `core:label` is still the only
   field read, and the message says so.
+- **`manifest_schema`** in `manifest.json`, starting at `1`. `iqforge_version`
+  moves on every release whether the format changed or not, so it cannot tell a
+  reader whether the shape of the file is one it understands. A manifest with a
+  schema newer than the reader is refused rather than read optimistically; an
+  older one, or one written before the field existed, is read normally.
 - [`docs/methodology.md`](docs/methodology.md): how the split claims were
   measured, what the numbers do not cover, the silent failures found along the
   way, and why the leakage measurement could not be repeated on real data.

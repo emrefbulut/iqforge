@@ -222,6 +222,7 @@ Each shard is at most 256 MB. `manifest.json` contents:
 
 ```json
 {
+  "manifest_schema": 1,
   "iqforge_version": "0.1.0",
   "created": "ISO8601 timestamp",
   "config": { "window": 1024, "stride": 512, "repr": "iq2ch", "normalize": true, "seed": 42 },
@@ -236,6 +237,24 @@ Each shard is at most 256 MB. `manifest.json` contents:
 ```
 
 Labels are kept in the manifest; do not write them to a separate file.
+
+**`manifest_schema` — the format's own version, and what a reader does with it.**
+
+`iqforge_version` cannot tell a reader whether the format changed: it moves on every release whether the shape of the file changed or not. `manifest_schema` is an integer that moves only when the shape does. It starts at **1**.
+
+Bump it when a change would make an older reader wrong: a field whose absence changes how the file is interpreted, or a field whose meaning changes. Adding a purely informational field does not need a bump, because an older reader that ignores it still reads the file correctly.
+
+Reading rules, in `read_manifest`:
+
+| schema found | behaviour |
+|---|---|
+| absent | treated as `0`; every dataset built before the field existed stays readable |
+| lower than the current value | read normally; fields added later are simply absent |
+| equal | read normally |
+| **higher** | **error** — do not read |
+| not an integer | error |
+
+The asymmetry is deliberate. Older is safe because this version knows everything that schema contained. Newer is not: a later schema may record a constraint this version does not know to look for, and ignoring it would yield a plausible, wrong reading of the split — the failure mode this project exists to prevent. The error names both versions and says to upgrade or rebuild.
 
 ### 5.8 PyTorch interface
 
