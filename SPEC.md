@@ -199,6 +199,8 @@ Balancing may not hold structurally (if group count exceeds the smallest split, 
 
 Carrier offset per recording is stored in `manifest.json` in the `carrier_offset_hz` field and shown in `stats` output both per recording and as a split summary; imbalance is visible even without `--balance-by`.
 
+**Known gap: there is no way to say two recordings are not independent.** `--balance-by` spreads a nuisance variable **across** splits, which is the opposite of what is needed when two recordings came from one acquisition and must stay on the same side. The manifest records where each recording went, so a split is auditable after the fact, but nothing in the format or the CLI expresses a dependency *between* recordings. This is a real limit, found while assessing public datasets rather than by reading the code: in DASH7 `ds_indoor` two captures at the same location and channel 43 seconds apart are separate recorder runs by every structural test and the same channel realisation physically, and in AirID the transmissions inside one burst are slices of a single continuous capture. A `--group-by` counterpart is the candidate fix and is **not implemented**; see `ROADMAP.md` (Next) and `docs/methodology.md` §6. Note the interaction if it is built: grouping lowers the number of independent units per class, so the error rule above fires more often — which is correct, not a regression to be worked around.
+
 ### 5.7 Disk format
 
 ```
