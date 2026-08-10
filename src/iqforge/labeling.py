@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -194,10 +195,25 @@ def label_from_annotations(
 
 
 def label_from_dirname(
-    rec: Recording, starts: np.ndarray, exclude_labels: frozenset[str]
+    rec: Recording, starts: np.ndarray, exclude_labels: frozenset[str], level: int = 1
 ) -> tuple[list[str | None], LabelingStats]:
-    """Use the name of the recording's parent directory as the label."""
-    name = rec.meta_path.resolve().parent.name
+    """Use the name of an ancestor directory as the label.
+
+    Args:
+        rec: The recording.
+        starts: Window start indices.
+        exclude_labels: Labels to drop.
+        level: How far up to look. 1 is the recording's own directory, 2 its
+            parent, and so on. Layouts that group recordings twice -- a class
+            directory holding per-run subdirectories -- need 2, and there is no
+            way to tell from one path which was meant, so it is a parameter
+            rather than a guess. `dirname_level_warning` reports when the
+            choice looks wrong.
+
+    Raises:
+        IQForgeError: If `level` reaches past the filesystem root.
+    """
+    name = dirname_at_level(rec.meta_path, level)
     stats = LabelingStats(total=starts.size)
     if name in exclude_labels:
         stats.excluded_labels.add(name)
@@ -205,6 +221,99 @@ def label_from_dirname(
         return [None] * starts.size, stats
     stats.labeled = starts.size
     return [name] * starts.size, stats
+
+
+#: A directory name that is a bare enumeration: a shared non-numeric prefix and
+#: a trailing number, or nothing but digits. `rec1`, `run_03`, `007` all match;
+#: `bpsk`, `CH93`, `loc1a` do not.
+_ENUMERATED = re.compile(r"^(?P<prefix>[A-Za-z_.\-]*)(?P<number>\d+)$")
+
+
+def dirname_at_level(meta_path: Path, level: int) -> str:
+    """Name of the directory `level` steps above the recording file.
+
+    Raises:
+        IQForgeError: If there is no such ancestor.
+    """
+    if level < 1:
+        raise IQForgeError(f"--dirname-level must be 1 or more, got {level}.")
+    parents = meta_path.resolve().parents
+    if level > len(parents) or not parents[level - 1].name:
+        raise IQForgeError(
+            f"--dirname-level {level} reaches past the top of "
+            f"'{meta_path}'. The path has only {len(parents)} directory level(s)."
+        )
+    return parents[level - 1].name
+
+
+def _is_enumeration(names: set[str]) -> bool:
+    """Do these names look like a run counter rather than classes?
+
+    Three things must hold: every name shares one prefix, differs only by a
+    trailing number, and the numbers form a consecutive run from 0 or 1.
+
+    Contiguity is what separates a counter from a numeric class. `rec1 … rec10`
+    counts recordings. `CH0`, `CH93`, `CH186` are channel numbers and
+    `snr_10`, `snr_20` are levels -- both share a prefix and end in digits, and
+    neither is a counter, because the gaps carry meaning. Without this test the
+    check would dismiss exactly the directory level the user wants.
+    """
+    if len(names) < 2:
+        return False
+    matches = [_ENUMERATED.fullmatch(n) for n in names]
+    if not all(matches):
+        return False
+    if len({m["prefix"].lower() for m in matches if m}) != 1:
+        return False
+    numbers = sorted(int(m["number"]) for m in matches if m)
+    return numbers[0] in (0, 1) and numbers == list(range(numbers[0], numbers[0] + len(numbers)))
+
+
+def dirname_level_warning(meta_paths: list[Path], level: int) -> str | None:
+    """Warn when the chosen directory level looks like run numbers, not classes.
+
+    Fires only when BOTH hold:
+
+    1. every label is part of one numbered sequence (`rec1 … rec10`), and
+    2. some other level would give a different, fewer, non-enumerated set.
+
+    The second condition is what keeps this quiet. Numbered classes are
+    perfectly ordinary -- `device_01`, `snr_10`, `ch1` -- and warning about them
+    would be noise, and a warning that cries wolf is worse than none: it teaches
+    people to skip warnings, including the ones that matter. So the message only
+    appears when the layout offers a visibly better alternative, and it names
+    both so the choice can be settled at a glance.
+
+    Returns:
+        The warning, or None when nothing looks wrong.
+    """
+    if not meta_paths:
+        return None
+    try:
+        chosen = {dirname_at_level(p, level) for p in meta_paths}
+    except IQForgeError:
+        return None
+    if not _is_enumeration(chosen):
+        return None
+
+    deepest = min(len(p.resolve().parents) for p in meta_paths)
+    for other in range(level + 1, deepest + 1):
+        try:
+            candidate = {dirname_at_level(p, other) for p in meta_paths}
+        except IQForgeError:
+            break
+        # No comparison of set sizes: the signal is counter-versus-values, not
+        # coarser-versus-finer. Three runs under three channels is exactly the
+        # case worth warning about, and both levels have three names.
+        if len(candidate) < 2 or _is_enumeration(candidate):
+            continue
+        return (
+            f"--labels dirname took level {level}, giving {len(chosen)} label(s) that look "
+            f"like run numbers rather than classes: {', '.join(sorted(chosen))}. "
+            f"Level {other} would give {len(candidate)}: {', '.join(sorted(candidate))}. "
+            f"If those are your classes, pass --dirname-level {other}."
+        )
+    return None
 
 
 def load_label_csv(path: Path) -> dict[str, str]:

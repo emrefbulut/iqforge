@@ -23,6 +23,7 @@ from iqforge.labeling import (
     LabelingStats,
     annotation_field_value,
     carrier_offset_hz,
+    dirname_level_warning,
     dominant_label,
     label_from_annotations,
     label_from_csv,
@@ -283,12 +284,13 @@ def _label_one(
     exclude: frozenset[str],
     keep_unlabeled: bool,
     csv_table: dict[str, str] | None,
+    dirname_level: int = 1,
 ) -> tuple[list[str | None], LabelingStats]:
     """Label one recording's windows using the selected source."""
     if source == "annotations":
         return label_from_annotations(rec, starts, window, exclude, keep_unlabeled)
     if source == "dirname":
-        return label_from_dirname(rec, starts, exclude)
+        return label_from_dirname(rec, starts, exclude, level=dirname_level)
     if source == "csv":
         assert csv_table is not None  # validated on the CLI side
         return label_from_csv(rec, starts, csv_table, exclude)
@@ -362,6 +364,13 @@ def build(  # noqa: PLR0913 — the CLI options are defined in SPEC §4
     label_file: Annotated[
         Path | None, typer.Option("--label-file", help="CSV path for --labels csv")
     ] = None,
+    dirname_level: Annotated[
+        int,
+        typer.Option(
+            "--dirname-level",
+            help="For --labels dirname: 1 is the recording's own directory, 2 its parent",
+        ),
+    ] = 1,
     exclude_label: Annotated[
         list[str] | None,
         typer.Option("--exclude-label", help="Label to ignore when labelling (repeatable)"),
@@ -395,6 +404,7 @@ def build(  # noqa: PLR0913 — the CLI options are defined in SPEC §4
             stride=stride,
             source=labels,
             label_file=label_file,
+            dirname_level=dirname_level,
             exclude_label=exclude_label,
             keep_unlabeled=keep_unlabeled,
             split=split,
@@ -415,6 +425,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
     stride: int,
     source: str,
     label_file: Path | None,
+    dirname_level: int,
     exclude_label: list[str] | None,
     keep_unlabeled: bool,
     split: str,
@@ -442,6 +453,11 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
 
     metas, root = _collect_inputs(input_path)
     console.print(f"[dim]found {len(metas)} recording(s):[/] {escape(str(input_path))}")
+
+    if source == "dirname":
+        level_warning = dirname_level_warning(metas, dirname_level)
+        if level_warning:
+            console.print(f"[yellow]warning[/] {escape(level_warning)}")
 
     work: dict[str, _RecordWork] = {}
     totals = LabelingStats()
@@ -473,6 +489,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             exclude=exclude,
             keep_unlabeled=keep_unlabeled,
             csv_table=csv_table,
+            dirname_level=dirname_level,
         )
         totals.merge(stats)
 

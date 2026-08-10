@@ -10,13 +10,16 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from iqforge.io import Annotation, IQForgeError, Recording
+from helpers import write_record
+from iqforge.io import Annotation, IQForgeError, Recording, load
 from iqforge.labeling import (
     DEFAULT_EXCLUDE_LABELS,
     UNLABELED,
     AnnotationLabelSurvey,
     annotation_field_value,
     carrier_offset_hz,
+    dirname_at_level,
+    dirname_level_warning,
     dominant_label,
     label_from_annotations,
     label_from_csv,
@@ -320,3 +323,91 @@ def test_survey_reports_no_annotations_at_all() -> None:
     survey.observe(SimpleNamespace(annotations=[]))  # type: ignore[arg-type]
 
     assert "none of them has any annotation" in survey.hint()
+
+
+def _layout(root: Path, paths: list[str]) -> list[Path]:
+    """Create empty SigMF recordings at the given relative directories."""
+    samples = (np.arange(32) + 1j * np.arange(32)).astype(np.complex64)
+    return [write_record(root / p, samples, name="cap") for p in paths]
+
+
+def test_warns_when_the_label_level_is_a_run_counter(tmp_path: Path) -> None:
+    """The layout that started this: class above, run counter below.
+
+    `CH0/rec1/cap.sigmf-meta` labels by `rec1`, which names the run, not the
+    class. Nothing about that is invalid, so nothing failed -- the dataset just
+    came out meaningless. The warning has to name both levels, because the
+    point is to let the user settle it at a glance.
+    """
+    metas = _layout(
+        tmp_path,
+        [f"CH{ch}/rec{n}" for ch in (0, 93, 186) for n in (1, 2, 3)],
+    )
+
+    warning = dirname_level_warning(metas, 1)
+
+    assert warning is not None
+    assert "rec1" in warning and "rec3" in warning
+    assert "CH0" in warning and "CH93" in warning and "CH186" in warning
+    assert "--dirname-level 2" in warning
+
+
+def test_no_warning_once_the_right_level_is_chosen(tmp_path: Path) -> None:
+    """Passing --dirname-level 2 on the same layout is silent."""
+    metas = _layout(tmp_path, [f"CH{ch}/rec{n}" for ch in (0, 93, 186) for n in (1, 2, 3)])
+
+    assert dirname_level_warning(metas, 2) is None
+
+
+def test_no_warning_for_a_flat_numbered_class_layout(tmp_path: Path) -> None:
+    """`device_01/`, `device_02/` … is a numbered CLASS layout, not a counter.
+
+    A false positive here would be the worst outcome: the labels are correct,
+    there is no better level to point at, and a warning would only teach the
+    user to ignore warnings.
+    """
+    metas = _layout(tmp_path, [f"device_{n:02d}" for n in range(1, 9)])
+
+    assert dirname_level_warning(metas, 1) is None
+
+
+def test_no_warning_for_the_dash7_indoor_layout(tmp_path: Path) -> None:
+    """`indoor_loc1/` … `indoor_loc10/` flat: the counter IS the class."""
+    metas = _layout(tmp_path, [f"indoor_loc{n}" for n in range(1, 11)])
+
+    assert dirname_level_warning(metas, 1) is None
+
+
+def test_no_warning_when_numbers_are_values_rather_than_a_count(tmp_path: Path) -> None:
+    """Non-contiguous numbers carry meaning; they are not a run counter."""
+    metas = _layout(tmp_path, [f"session{s}/snr_{v}" for s in (1, 2) for v in (10, 20, 30)])
+
+    assert dirname_level_warning(metas, 1) is None
+
+
+def test_no_warning_for_ordinary_word_labels(tmp_path: Path) -> None:
+    """bpsk/qpsk never trips the check, at any level."""
+    metas = _layout(tmp_path, [f"{cls}/take{n}" for cls in ("bpsk", "qpsk") for n in (1, 2)])
+
+    assert dirname_level_warning(metas, 2) is None
+
+
+def test_dirname_level_reaching_past_the_root_is_an_error(tmp_path: Path) -> None:
+    """An impossible level says so instead of silently labelling by a drive."""
+    (meta,) = _layout(tmp_path, ["only"])
+
+    with pytest.raises(IQForgeError, match="reaches past the top"):
+        dirname_at_level(meta, 99)
+
+    with pytest.raises(IQForgeError, match="1 or more"):
+        dirname_at_level(meta, 0)
+
+
+def test_label_from_dirname_honours_the_level(tmp_path: Path) -> None:
+    """Level 2 labels by the grandparent directory."""
+    (meta,) = _layout(tmp_path, ["CH93/rec4"])
+    rec = load(meta)
+    starts = np.array([0], dtype=np.int64)
+
+    assert label_from_dirname(rec, starts, frozenset(), level=1)[0] == ["rec4"]
+    assert label_from_dirname(rec, starts, frozenset(), level=2)[0] == ["CH93"]
