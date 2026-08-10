@@ -39,12 +39,16 @@ uv run python scripts/audit_leakage.py <dataset_dir> --source examples
 | `leakage_runs.json` | every run: SNR, strategy, split seed, training seed, accuracies, split sizes |
 | `leakage_table.md` | the summary table, recording-level vs window-level accuracy per SNR |
 | `leakage_stride_{runs.json,table.md}` | the stride sweep: overlap held against a fixed SNR, showing the mechanism |
+| `leakage_real_pilot_*` | real-data pilot on the DASH7 cabled set: raw and 0 dB, both at the ceiling |
+| `leakage_real_probe_*` | SNR bracket, -15 to -40 dB wideband, locating the transition |
+| `leakage_real_cliff_*` | the transition band at -17/-19/-21 dB, two seeds |
 | `leakage_*_quick.*` | the small smoke grid, kept because it is what the `--quick` path produces |
 
 ```bash
 uv run python scripts/leakage_experiment.py --quick   # smoke
 uv run python scripts/leakage_experiment.py           # SNR sweep
 uv run python scripts/leakage_experiment.py --sweep stride
+uv run python scripts/leakage_real.py --pilot          # real capture
 ```
 
 The experiment generates its own recordings at each noise level; `examples/` is

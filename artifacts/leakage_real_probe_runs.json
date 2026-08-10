@@ -1,0 +1,122 @@
+[
+  {
+    "noise_sigma": -15.0,
+    "snr_db": -15.0,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.9639865996649917,
+    "train_accuracy": 0.9860413176996091,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -15.0,
+    "snr_db": -15.0,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.4438860971524288,
+    "train_accuracy": 0.9798994974874372,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -22.0,
+    "snr_db": -22.0,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.40787269681742044,
+    "train_accuracy": 0.7811278615298716,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -22.0,
+    "snr_db": -22.0,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.3860971524288107,
+    "train_accuracy": 0.7247347850362926,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -28.0,
+    "snr_db": -28.0,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.3341708542713568,
+    "train_accuracy": 0.7250139586823003,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -28.0,
+    "snr_db": -28.0,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.3333333333333333,
+    "train_accuracy": 0.6501954215522054,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -34.0,
+    "snr_db": -34.0,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.3316582914572864,
+    "train_accuracy": 0.7169179229480737,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -34.0,
+    "snr_db": -34.0,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.4053601340033501,
+    "train_accuracy": 0.6426577331099944,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -40.0,
+    "snr_db": -40.0,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.3333333333333333,
+    "train_accuracy": 0.7135678391959799,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  },
+  {
+    "noise_sigma": -40.0,
+    "snr_db": -40.0,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.4020100502512563,
+    "train_accuracy": 0.6437744276940257,
+    "train_windows": 3582,
+    "test_windows": 1194,
+    "stride": null
+  }
+]
