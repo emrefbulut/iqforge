@@ -251,8 +251,13 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] Packaging (wheel + sdist), GitHub Actions CI
 - [ ] PyPI release (`0.1.0`)
 - [x] Leakage measurement (recording-level vs window-level)
-- [ ] Real SigMF verification (public files, then hardware)
-- [ ] Live capture / richer inspector — later, see ROADMAP.md
+- [x] Real SigMF verification with public captures
+- [ ] Verification with own hardware capture
+
+**Not planned for 0.x** — out of scope rather than pending:
+
+- Live capture from RTL-SDR / HackRF / PlutoSDR
+- Kitty and iTerm graphics protocols for the inspector
 
 ## How this relates to other tools
 

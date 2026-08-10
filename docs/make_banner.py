@@ -1,147 +1,174 @@
-"""Banner generator for iqforge.
+"""Banner generator for iqforge — GitHub social preview.
 
 Thesis: one object, transforming. A continuous spectrogram enters at the left and
 progressively fractures into discrete, labelled dataset windows toward the right.
-It is not two pictures joined by an arrow - it is the same signal, being cut.
+It is not two pictures joined by an arrow — it is the same signal, being cut.
 
-Content is honest to the project's own sample capture: a continuous reference tone,
-and two bursts of EQUAL duration and bandwidth at different times and frequencies.
+Sized 1280x640, which is what GitHub's social preview slot expects. The previous
+version was 1280x340: a letterbox strip dropped into a 2:1 frame, which the card
+renderer scales to fit, so everything came out oversized. Aspect ratio is the
+whole reason this file was rewritten — keep it at 2:1.
 
-Palette is viridis because that is the colormap the tool renders. Class labels are
-set in type, not colour, so nothing competes with viridis's own meaning (intensity).
+Type is set large on purpose. The card is usually seen shrunk to a few hundred
+pixels wide in a link preview, so anything sized for full-resolution viewing
+becomes unreadable exactly where it is meant to work.
+
+Content is honest to the project's own sample capture: a continuous reference
+tone, and bursts of EQUAL duration and bandwidth at different times and
+frequencies. Both classes appear in the cut region, so the labels show what the
+tool actually produces rather than a single class name.
+
+Palette is viridis because that is the colormap the tool renders. Class labels
+are set in type, not colour, so nothing competes with viridis's own meaning.
+
+Usage:
+    uv run python docs/make_banner.py
 """
 
-import random
+from __future__ import annotations
 
-W, H = 1280, 340
+import random
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from scene import Scene, to_png, to_svg, viridis  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent
+
+#: GitHub social preview. Do not change without re-reading the module docstring.
+W, H = 1280, 640
+
 GROUND = "#0a0d12"
 INK = "#e8edf4"
 MUTED = "#8b97a8"
 FAINT = "#4a5568"
 
-ANCHORS = [
-    (0.000, (68, 1, 84)),
-    (0.125, (72, 40, 120)),
-    (0.250, (62, 73, 137)),
-    (0.375, (49, 104, 142)),
-    (0.500, (38, 130, 142)),
-    (0.625, (31, 158, 137)),
-    (0.750, (53, 183, 121)),
-    (0.875, (110, 206, 88)),
-    (1.000, (253, 231, 37)),
-]
+MARGIN = 72
 
-
-def viridis(t: float) -> str:
-    t = max(0.0, min(1.0, t))
-    for i in range(len(ANCHORS) - 1):
-        t0, c0 = ANCHORS[i]
-        t1, c1 = ANCHORS[i + 1]
-        if t0 <= t <= t1:
-            f = (t - t0) / (t1 - t0)
-            r, g, b = (round(c0[j] + f * (c1[j] - c0[j])) for j in range(3))
-            return f"#{r:02x}{g:02x}{b:02x}"
-    return "#fde725"
-
-
-rng = random.Random(20260804)
-
+# --- spectrogram geometry -------------------------------------------------
 NWIN = 16
-CELLS_PER_WIN = 8  # noise columns inside one window
-ROWS = 22
-BAND_Y, BAND_H = 40, 176
+CELLS_PER_WIN = 8
+ROWS = 26
+BAND_Y, BAND_H = 286, 236
 RH = BAND_H / ROWS
 
-X0, X1 = 64, 1216
+X0, X1 = MARGIN, W - MARGIN
 SPAN = X1 - X0
 
-# gap before window k grows toward the right: the cut becoming visible
-gaps = []
-for k in range(NWIN):
-    if k == 0:
-        gaps.append(0.0)
-    elif k < 7:
-        gaps.append(0.0)
-    else:
-        gaps.append(min((k - 6) * 2.6, 15.0))
-total_gap = sum(gaps)
-WIN_W = (SPAN - total_gap) / NWIN
+#: The reference tone runs through every window, as it does in examples/.
+REF_ROW = 9
 
-# signal content, honest to the sample capture
-REF_ROW = 8
-BPSK_WINS, BPSK_ROWS = range(2, 6), range(15, 20)
-QPSK_WINS, QPSK_ROWS = range(12, 16), range(2, 7)
+#: Bursts. The left pair sits in the continuous region; the right pair sits in
+#: the separated windows, one per class, so both labels have something to name.
+LEFT_BURST_WINS, LEFT_BURST_ROWS = range(1, 5), range(17, 22)
+BPSK_WINS, BPSK_ROWS = range(10, 13), range(17, 22)
+QPSK_WINS, QPSK_ROWS = range(13, 16), range(3, 8)
 
-out = []
-out.append(
-    f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
-    f'viewBox="0 0 {W} {H}" role="img" '
-    f'aria-label="iqforge - turn SDR captures into PyTorch datasets">'
-)
-out.append("<title>iqforge</title>")
-out.append(
-    "<desc>A spectrogram showing a continuous reference tone and two signal bursts, "
-    "progressively cut into discrete labelled dataset windows toward the right.</desc>"
-)
-out.append(f'<rect width="{W}" height="{H}" fill="{GROUND}"/>')
-out.append('<g shape-rendering="crispEdges">')
+#: Windows are flush until here, then the gap between them opens: the cut
+#: becoming visible rather than announced.
+FIRST_CUT = 8
 
-x = X0
-win_x = []
-for k in range(NWIN):
-    x += gaps[k]
-    win_x.append(x)
-    cw = WIN_W / CELLS_PER_WIN
-    for r in range(ROWS):
-        for c in range(CELLS_PER_WIN):
-            if r == REF_ROW:
-                lvl = 0.92 + rng.random() * 0.08
-            elif (k in BPSK_WINS and r in BPSK_ROWS) or (k in QPSK_WINS and r in QPSK_ROWS):
-                lvl = 0.62 + rng.random() * 0.20
-            else:
-                lvl = 0.08 + rng.random() * 0.15
-            out.append(
-                f'<rect x="{x + c * cw:.2f}" y="{BAND_Y + r * RH:.2f}" '
-                f'width="{cw + 0.4:.2f}" height="{RH + 0.4:.2f}" fill="{viridis(lvl)}"/>'
-            )
-    x += WIN_W
-out.append("</g>")
 
-MONO = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace"
+def _gaps() -> list[float]:
+    return [0.0 if k < FIRST_CUT else min((k - FIRST_CUT + 1) * 3.4, 20.0) for k in range(NWIN)]
 
-# labels appear only where the cut has fully opened
-for k in range(12, NWIN):
-    cx = win_x[k] + WIN_W / 2
-    out.append(
-        f'<text x="{cx:.1f}" y="{BAND_Y + BAND_H + 18:.0f}" text-anchor="middle" '
-        f'font-family="{MONO}" font-size="12" letter-spacing="0.5" fill="{MUTED}">qpsk</text>'
+
+def build() -> Scene:
+    rng = random.Random(20260804)
+    scene = Scene()
+    scene.rect(0, 0, W, H, GROUND)
+
+    # Top accent: the viridis ramp, tying the card to the tool's own output.
+    for i in range(W):
+        scene.rect(i, 0, 1.4, 7, viridis(i / (W - 1)))
+
+    scene.text(MARGIN, 150, "iqforge", 96, INK, bold=True, tracking=4)
+    scene.text(
+        MARGIN,
+        199,
+        "Turn SDR captures into PyTorch datasets.",
+        27,
+        MUTED,
+        tracking=0.6,
     )
 
-# hairline marking where windowing begins
-cut_x = win_x[7] - gaps[7] / 2
-out.append(
-    f'<line x1="{cut_x:.1f}" y1="{BAND_Y - 10}" x2="{cut_x:.1f}" y2="{BAND_Y + BAND_H + 10}" '
-    f'stroke="{FAINT}" stroke-width="1" stroke-dasharray="3 4"/>'
-)
-out.append(
-    f'<text x="{cut_x + 8:.1f}" y="{BAND_Y - 14}" font-family="{MONO}" font-size="12" '
-    f'letter-spacing="1" fill="{FAINT}">window / label / split</text>'
-)
+    gaps = _gaps()
+    win_w = (SPAN - sum(gaps)) / NWIN
+    cw = win_w / CELLS_PER_WIN
 
-out.append(
-    f'<text x="64" y="292" font-family="{MONO}" font-size="44" font-weight="600" '
-    f'letter-spacing="3" fill="{INK}">iqforge</text>'
-)
-out.append(
-    f'<text x="64" y="318" font-family="{MONO}" font-size="15" letter-spacing="1.2" '
-    f'fill="{MUTED}">Turn SDR captures into PyTorch datasets.</text>'
-)
-out.append(
-    f'<text x="1216" y="318" text-anchor="end" font-family="{MONO}" font-size="13" '
-    f'letter-spacing="2" fill="{FAINT}">SigMF &#8594; torch.Dataset</text>'
-)
-out.append("</svg>")
+    x = float(X0)
+    win_x: list[float] = []
+    for k in range(NWIN):
+        x += gaps[k]
+        win_x.append(x)
+        for r in range(ROWS):
+            for c in range(CELLS_PER_WIN):
+                if r == REF_ROW:
+                    level = 0.92 + rng.random() * 0.08
+                elif (
+                    (k in LEFT_BURST_WINS and r in LEFT_BURST_ROWS)
+                    or (k in BPSK_WINS and r in BPSK_ROWS)
+                    or (k in QPSK_WINS and r in QPSK_ROWS)
+                ):
+                    level = 0.62 + rng.random() * 0.20
+                else:
+                    level = 0.08 + rng.random() * 0.15
+                scene.rect(x + c * cw, BAND_Y + r * RH, cw + 0.5, RH + 0.5, viridis(level))
+        x += win_w
 
-with open("banner.svg", "w", encoding="utf-8") as f:
-    f.write("\n".join(out))
-print("banner.svg written")
+    # Hairline where windowing begins.
+    cut_x = win_x[FIRST_CUT] - gaps[FIRST_CUT] / 2
+    y = BAND_Y - 16
+    while y < BAND_Y + BAND_H + 16:
+        scene.rect(cut_x, y, 1, 5, FAINT)
+        y += 11
+    scene.text(cut_x + 12, BAND_Y - 22, "window / label / split", 19, FAINT, tracking=1.2)
+
+    # Class labels, only under windows the cut has fully separated.
+    for wins, name in ((BPSK_WINS, "bpsk"), (QPSK_WINS, "qpsk")):
+        centre = (win_x[wins[0]] + win_x[wins[-1]] + win_w) / 2
+        scene.text(centre, BAND_Y + BAND_H + 34, name, 21, MUTED, anchor="middle", tracking=1)
+
+    scene.text(MARGIN, H - 36, "SigMF  ·  recording-level splits  ·  MIT", 20, FAINT, tracking=1)
+    scene.text(
+        W - MARGIN,
+        H - 36,
+        "github.com/emrefbulut/iqforge",
+        20,
+        MUTED,
+        anchor="end",
+        tracking=0.5,
+    )
+    return scene
+
+
+def main() -> None:
+    scene = build()
+
+    svg_path = ROOT / "banner.svg"
+    svg_path.write_text(
+        to_svg(
+            scene,
+            width=W,
+            height=H,
+            aria="iqforge - turn SDR captures into PyTorch datasets",
+            desc=(
+                "A spectrogram of an SDR capture. On the left it is continuous; toward "
+                "the right it separates into discrete dataset windows, the last of which "
+                "are labelled bpsk and qpsk. A reference tone runs through the whole "
+                "recording."
+            ),
+        ),
+        encoding="utf-8",
+    )
+    print(f"wrote {svg_path.name}  {W}x{H}  ({svg_path.stat().st_size / 1024:.0f} KB)")
+
+    png_path = ROOT / "banner.png"
+    if to_png(scene, png_path, width=W, height=H, background=GROUND):
+        print(f"wrote {png_path.name}  {W}x{H}  ({png_path.stat().st_size / 1024:.0f} KB)")
+
+
+if __name__ == "__main__":
+    main()
