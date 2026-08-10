@@ -1,8 +1,11 @@
-Filed as sigmf/sigmf-python#159 on 10.08.2026
+# Upstream report — sigmf/sigmf-python#159
 
-# Issue draft for sigmf-python — NOT FILED
+Filed as sigmf/sigmf-python#159 on 10.08.2026:
+https://github.com/sigmf/sigmf-python/issues/159
 
-Draft only. Review before opening at https://github.com/sigmf/sigmf-python/issues.
+Kept as the local record of what was reported. The text below is what was
+submitted; the live discussion is upstream, so edit the issue there rather than
+this file.
 
 ---
 
