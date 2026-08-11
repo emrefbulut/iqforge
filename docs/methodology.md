@@ -138,6 +138,49 @@ needs no cross-row comparison to do so.
 
 Reproduce: `uv run python scripts/leakage_experiment.py --sweep stride`.
 
+### The same sweep on a real capture
+
+§6 explains why the SNR sweep of §2 cannot be reproduced on any of the four
+public datasets assessed. The stride sweep is a different question — it asks
+what the mechanism is, not how large the effect gets — and it does not need a
+graded task, so it was run on the DASH7 cabled set: 3 channels, 10 independent
+recorder runs each, added noise fixed at −19 dB wideband, 15 seed pairs per
+stride, 150 runs.
+
+| stride | overlap | recording-level | window-level | inflation (paired) | n |
+|---|---|---|---|---|---|
+| 1024 | 0% | 59.7% ± 10.6% | 55.9% ± 12.8% | **−3.7 pp** ± 3.7 | 15 |
+| 768 | 25% | 52.3% ± 10.4% | 48.9% ± 12.9% | **−3.4 pp** ± 4.4 | 15 |
+| 512 | 50% | 48.4% ± 10.7% | 52.6% ± 16.0% | **+4.3 pp** ± 3.5 | 15 |
+| 256 | 75% | 53.2% ± 14.6% | 61.9% ± 13.5% | **+8.7 pp** ± 5.9 | 15 |
+| 128 | 88% | 53.1% ± 11.3% | 60.8% ± 17.2% | **+7.7 pp** ± 5.1 | 15 |
+
+**The zero-overlap prediction holds.** At stride 1024 the inflation is −3.7 pp
+± 3.7, indistinguishable from zero, exactly as on synthetic data. Nothing in
+this dataset produces a leak when the windows share no samples.
+
+**The positive half is consistent but not established.** Inflation rises with
+overlap, and the trend the design licenses — a per-seed regression of inflation
+on overlap fraction, paired so that seed scatter cancels — gives a slope of
+**+15.8 pp per unit overlap, standard error 7.7, t = 2.07**. That is the
+direction §3 predicts and a magnitude compatible with it, but no individual row
+clears t = 2, and only 8 of 15 seed pairs show high overlap beating zero
+overlap at all.
+
+So this run **does not independently establish the effect on real data**. It
+rules out the alternative that the synthetic result was an artefact of
+synthetic signals, and it confirms the null where the causal claim lives. It
+does not reproduce the effect size.
+
+The reason is the one §6 documents. The honest arm here scores 48–60% on a
+task whose chance line is 33.3%, with a standard deviation of 10–15 points
+between seeds — an order of magnitude more scatter than the synthetic arm at
+comparable accuracy, because this dataset has no stable region of partial
+competence. Measuring a 10-point effect through 15 points of seed noise takes
+more seeds than 15, and the fix is a better dataset rather than more compute.
+
+Reproduce: `uv run python scripts/leakage_real.py --sweep stride`.
+
 ---
 
 ## 4. Experimental design
@@ -247,9 +290,9 @@ labelling is the fix and is not implemented.
 
 ---
 
-## 6. Why the measurement was not repeated on real data
+## 6. Why the SNR sweep was not repeated on real data
 
-The obvious next step after §2 and §3 is to run the same comparison on a real
+The obvious next step after §2 is to run the same comparison on a real
 capture. Four public datasets were assessed for it, and the reasons none of them
 carried the measurement are worth recording because they are not accidents of
 this particular search.
@@ -379,6 +422,10 @@ reported. Here the task is effectively **binary**: the network either resolves a
 2.3 MHz carrier separation or it does not. There is no wide region of partial
 competence for a shortcut to exploit, so an accuracy-against-SNR curve measured
 on this data would be reporting the width of a cliff, not the size of a leak.
+
+The stride sweep of §3 asks a different question — what the mechanism is rather
+than how large the effect gets — and it does not need graded difficulty. That
+one *was* run on this dataset, and its result is in §3.
 
 ### What this actually shows
 
