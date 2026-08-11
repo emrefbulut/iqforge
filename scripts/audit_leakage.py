@@ -9,6 +9,14 @@ celebrate. This script runs four independent checks over a built dataset:
      training window. Neighbouring windows from the same recording overlap by
      50%, so a high similarity WITHIN a recording is normal; a high similarity
      ACROSS splits is leakage.
+
+     KNOWN BLIND SPOT, do not read a low number here as "no overlap". Cosine
+     similarity is computed on flattened windows, which compares sample k of one
+     against sample k of the other. Two windows that share half their samples
+     hold them at DIFFERENT positions, so this scores them like two unrelated
+     windows. It detects exact duplicates and nothing else, while every real
+     case is a partial overlap. Check 1 is the one that actually holds. See
+     ROADMAP.md for the replacement: intersect sample-index ranges, not content.
   3. Offset independence - the class x carrier offset contingency per split.
   4. Burst position independence - the same check for the burst start.
      `--balance-by` balances only the field it is given; another field can still
@@ -153,7 +161,9 @@ def main() -> None:
     print(f"   within train (overlapping neighbours): max {within:.4f}")
     print(
         "   note: the baseline is high because every window carries the same +100 kHz\n"
-        "         reference tone; leakage shows up as ~1.0 similarity and twins > 0."
+        "         reference tone. A twin count > 0 is leakage; a twin count of 0 is\n"
+        "         NOT evidence of none -- this check is blind to offset overlap,\n"
+        "         which is the form leakage actually takes. See the docstring."
     )
 
     print("\n3) CLASS x CARRIER OFFSET")

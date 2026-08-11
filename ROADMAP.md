@@ -79,6 +79,25 @@ After Now is done — still reliability-first:
       addition once there is a reason.
 - [ ] Surface leakage / balance diagnostics in `stats` (or a thin `audit` wrapper
       around the existing script)
+
+      **Do not wrap the twinning check as it stands.** `scripts/audit_leakage.py`
+      looks for leaked windows by cosine similarity between flattened test and
+      train windows, and that instrument cannot see the leak it was written for.
+      Flattening lays a window out by position; two windows offset by half a
+      stride hold the same samples at *different* positions, so the dot product
+      compares sample *k* of one against sample *k+512* of the other and scores
+      them no higher than two unrelated windows. The check finds duplicates
+      (offset exactly 0) and nothing else, while every real case is a partial
+      overlap. Found when it returned 0.091 for both arms of a real-data probe
+      and was briefly read as evidence of no overlap.
+
+      The right test needs no threshold and no content at all: carry
+      `(record_id, start_sample)` per window, and report any train/test pair
+      from the same recording whose `[start, start + window)` intervals
+      intersect. Exact, O(n log n) by sorting, and it answers the question that
+      was actually being asked. Content similarity answers a different one —
+      *are these two windows alike* — which is not the same as *do these two
+      windows share samples*, and only the second one is leakage.
 - [ ] Find **~3 people who work with real RF data** and watch them use iqforge.
       Missing users is a product gap; more features will not close it.
 - [ ] Docs site (CLI + Python API reference) when the surface stops thrashing
