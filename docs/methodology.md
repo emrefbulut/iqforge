@@ -250,14 +250,15 @@ labelling is the fix and is not implemented.
 ## 6. Why the measurement was not repeated on real data
 
 The obvious next step after §2 and §3 is to run the same comparison on a real
-capture. Three public datasets were assessed for it. None was usable, and the
-reasons are worth recording because they are not accidents of this particular
-search.
+capture. Four public datasets were assessed for it, and the reasons none of them
+carried the measurement are worth recording because they are not accidents of
+this particular search.
 
 A leakage measurement needs three things: real hardware, several **independent**
 recordings per class — enough that a recording-level split has something to
 split — and a format the reader can be trusted on. The third turned out to be
-the easy one.
+the easy one. The fourth dataset cleared all three and still could not carry
+§2, for a reason none of the three criteria would have caught.
 
 **AirID** (GENESYS Lab, 4 UAV transmitters with deliberately distinct IQ
 imbalances). Recording count is not the problem: the sibling *hovering-uavs*
@@ -313,10 +314,76 @@ channel, which is a carrier offset within one captured band: every file declares
 `core:frequency: 866500000.0`, so the distinction that separates the three units
 is **not in the metadata at all** and `--balance-by` cannot see it.
 
+**DASH7 `ds_indoor_cabled`** (Zenodo 10961311, 1.9 GB, `ci16_le`, CC BY 4.0,
+USRP B210). The cabled companion to the set above: same three Lo-Rate channels,
+transmitter wired to receiver instead of over the air, and **ten** separate
+recorder runs per channel instead of six. It clears every bar the other three
+failed. `iqforge` reads it as shipped, ten independent recordings per class is
+more than a three-way split needs, `--dirname-level 2` reads the channel out of
+the `CH0/rec1/` layout, and `--group-by` now exists in case the runs turn out
+not to be independent after all.
+
+So this one was not assessed and set aside — it was downloaded, prepared and
+trained on. That is what makes it the instructive case: it failed at the far
+end, with the model already running.
+
+Two properties of the data had to be handled before any number meant anything,
+and both were measured rather than assumed:
+
+- **The carrier is only on air 6.8% of the time.** Each recording holds ten
+  packets of 207,872 samples (27.1 ms); the remaining 93% is noise floor, where
+  no window carries class information at all. Packet timing differs between
+  runs, so each recording's first packet is located by its power envelope rather
+  than assumed to start at a fixed offset.
+- **Noise has to be added before windowing, not per window.** Two overlapping
+  windows must share the noise in the samples they share. Adding noise per
+  window would give them independent draws in that shared region and destroy the
+  correlation the experiment exists to measure — the result would come out clean
+  for the wrong reason.
+
+With that in place the recordings as captured were classified at **100.0% by
+both arms**, and so was the same task with noise added at 0 dB wideband SNR.
+Below is why, and it is arithmetic, not a surprise:
+
+| quantity | measured |
+|---|---|
+| capture bandwidth | 7.68 MHz |
+| occupied bandwidth per channel | 19.5 kHz |
+| carrier separation between classes | 2.33 MHz (−3.485, −1.160, +1.166 MHz) |
+| processing gain | **25.9 dB** |
+
+The class *is* a carrier offset, the offsets are 2.3 MHz apart, and each signal
+fills 19.5 kHz of a 7.68 MHz band. A first convolutional layer that learns
+anything frequency-selective at all gets about 26 dB for free, so "0 dB
+wideband" is roughly **+26 dB where the signal actually lives**. The SNR grid as
+designed — 6, 3, 0, −3, −6 dB — would have spent an hour and a half returning
+six rows of 100%.
+
+Pushing down to find the usable band gave the rest of the answer:
+
+| wideband SNR | in-band | recording-level accuracy |
+|---|---|---|
+| −15 dB | +11 dB | 96.4% |
+| −22 dB | +4 dB | 40.8% |
+| −28 dB | −2 dB | 33.4% |
+| −40 dB | −14 dB | 33.3% |
+
+Chance is 33.3%. The task goes from **solved to impossible inside about 7 dB**,
+and the transition band is not merely narrow but unstable: at −19 dB two split
+seeds of the same arm returned 37.4% and 79.7%.
+
+That is what disqualifies the dataset for §2. The curve in §2 exists because
+synthetic difficulty is *graded* — the model half-learns the task over a wide
+band of SNR, and leakage is what fills the gap between half-learned and
+reported. Here the task is effectively **binary**: the network either resolves a
+2.3 MHz carrier separation or it does not. There is no wide region of partial
+competence for a shortcut to exploit, so an accuracy-against-SNR curve measured
+on this data would be reporting the width of a cliff, not the size of a leak.
+
 ### What this actually shows
 
 The recurring obstacle was not licensing, size or format. It was that **none of
-the three datasets documents its recording structure** — which published files
+the first three datasets documents its recording structure** — which published files
 came from one continuous capture, and which are genuinely separate acquisitions.
 
 That had to be reconstructed indirectly in every case:
@@ -343,6 +410,16 @@ description would have revealed it; the 43-second gap only became visible after
 recovering the filenames from inside a 13.9 GB archive. **Counting recordings is
 not enough.** Independence is a property of how the data was acquired, and it
 survives into the published artefact only if someone writes it down.
+
+The cabled set adds a requirement that has nothing to do with provenance. It
+documents its structure, it has ten independent runs per class, and it reads
+without conversion — and it still cannot carry §2, because the *task* it poses
+is a step function. A dataset is suitable for measuring leakage only if there is
+a regime where the model is partly right; a task that is either trivial or
+impossible has no room for a shortcut to show up in, whatever its file count. So
+the search criteria are four, not three: real hardware, documented independence,
+a readable format, and **a task whose difficulty is graded**. Only the first
+three can be checked before downloading anything.
 
 ## 7. Silent failures found along the way
 
