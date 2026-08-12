@@ -10,8 +10,8 @@ cd iqforge
 uv sync --group dev
 ```
 
-`torch` is optional — `info`, `inspect`, `build`, and `stats` run without it.
-To work on `IQForgeDataset` or `train`:
+`torch` is optional — `info`, `inspect`, `build`, `stats`, and `audit` run
+without it. To work on `IQForgeDataset` or `train`:
 
 ```bash
 uv sync --group dev --extra torch
@@ -36,12 +36,16 @@ the network.
 **If `iqforge` misreads a recording from your hardware, that is the single most
 valuable issue you can file.**
 
-The `cf32_le` path is exercised end to end by the example recordings, but the
-integer paths (`ci16_le`, `ci8`) are only covered by synthetic round-trip tests
-— tests that write the data with the same assumption they read it back with.
-They confirm the code is self-consistent, not that it matches what your SDR
-actually wrote. Open questions include signed vs. unsigned interpretation, full
-scale (`2^(n-1)` vs `2^(n-1) - 1`), and hardware-specific I/Q ordering.
+The `cf32_le` path is exercised end to end by the example recordings, and the
+integer paths (`ci16_le`, `ci8`) have been checked against the raw bytes of
+public captures — exact ÷32768 and ÷128, correct I/Q order
+([methodology §5](docs/methodology.md)). That covers three recordings from two
+publishers, both of which happened to agree with the reading here.
+
+What it does not cover is your radio. Signed vs. unsigned interpretation, full
+scale (`2^(n-1)` vs `2^(n-1) - 1`) and hardware-specific I/Q ordering are all
+places a vendor can differ, and a file that disagrees with `iqforge` loads
+without complaint and looks like noise.
 
 Please attach the `.sigmf-meta` file if you can share it — metadata alone is
 often enough to reproduce the problem, and it contains no signal data. The
