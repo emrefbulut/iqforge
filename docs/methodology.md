@@ -172,12 +172,21 @@ rules out the alternative that the synthetic result was an artefact of
 synthetic signals, and it confirms the null where the causal claim lives. It
 does not reproduce the effect size.
 
-The reason is the one §6 documents. The honest arm here scores 48–60% on a
-task whose chance line is 33.3%, with a standard deviation of 10–15 points
-between seeds — an order of magnitude more scatter than the synthetic arm at
-comparable accuracy, because this dataset has no stable region of partial
-competence. Measuring a 10-point effect through 15 points of seed noise takes
-more seeds than 15, and the fix is a better dataset rather than more compute.
+The reason is the one §6 documents, and it is a property of the dataset rather
+than of the experiment. The honest arm here scores 48–60% on a task whose chance
+line is 33.3%, with a standard deviation of 10–15 points between seeds — an
+order of magnitude more scatter than the synthetic arm at comparable accuracy,
+because this dataset's classes are separated by a 2.3 MHz carrier offset and the
+model therefore either resolves them or does not. There is no stable region of
+partial competence, so there is little statistical power to detect an effect
+in. Measuring a 10-point effect through 15 points of seed noise needs more than
+15 seed pairs, and the way to get it is a dataset with graded difficulty, not
+more compute on this one.
+
+**This is a limit, not a failed result.** The run answers the question it was
+pointed at — is the zero-overlap null real outside synthetic data — and it
+answers yes. What it cannot do is size the effect, and §6 explains in advance
+why no run on this dataset could.
 
 Reproduce: `uv run python scripts/leakage_real.py --sweep stride`.
 
@@ -427,6 +436,38 @@ The stride sweep of §3 asks a different question — what the mechanism is rath
 than how large the effect gets — and it does not need graded difficulty. That
 one *was* run on this dataset, and its result is in §3.
 
+### What it cost to find out, and what that bought
+
+Everything above was learned the expensive way. The processing-gain arithmetic
+was done by hand after a pilot returned 100% on both arms; the 7 dB transition
+was found by a bracket probe; the seed instability only became visible once the
+probe was repeated. The SNR grid that was designed before any of that would have
+run for 1.6 hours and returned six rows of 100%.
+
+None of those findings needed a model. The carrier offsets are in the spectrum,
+the occupied bandwidth is in the spectrum, and the ratio between them is the
+processing gain. That is what `iqforge audit` was built to compute, and pointing
+it at the same 30 recordings gives:
+
+```
+VERDICT       ceiling - carrier offset alone classifies 100% of recordings
+              (chance 33%), so a trained model will saturate and leave no room
+              to measure a leak
+NEXT          do not run measure-leakage on this data. A model will score at
+              the ceiling in both arms and the measured inflation will be zero
+              for a reason that has nothing to do with splitting.
+```
+
+**Eight seconds, no training.** It also reports the occupied bandwidth it
+measured — 30.0 kHz of 7.68 MHz, 24.1 dB of available processing gain — against
+the 19.5 kHz and 25.9 dB arrived at by hand. The estimate is coarser, because it
+takes the span holding 99% of the above-floor power rather than a hand-placed
+band, and it is close enough to have made the same decision.
+
+That is the empirical case for the command existing. It does not find leaks that
+a careful person would miss; it finds, in seconds, the reasons a measurement was
+never going to work, which is the part that otherwise costs hours.
+
 ### What this actually shows
 
 The recurring obstacle was not licensing, size or format. It was that **none of
@@ -594,13 +635,20 @@ row is unaffected by this and carries the causal claim on its own.
 Open questions this repository does not answer:
 
 - **How large is the inflation on a real capture, with real channel effects?**
-  Attempted, not achieved. Three public datasets were assessed and each was
-  ruled out — AirID on format, Vega-C on sessions crossed with class, DASH7 on
-  recordings that are structurally independent and physically near-duplicate.
-  §6 gives the reasoning for each. The blocker is that published RF datasets do
-  not state which of their files share an acquisition, so the independence a
-  recording-level split depends on has to be inferred, and inference is not a
-  basis for a measurement about leakage.
+  Attempted, partly achieved. Four public datasets were assessed: AirID ruled
+  out on format, Vega-C on sessions crossed with class, DASH7 `ds_indoor` on
+  recordings that are structurally independent and physically near-duplicate,
+  and DASH7 cabled on a task whose difficulty is a step function rather than a
+  gradient. §6 gives the reasoning for each.
+
+  The cabled set did carry the stride sweep (§3), which reproduced the
+  zero-overlap null — the row the causal claim rests on. It could not size the
+  effect: the trend is in the right direction at t = 2.07 and no individual row
+  is significant. So the mechanism is confirmed outside synthetic data and the
+  magnitude is not. Two blockers, and they are different. Published RF datasets
+  do not state which of their files share an acquisition, so independence has
+  to be inferred; and a dataset can satisfy every structural criterion and still
+  pose a task with no region of partial competence to measure in.
 - How does it scale with model capacity, window length, or the number of
   recordings?
 - Does recording-level splitting remain sufficient when recordings share a
@@ -623,13 +671,21 @@ uv sync --extra torch
 
 uv run python scripts/leakage_experiment.py                  # section 2
 uv run python scripts/leakage_experiment.py --sweep stride   # section 3
+uv run python scripts/leakage_real.py --sweep stride         # section 3, real
 ```
 
-Both write to `artifacts/`. Neither touches `examples/`; the experiment generates
-its own recordings at each noise level. The two grids are 180 and 150 training
-runs; runtime is dominated by training on CPU and is measured in hours rather
-than minutes. Results are checkpointed after every run, so an interrupted grid
-keeps what it has completed.
+All three write to `artifacts/`. None touches `examples/`; the synthetic
+experiment generates its own recordings at each noise level, and the real one
+reads a DASH7 capture set you supply with `--source`. The grids are 180, 150 and
+150 training runs; runtime is dominated by training on CPU and is measured in
+hours rather than minutes. Results are checkpointed after every run, so an
+interrupted grid keeps what it has completed.
+
+The audit in §6 needs no training and takes seconds:
+
+```bash
+uv run iqforge audit <recording folder> --dirname-level 2
+```
 
 See also the [README](../README.md) for what the tool does and its known
 limitations.
