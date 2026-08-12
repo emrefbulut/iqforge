@@ -107,6 +107,20 @@ iqforge stats <dataset_dir>
 iqforge train <dataset_dir> [--epochs 10] [--batch-size 64]
     Trains a simple baseline CNN. The goal is not accuracy records,
     but proving the dataset is actually trainable.
+
+iqforge audit <path> [--window 1024] [--stride 512]
+              [--labels {dirname,annotations}] [--dirname-level 1]
+              [--format {text,json}] [--strict]
+    Reports leakage risk and whether a leakage measurement is possible.
+    <path> is either a built dataset (manifest.json present) or a folder of
+    recordings; the mode is detected and named in the report. --window,
+    --stride and --labels apply to folder mode only, where nothing has been
+    built yet and the overlap a build WOULD produce is what gets reported.
+    Statuses: LEAK, RISK, PASS/proof, PASS/sample, NOT CHECKED. There is no
+    "clean" status and no way to suppress the "what this did not check" list;
+    NOT CHECKED is counted separately from passes in the summary.
+    Exit code 1 on LEAK; --strict makes RISK exit 1 as well.
+    Trains nothing. See 5.9.
 ```
 
 ---
@@ -269,6 +283,20 @@ train.label_map  # {"device_a": 0, ...}
 
 Must be a subclass of `torch.utils.data.Dataset`, reading shards lazily with memmap.
 
+### 5.9 Audit
+
+`audit` is a negative instrument: it can prove a problem, it can prove a small number of properties from structure, and everything else it reports as examined-and-passed or as not examined. It must never emit a statement a reader can turn into "this dataset is clean".
+
+Three rules the implementation is held to:
+
+**Overlap is decided from sample-index ranges, never from content similarity.** Flattening a window lays it out by position, so two windows sharing half their samples hold them at different indices and a similarity score rates real overlap like unrelated noise. Any future content-based check may support this conclusion but may not be the basis for it.
+
+**In a dataset this tool built, cross-split overlap is settled by proof.** Two windows can only overlap if they came from the same recording, so recording disjointness (5.6) makes cross-split overlap impossible. That is stronger than sampling the data and requires no reads. This is why the manifest does not carry per-window sample offsets: the row-to-recording mapping is already derivable from the ordered `records` list and its window counts, and a field added for a check that is redundant would be schema cost with no answer behind it.
+
+**Difficulty has two outcomes, `ceiling` and `unknown`.** A single scalar axis that classifies at or above 95% of recordings means a trained model will saturate, which is reportable without training. The complement is not: locating the band where a model is partly right requires a model. There is deliberately no `measurable` verdict.
+
+The report is fixed-width ASCII (78 columns) so it can be quoted unaltered, and carries the tool version, a UTC timestamp, an input fingerprint, the status table, a summary counting NOT CHECKED separately, and the non-suppressible caveat list. `--format json` carries the same fields, `did_not_check` included.
+
 ---
 
 ## 6. Terminal spectrogram
@@ -301,11 +329,13 @@ iqforge/
     ISSUE_TEMPLATE/bug_report.yml
   src/iqforge/
     __init__.py                 exports load() and (lazy) IQForgeDataset
-    cli.py                      typer app: info/inspect/build/stats/train
+    cli.py                      typer app: info/inspect/build/stats/train/audit
     io.py                       SigMF reading, data type conversion
     windowing.py                windowing, normalization, representations
     labeling.py                 three label sources, --balance-by field reading
+    grouping.py                 --group-by key resolution (path: / csv:)
     splitting.py                stratified recording-based split, leakage warnings
+    audit.py                    leakage-risk and measurability audit (5.9)
     storage.py                  shard write/read, manifest
     dataset.py                  IQForgeDataset (torch)
     training.py                 baseline training loop (torch)
@@ -318,7 +348,9 @@ iqforge/
     test_windowing.py
     test_labeling.py
     test_splitting.py
+    test_grouping.py
     test_storage.py
+    test_audit.py
     test_display.py
     test_dataset.py             (skipped if torch absent)
     test_models.py              (skipped if torch absent)
@@ -327,12 +359,17 @@ iqforge/
     verify_spectrogram.py       Phase 2 verification, produces PNG
     capture_terminal.py         saves inspect output with colors
     run_seed_grid.py            Phase 4 seed grid
-    audit_leakage.py            leakage audit
+    audit_leakage.py            leakage audit (superseded by `iqforge audit`)
+    leakage_experiment.py       SNR and stride sweeps, synthetic
+    leakage_real.py             the same sweeps on a real capture
     demo.sh                     demo recording command sequence
   docs/
     banner.svg                  README header image
     banner.png                  fallback if SVG does not render
     make_banner.py              banner generator
+    methodology.md              how the claims were measured
+    publishing.md               release checklist and PyPI setup
+    release-notes/              per-version notes, read by gh release create
     demo.md                     asciinema/agg recording instructions
   artifacts/                    persistent outputs of phase verifications
   examples/                     16 recordings: bpsk_01…bpsk_08, qpsk_01…qpsk_08
@@ -426,10 +463,10 @@ README (installation, 3-command quick start, example output), MIT license, GitHu
 **Verification:**
 ```
 uv build
-uv tool install --from dist/iqforge-0.1.0-py3-none-any.whl iqforge
+uv tool install --from dist/iqforge-0.2.0-py3-none-any.whl iqforge
 iqforge info examples/bpsk_01.sigmf-meta
 ```
-(`pipx install dist/iqforge-0.1.0-py3-none-any.whl` also works instead of `uv tool install`; both install the wheel in an isolated environment and put the command on PATH. Since the repo already uses `uv`, verification was done with `uv tool`.)
+(`pipx install dist/iqforge-0.2.0-py3-none-any.whl` also works instead of `uv tool install`; both install the wheel in an isolated environment and put the command on PATH. Since the repo already uses `uv`, verification was done with `uv tool`.)
 Must install and run in a clean environment.
 
 ---

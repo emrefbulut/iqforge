@@ -34,6 +34,8 @@ jobs:
           uv run iqforge info examples/bpsk_01.sigmf-meta
           uv run iqforge build examples/ -o /tmp/ds --balance-by core:freq_lower_edge
           uv run iqforge stats /tmp/ds
+          uv run iqforge audit /tmp/ds
+          uv run iqforge audit examples/ --format json
 
   test-torch:
     runs-on: ubuntu-latest

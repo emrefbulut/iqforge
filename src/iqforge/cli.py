@@ -15,6 +15,16 @@ from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn
 from rich.table import Table
 
 from iqforge import TORCH_REQUIRED, __version__
+from iqforge.audit import (
+    AuditReport,
+    RecordFeatures,
+    audit_dataset,
+    audit_recordings,
+    collect_meta_paths,
+    measure_recording,
+    render_json,
+    render_text,
+)
 from iqforge.display import render_inspect
 from iqforge.grouping import grouping_warnings, resolve_group_keys
 from iqforge.io import META_EXT, IQForgeError, Recording, load
@@ -24,6 +34,7 @@ from iqforge.labeling import (
     LabelingStats,
     annotation_field_value,
     carrier_offset_hz,
+    dirname_at_level,
     dirname_level_warning,
     dominant_label,
     label_from_annotations,
@@ -41,6 +52,7 @@ from iqforge.splitting import (
     stratified_record_split,
 )
 from iqforge.storage import (
+    MANIFEST_NAME,
     ShardWriter,
     dataset_size_bytes,
     read_manifest,
@@ -884,6 +896,76 @@ def train(
     console.print(f"[bold]test accuracy: {result.test_accuracy:.2%}[/]")
     for name, accuracy in result.test_per_class.items():
         console.print(f"[dim]  {escape(name)}:[/] {accuracy:.2%}")
+
+
+@app.command()
+def audit(
+    path: Annotated[
+        Path, typer.Argument(help="A dataset built by iqforge, or a folder of recordings")
+    ],
+    window: Annotated[int, typer.Option("--window", help="Window length, folder mode only")] = 1024,
+    stride: Annotated[
+        int, typer.Option("--stride", help="Step between windows, folder mode")
+    ] = 512,
+    labels: Annotated[
+        str, typer.Option("--labels", help="Label source in folder mode: dirname, annotations")
+    ] = "dirname",
+    dirname_level: Annotated[
+        int, typer.Option("--dirname-level", help="Ancestor directory to read as the class")
+    ] = 1,
+    output_format: Annotated[str, typer.Option("--format", help="text or json")] = "text",
+    strict: Annotated[
+        bool, typer.Option("--strict", help="Exit non-zero on RISK as well as LEAK")
+    ] = False,
+) -> None:
+    """Report leakage risk and whether a leakage measurement is even possible.
+
+    Prints what it checked, what it found, and -- always -- what it could not
+    check. It never certifies a dataset as clean; see `docs/methodology.md` §6
+    for why that distinction is the whole point.
+    """
+    if output_format not in ("text", "json"):
+        raise _fail(IQForgeError(f"--format must be text or json, got '{output_format}'."))
+
+    try:
+        if (path / MANIFEST_NAME).exists():
+            report = audit_dataset(path, read_manifest(path), __version__)
+        else:
+            report = _audit_folder(path, window, stride, labels, dirname_level)
+    except IQForgeError as exc:
+        raise _fail(exc) from exc
+
+    print(render_json(report) if output_format == "json" else render_text(report))
+    summary = report.summary
+    if summary["leaks"] or (strict and summary["risk"]):
+        raise typer.Exit(code=1)
+
+
+def _audit_folder(
+    path: Path, window: int, stride: int, labels: str, dirname_level: int
+) -> AuditReport:
+    """Measure a folder of recordings for `audit`."""
+    meta_paths = collect_meta_paths(path) if path.is_dir() else [path]
+    if not meta_paths:
+        raise IQForgeError(f"No {META_EXT} files found under '{path}'.")
+
+    exclude = resolve_exclude_labels(None)
+    features: list[RecordFeatures] = []
+    for meta in meta_paths:
+        rec = load(meta)
+        if labels == "dirname":
+            label: str | None = dirname_at_level(meta, dirname_level)
+        elif labels == "annotations":
+            starts = np.array([0], dtype=np.int64)
+            window_labels, _ = label_from_annotations(rec, starts, window, exclude, False)
+            label = dominant_label(window_labels)
+        else:
+            raise IQForgeError(
+                f"--labels must be dirname or annotations for audit, got '{labels}'."
+            )
+        features.append(measure_recording(rec, meta.name, label))
+
+    return audit_recordings(path, features, window, stride, __version__, meta_paths)
 
 
 @app.command()

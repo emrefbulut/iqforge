@@ -102,6 +102,7 @@ uv tool install --from dist/iqforge-0.2.0-py3-none-any.whl iqforge
 iqforge info examples/bpsk_01.sigmf-meta
 iqforge build examples/ -o /tmp/iqforge-smoke --balance-by core:freq_lower_edge
 iqforge stats /tmp/iqforge-smoke
+iqforge audit /tmp/iqforge-smoke
 ```
 
 All commands should exit 0. The wheel does not bundle `examples/`, so run these
