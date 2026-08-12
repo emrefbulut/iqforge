@@ -3,8 +3,8 @@
 Pre-release checklist, PyPI setup, GitHub release, and repository metadata.
 
 A PyPI version number is permanent. A bad upload can be yanked, but the number
-can never be reused — `0.2.0` would be burned and the fix would have to ship as
-`0.2.1`. Everything below exists to keep that from happening.
+can never be reused — `0.3.0` would be burned and the fix would have to ship as
+`0.3.1`. Everything below exists to keep that from happening.
 
 ## Pre-release checklist
 
@@ -20,11 +20,12 @@ uv build
 Confirm:
 
 - [ ] `__version__` in `src/iqforge/__init__.py` matches the tag you are about to
-      push (`0.2.0` → `v0.2.0`). This is the only place the version is written;
+      push (`0.3.0` → `v0.3.0`). This is the only place the version is written;
       `pyproject.toml` reads it from there and `tests/test_packaging.py` checks
       they agree.
-- [ ] `CITATION.cff`: `version` matches, and `date-released` is filled in with
-      the actual release date (it is intentionally absent until then)
+- [ ] `CITATION.cff`: `version` matches, and `date-released` is the date you
+      are actually tagging on (it is pre-filled with the intended date, so
+      correct it if the release slipped)
 - [ ] `CHANGELOG.md` has a dated section for this version and an empty
       `[Unreleased]` above it
 - [ ] `docs/release-notes/v<version>.md` exists — `gh release create` reads it
@@ -65,9 +66,9 @@ suite, and a check that the tag matches `__version__` before it builds or
 uploads anything.
 
 ```bash
-git tag -a v0.2.0 -m "v0.2.0"
-git push origin v0.2.0
-gh release create v0.2.0 --title "v0.2.0" --notes-file docs/release-notes/v0.2.0.md
+git tag -a v0.3.0 -m "v0.3.0"
+git push origin v0.3.0
+gh release create v0.3.0 --title "v0.3.0" --notes-file docs/release-notes/v0.3.0.md
 ```
 
 Watch the run:
@@ -80,7 +81,7 @@ If the verify job fails, delete the tag before retrying — a tag that never
 published is not a release:
 
 ```bash
-git tag -d v0.2.0 && git push origin :refs/tags/v0.2.0
+git tag -d v0.3.0 && git push origin :refs/tags/v0.3.0
 ```
 
 ### Manual upload
@@ -97,7 +98,7 @@ uv publish --token pypi-...
 
 ```bash
 uv build
-uv tool install --from dist/iqforge-0.2.0-py3-none-any.whl iqforge
+uv tool install --from dist/iqforge-*.whl iqforge
 
 iqforge info examples/bpsk_01.sigmf-meta
 iqforge build examples/ -o /tmp/iqforge-smoke --balance-by core:freq_lower_edge

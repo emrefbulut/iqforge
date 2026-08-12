@@ -463,10 +463,10 @@ README (installation, 3-command quick start, example output), MIT license, GitHu
 **Verification:**
 ```
 uv build
-uv tool install --from dist/iqforge-0.2.0-py3-none-any.whl iqforge
+uv tool install --from dist/iqforge-*.whl iqforge
 iqforge info examples/bpsk_01.sigmf-meta
 ```
-(`pipx install dist/iqforge-0.2.0-py3-none-any.whl` also works instead of `uv tool install`; both install the wheel in an isolated environment and put the command on PATH. Since the repo already uses `uv`, verification was done with `uv tool`.)
+(`pipx install dist/iqforge-*.whl` also works instead of `uv tool install`; both install the wheel in an isolated environment and put the command on PATH. Since the repo already uses `uv`, verification was done with `uv tool`.)
 Must install and run in a clean environment.
 
 ---
