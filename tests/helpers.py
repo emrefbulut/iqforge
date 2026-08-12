@@ -19,6 +19,7 @@ def write_record(
     sample_rate: float | None = 1_024_000.0,
     center_freq: float | None = 100_000_000.0,
     annotations: list[dict] | None = None,
+    capture_extra: dict | None = None,
 ) -> Path:
     """Write a SigMF recording pair by hand and return the metadata path.
 
@@ -31,6 +32,9 @@ def write_record(
         sample_rate: `core:sample_rate`; the field is omitted when None.
         center_freq: `core:frequency`; the field is omitted when None.
         annotations: Raw annotation dictionaries.
+        capture_extra: Extra keys for the capture segment, such as
+            `core:datetime` -- which SigMF puts here rather than in
+            `global`.
 
     Returns:
         Path of the written `.sigmf-meta` file.
@@ -49,6 +53,7 @@ def write_record(
     capture: dict = {"core:sample_start": 0}
     if center_freq is not None:
         capture["core:frequency"] = center_freq
+    capture.update(capture_extra or {})
 
     meta_path = directory / f"{name}.sigmf-meta"
     meta_path.write_text(

@@ -85,6 +85,13 @@ class Recording:
     #: number the writer actually put there. `None` if the file omits it.
     declared_version: str | None = None
 
+    #: `core:datetime` from the first capture segment. It lives in `captures`,
+    #: not `global` -- reading it from `global_info` finds nothing on every
+    #: spec-conforming file, which is how the audit's capture-time check came
+    #: to report NOT CHECKED on a dataset whose two classes were recorded a
+    #: week apart. `None` if the file omits it.
+    capture_datetime: str | None = None
+
     @property
     def duration_seconds(self) -> float:
         """Length of the recording in seconds."""
@@ -230,10 +237,13 @@ def load(path: str | Path) -> Recording:
     num_samples = file_bytes // bytes_per_sample
 
     center_frequency: float | None = None
+    capture_datetime: str | None = None
     captures = handle.get_captures()
     if captures:
         freq = captures[0].get("core:frequency")
         center_frequency = float(freq) if freq is not None else None
+        stamp = captures[0].get("core:datetime")
+        capture_datetime = str(stamp) if stamp is not None else None
 
     annotations = [
         Annotation(
@@ -259,6 +269,7 @@ def load(path: str | Path) -> Recording:
         annotations=annotations,
         global_info=global_info,
         declared_version=declared_version,
+        capture_datetime=capture_datetime,
     )
 
 

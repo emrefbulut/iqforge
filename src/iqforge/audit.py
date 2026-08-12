@@ -339,8 +339,16 @@ def measure_recording(rec: Recording, record_id: str, label: str | None) -> Reco
 
 
 def _capture_time(rec: Recording) -> dt.datetime | None:
-    """`core:datetime` from the first capture segment, if it parses."""
-    raw = rec.global_info.get("core:datetime")
+    """`core:datetime` from the first capture segment, if it parses.
+
+    SigMF puts this in `captures`, not `global`. An earlier version read
+    `global_info` and therefore found nothing on every conforming file, which
+    silently turned the capture-time check into NOT CHECKED across the whole
+    dataset survey -- including on a set whose two classes were recorded a week
+    apart. `global` is still consulted as a fallback for files that put it
+    there anyway.
+    """
+    raw = rec.capture_datetime or rec.global_info.get("core:datetime")
     if not isinstance(raw, str):
         return None
     try:
@@ -412,8 +420,8 @@ def axis_findings(features: list[RecordFeatures]) -> list[Finding]:
             f"this axis alone classifies {score:.0%} of {len(pairs)} recordings "
             f"(chance {chance:.0%})"
         )
-        status = Status.RISK if score >= RISK_SEPARABILITY else Status.PASS_SAMPLE
-        findings.append(Finding(status, name, detail))
+        risky = score >= RISK_SEPARABILITY and score > chance
+        findings.append(Finding(Status.RISK if risky else Status.PASS_SAMPLE, name, detail))
 
     findings.append(_capture_time_finding(labelled))
     return findings
@@ -482,16 +490,21 @@ def difficulty_verdict(features: list[RecordFeatures]) -> tuple[str, bool]:
         same arm scoring 37% and 80% on two seeds.
     """
     labelled = [f for f in features if f.label is not None]
-    best_name, best_score, best_chance = "", 0.0, 0.0
+    best_name, best_score, best_chance, best_margin = "", 0.0, 0.0, -1.0
     for name in labelled[0].axes() if labelled else {}:
         pairs = [(f.axes()[name], f.label) for f in labelled if f.axes()[name] is not None]
         if len(pairs) < 3:
             continue
         score, chance = separability([float(v) for v, _ in pairs], [str(x) for _, x in pairs])
-        if score > best_score:
-            best_name, best_score, best_chance = name, score, chance
+        # Rank by margin over chance, not by raw score. An axis measurable on
+        # only one class scores 100% against a chance of 100% and told the
+        # first survey that a WiFi dataset was at the ceiling "because of the
+        # carrier offset" -- true verdict, wrong reason, and the reason is what
+        # a reader acts on.
+        if score - chance > best_margin:
+            best_name, best_score, best_chance, best_margin = name, score, chance, score - chance
 
-    if best_score >= CEILING_SEPARABILITY:
+    if best_score >= CEILING_SEPARABILITY and best_margin > 0.0:
         return (
             f"ceiling - {best_name.removeprefix('axis: ')} alone classifies "
             f"{best_score:.0%} of recordings (chance {best_chance:.0%}), so a "
@@ -502,8 +515,8 @@ def difficulty_verdict(features: list[RecordFeatures]) -> tuple[str, bool]:
         return ("unknown - no axis was measurable, so nothing was ruled out", False)
     return (
         f"unknown - no single measurable feature separates the classes "
-        f"(best: {best_name.removeprefix('axis: ')} at {best_score:.0%}, "
-        f"chance {best_chance:.0%})",
+        f"(best: {best_name.removeprefix('axis: ')} at {best_score:.0%} against a "
+        f"chance of {best_chance:.0%}, {best_margin * 100:+.0f} points)",
         False,
     )
 

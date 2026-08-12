@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from helpers import write_record
 from iqforge.audit import (
     WIDTH,
     AuditReport,
@@ -25,11 +26,13 @@ from iqforge.audit import (
     _split_findings,
     audit_dataset,
     difficulty_verdict,
+    measure_recording,
     processing_gain_finding,
     render_json,
     render_text,
     separability,
 )
+from iqforge.io import load
 
 
 def _report(findings: list[Finding]) -> AuditReport:
@@ -144,6 +147,58 @@ def test_an_unseparable_axis_gives_unknown_never_measurable() -> None:
     assert not is_ceiling
     assert verdict.startswith("unknown")
     assert "measurable" not in verdict.split(" - ")[0]
+
+
+def test_an_axis_scoring_no_better_than_chance_is_not_a_ceiling() -> None:
+    """A degenerate axis must not become the verdict's reason.
+
+    Measured on a real dataset: carrier offset was estimable on only one of the
+    two classes, so it scored 100% against a chance of 100% and was reported as
+    the reason the task sits at the ceiling. The verdict was right for a
+    different axis; the cited reason was noise.
+    """
+    features = [
+        RecordFeatures(record_id=f"a{i}", label="a", carrier_offset_hz=float(i)) for i in range(5)
+    ]
+    verdict, is_ceiling = difficulty_verdict(features)
+    assert not is_ceiling
+    assert verdict.startswith("unknown")
+    # The axis may still be named, but its margin over chance must be shown.
+    assert "+0 points" in verdict
+
+
+def test_the_verdict_names_the_axis_with_the_largest_margin_over_chance() -> None:
+    features = [
+        RecordFeatures(
+            record_id=f"r{i}",
+            label="a" if i < 4 else "b",
+            carrier_offset_hz=float(i % 2),  # uninformative
+            mean_power_db=0.0 if i < 4 else 100.0,  # separates perfectly
+        )
+        for i in range(8)
+    ]
+    verdict, is_ceiling = difficulty_verdict(features)
+    assert is_ceiling
+    assert "mean power" in verdict
+
+
+def test_capture_time_is_read_from_captures_not_global(tmp_path: Path) -> None:
+    """SigMF puts core:datetime in captures; reading global finds nothing.
+
+    This silently disabled the capture-time confound check on every conforming
+    recording, including a public set whose two classes were recorded a week
+    apart.
+    """
+    meta = write_record(
+        tmp_path,
+        np.zeros(4096, dtype=np.complex64),
+        capture_extra={"core:datetime": "2026-01-02T03:04:05.000Z"},
+    )
+    rec = load(meta)
+    assert rec.capture_datetime == "2026-01-02T03:04:05.000Z"
+    features = measure_recording(rec, "r", "a")
+    assert features.capture_time is not None
+    assert features.capture_time.year == 2026
 
 
 def test_processing_gain_is_not_guessed_without_a_bandwidth() -> None:
