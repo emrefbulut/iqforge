@@ -77,10 +77,16 @@ After Now is done — still reliability-first:
       metadata — a session UUID, `core:hw` for the receiver. The resolution
       logic already exists in `annotation_field_value`, so it is a small
       addition once there is a reason.
-- [ ] Surface leakage / balance diagnostics in `stats` (or a thin `audit` wrapper
-      around the existing script)
+- [x] **`iqforge audit`** — leakage risk and measurability, without training.
+      Reports what it checked, what it found and what it could not check, and
+      has no "clean" status: `NOT CHECKED` is counted separately from passes so
+      an unexamined area cannot read as a pass. Cross-split overlap in a
+      dataset iqforge built is settled by proof rather than sampling, since
+      windows can only overlap within a recording. On the DASH7 cabled set it
+      returns the verdict that a 1.6-hour training grid was about to reach, in
+      eight seconds. Not built as a wrapper around the script below:
 
-      **Do not wrap the twinning check as it stands.** `scripts/audit_leakage.py`
+      **the twinning check was not carried over.** `scripts/audit_leakage.py`
       looks for leaked windows by cosine similarity between flattened test and
       train windows, and that instrument cannot see the leak it was written for.
       Flattening lays a window out by position; two windows offset by half a
@@ -97,12 +103,14 @@ After Now is done — still reliability-first:
       intersect. Exact, O(n log n) by sorting, and it answers the question that
       was actually being asked. Content similarity answers a different one —
       *are these two windows alike* — which is not the same as *do these two
-      windows share samples*, and only the second one is leakage.
+      windows share samples*, and only the second one is leakage. That is what
+      `iqforge audit` does; the script keeps its blind spot and now documents
+      it.
 - [ ] Find **~3 people who work with real RF data** and watch them use iqforge.
       Missing users is a product gap; more features will not close it.
 - [ ] Docs site (CLI + Python API reference) when the surface stops thrashing
 
-Versioning: cut `0.1.x` / `0.2.0` when useful, on a schedule if needed — not
+Versioning: cut `0.2.x` / `0.3.0` when useful, on a schedule if needed — not
 “only when hardware is done.”
 
 ---

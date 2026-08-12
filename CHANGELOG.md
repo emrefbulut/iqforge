@@ -11,7 +11,33 @@ can tell whether the format it is looking at is one it understands.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **`iqforge audit`** reports leakage risk and whether a leakage measurement is
+  possible at all, on a built dataset or on a folder of recordings, without
+  training anything. It checks recording disjointness, cross-split window
+  overlap, which measurable axis separates the classes, the processing gain
+  available to that separation, and — on a folder — whether two recordings
+  claim the same air time or ship identical data.
+
+  It has no "clean" status. Findings are `LEAK`, `RISK`, `PASS/proof`,
+  `PASS/sample` or `NOT CHECKED`, the summary counts unchecked areas separately
+  from passes, and the list of what was not checked cannot be suppressed. The
+  report is fixed-width ASCII so it can be quoted unaltered; `--format json`
+  carries the same fields. Exit code 1 on `LEAK`, and on `RISK` too with
+  `--strict`.
+
+  Overlap is decided from sample-index ranges rather than content similarity,
+  and in a dataset `iqforge` built it is settled by proof: windows can only
+  overlap within a recording, so recording disjointness makes cross-split
+  overlap impossible without reading a single window.
+
+### Changed
+
+- `docs/methodology.md` §3 adds the stride sweep repeated on a real capture,
+  and §6 adds a fourth assessed dataset. `scripts/audit_leakage.py` now
+  documents that its cosine-similarity twinning check is blind to offset
+  overlap; `iqforge audit` does not inherit it.
 
 ## [0.2.0] — 2026-08-10
 

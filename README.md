@@ -14,10 +14,10 @@
 
 ---
 
-> **Status: `0.1.0`, first release.** On PyPI, tagged, CI green. The capture →
-> dataset pipeline works end to end and is covered by tests. Interfaces may still
-> change within `0.x` — see the [Roadmap](#roadmap) for what is planned and what
-> is deliberately out of scope.
+> **Status: `0.2.0`.** On PyPI, tagged, CI green. The capture → dataset pipeline
+> works end to end and is covered by tests. Interfaces may still change within
+> `0.x` — see the [Roadmap](#roadmap) for what is planned and what is
+> deliberately out of scope.
 
 ## The problem
 
@@ -59,6 +59,7 @@ iqforge info    examples/bpsk_01.sigmf-meta   # what's in this recording?
 iqforge inspect examples/bpsk_01.sigmf-meta   # look at it, in your terminal
 iqforge build   examples/ -o dataset/ --balance-by core:freq_lower_edge
 iqforge stats   dataset/                      # what did I just build?
+iqforge audit   dataset/                      # what could be wrong with it?
 ```
 
 ```python
@@ -96,6 +97,11 @@ than the gain setting. Turn it off with `--no-normalize`.
 
 **Writes a manifest.** Every dataset carries the config, the label map, the source
 files, and which recording landed in which split. Same seed, same bytes.
+
+**Audits what it built.** `iqforge audit` reports leakage risk, which measurable
+axis separates your classes, and whether a leakage measurement on this data is
+even possible — and always prints what it could not check. See
+[below](#auditing-a-dataset).
 
 ## The split guarantee
 
@@ -207,6 +213,56 @@ the split is still valid, you just need to know what's left. `iqforge stats` pri
 the carrier offset of every recording and a per-split summary, so the skew is
 visible whether or not you asked for balancing.
 
+## Auditing a dataset
+
+```bash
+iqforge audit dataset/                          # a dataset you built
+iqforge audit recordings/ --dirname-level 2     # a folder, before building
+```
+
+It checks recording disjointness, cross-split window overlap, which measurable
+axis separates your classes, how much processing gain the class separation has
+available, and — on a raw folder — whether two recordings claim the same air
+time or ship identical data.
+
+**It never says "clean".** That is the whole design. Statuses are `LEAK` (proven,
+with the evidence), `RISK`, `PASS/proof` (established from structure, holds for
+the whole dataset), `PASS/sample` (held on what was read) and `NOT CHECKED` —
+which is counted separately in the summary and never folded into "passed":
+
+```
+SUMMARY       0 leaks, 6 passed, 2 risk, 4 not checked
+```
+
+Every run ends with a list of what it did not check, and that list cannot be
+suppressed. Physical independence of two recordings, channel and multipath
+state, and whether an *un*measured axis separates the classes are all outside
+what any of these checks can reach.
+
+Two things it is good at. **Overlap is decided from sample-index ranges, never
+from content similarity** — two windows sharing half their samples hold them at
+different positions once flattened, so a similarity score rates real overlap
+like noise. And in a dataset `iqforge` built, cross-split overlap is settled by
+*proof*: windows can only overlap within a recording, so recording disjointness
+makes it impossible.
+
+**It does not train anything**, so it cannot tell you whether a task sits in the
+band where a leakage measurement is possible. It can rule out the trivial case:
+
+```
+VERDICT       ceiling - carrier offset alone classifies 100% of recordings
+              (chance 33%), so a trained model will saturate and leave no room
+              to measure a leak
+```
+
+That verdict, on a 30-recording public capture set, took eight seconds and
+matched what a 1.6-hour training grid was about to discover the hard way
+([methodology §6](docs/methodology.md)).
+
+The report is fixed-width ASCII so it can be pasted into a paper or an issue
+unaltered; `--format json` gives the same content, `did_not_check` included.
+`--strict` exits non-zero on `RISK` as well as `LEAK`, for CI.
+
 ## Known limitations
 
 Both of these are measured, and both are consequences of decisions made on
@@ -253,9 +309,11 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] Windowing, labelling, recording-level splitting, sharded storage
 - [x] `torch.utils.data.Dataset` + baseline classifier
 - [x] Packaging (wheel + sdist), GitHub Actions CI
-- [x] PyPI release (`0.1.0`)
-- [x] Leakage measurement (recording-level vs window-level)
+- [x] PyPI releases (`0.1.0`, `0.2.0`)
+- [x] Leakage measurement (recording-level vs window-level), synthetic and on a
+      real capture
 - [x] Real SigMF verification with public captures
+- [x] `iqforge audit` — leakage risk and measurability, without training
 - [ ] Verification with own hardware capture
 
 **Not planned for 0.x** — out of scope rather than pending:
