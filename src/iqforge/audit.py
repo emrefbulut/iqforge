@@ -732,7 +732,13 @@ def audit_dataset(root: Path, manifest: dict[str, Any], tool_version: str) -> Au
 
     report.findings.extend(_split_findings(splits, window, stride))
     features, unresolved = _dataset_features(root, splits, source_files)
+    assignment = {
+        str(record.get("id")): name
+        for name, entry in splits.items()
+        for record in entry.get("records") or []
+    }
     if features:
+        report.findings.append(_split_time_overlap(features, assignment))
         report.findings.extend(axis_findings(features))
         report.findings.append(processing_gain_finding(features))
     else:
@@ -864,8 +870,17 @@ def audit_recordings(
     stride: int,
     tool_version: str,
     meta_paths: list[Path],
+    unreadable: list[tuple[str, str]] | None = None,
 ) -> AuditReport:
-    """Audit a folder of recordings that has not been built into a dataset."""
+    """Audit a folder of recordings that has not been built into a dataset.
+
+    Args:
+        unreadable: `(record id, error)` for recordings that could not be
+            opened. They are reported rather than fatal: a set the tool cannot
+            fully read is a finding about the set, and refusing to say anything
+            about the other 327 files is not an improvement on saying so.
+    """
+    unreadable = unreadable or []
     overlap = max(0.0, 1.0 - stride / window) if window else 0.0
     classes = {f.label for f in features if f.label is not None}
     report = AuditReport(
@@ -874,13 +889,15 @@ def audit_recordings(
         mode="recording folder (no manifest)",
         input_path=root.as_posix(),
         input_lines=[
-            f"{len(features)} recordings, {len(classes)} classes, not yet built",
+            f"{len(features)} recordings, {len(classes)} classes, not yet built"
+            + (f" ({len(unreadable)} unreadable, skipped)" if unreadable else ""),
             f"window {window}, stride {stride}, {overlap:.0%} overlap if built this way",
         ],
         fingerprint=fingerprint(meta_paths),
         did_not_check=list(UNIVERSAL_CAVEATS),
     )
 
+    report.findings.append(_readable_finding(len(meta_paths), unreadable))
     report.findings.append(_predicted_overlap(features, window, stride))
     report.findings.append(_time_overlap(features))
     report.findings.append(_duplicate_finding(meta_paths))
@@ -912,6 +929,28 @@ def audit_recordings(
     return report
 
 
+def _readable_finding(total: int, unreadable: list[tuple[str, str]]) -> Finding:
+    """How much of the set the tool could actually open.
+
+    Reported as its own row rather than folded into the others, because every
+    check below it covers only the readable part and a reader needs to know the
+    denominator.
+    """
+    if not unreadable:
+        return Finding(
+            Status.PASS_PROOF,
+            "recordings readable",
+            f"all {total} recording(s) opened; every check below covers all of them",
+        )
+    listed = ", ".join(rid for rid, _ in unreadable[:2]) + (" ..." if len(unreadable) > 2 else "")
+    return Finding(
+        Status.RISK,
+        "recordings readable",
+        f"{len(unreadable)} of {total} could not be opened and are excluded from "
+        f"every check below ({listed}): {unreadable[0][1]}",
+    )
+
+
 def _predicted_overlap(features: list[RecordFeatures], window: int, stride: int) -> Finding:
     """What a build with these parameters would produce. Arithmetic, not a measurement."""
     if not window or not stride:
@@ -939,6 +978,81 @@ def _predicted_overlap(features: list[RecordFeatures], window: int, stride: int)
     )
 
 
+def _spans(timed: list[RecordFeatures]) -> list[tuple[float, float, RecordFeatures]]:
+    """`(start, end, feature)` per recording, ordered by start.
+
+    Sorted on an explicit key. Sorting the tuples directly falls through to
+    comparing `RecordFeatures` whenever two recordings share a start and an end,
+    which is not a rare tie -- it is what identical timestamps in a capture set
+    look like -- and raises `TypeError` mid-audit.
+    """
+    spans = [
+        (
+            f.capture_time.timestamp(),
+            f.capture_time.timestamp() + f.duration_samples / f.sample_rate,
+            f,
+        )
+        for f in timed
+        if f.capture_time and f.duration_samples and f.sample_rate
+    ]
+    spans.sort(key=lambda s: (s[0], s[1], s[2].record_id))
+    return spans
+
+
+def _split_time_overlap(features: list[RecordFeatures], assignment: dict[str, str]) -> Finding:
+    """Do two recordings that share air time sit in different splits?
+
+    The acquisition-level counterpart of the window-level overlap proof. Two
+    recordings can be separate files, separate rows in the manifest and still
+    be the same instant of radio observed twice -- a LoRa frame heard by four
+    receivers at once is four files and one event. Recording-level splitting
+    does not help there, because the unit of independence is the transmission,
+    not the file. `--group-by` is the fix, and this is the check that says
+    whether it worked.
+    """
+    timed = [
+        f
+        for f in features
+        if f.capture_time and f.duration_samples and f.sample_rate and f.sample_rate > 0
+    ]
+    if len(timed) < 2:
+        return Finding(
+            Status.NOT_CHECKED,
+            "shared air time",
+            "core:datetime missing or unparseable, so air time cannot be compared",
+        )
+    spans = _spans(timed)
+    together = 0
+    split_apart: list[tuple[str, str]] = []
+    for i, (_, end_i, a) in enumerate(spans):
+        for start_j, _, b in spans[i + 1 :]:
+            if start_j >= end_i:
+                break
+            if assignment.get(a.record_id) == assignment.get(b.record_id):
+                together += 1
+            else:
+                split_apart.append((a.record_id, b.record_id))
+    if split_apart:
+        listed = ", ".join(f"{x} / {y}" for x, y in split_apart[:2])
+        return Finding(
+            Status.LEAK,
+            "shared air time",
+            f"{len(split_apart)} pair(s) share air time but landed in different "
+            f"splits: {listed}. Group them with --group-by",
+        )
+    if together:
+        return Finding(
+            Status.PASS_PROOF,
+            "shared air time",
+            f"{together} pair(s) share air time and every one of them is in a single split",
+        )
+    return Finding(
+        Status.PASS_SAMPLE,
+        "shared air time",
+        f"no two of {len(timed)} recordings claim overlapping air time",
+    )
+
+
 def _time_overlap(features: list[RecordFeatures]) -> Finding:
     """Do two recordings claim the same air time?
 
@@ -956,15 +1070,11 @@ def _time_overlap(features: list[RecordFeatures]) -> Finding:
             "recording time overlap",
             "core:datetime missing or unparseable, so air time cannot be compared",
         )
-    spans = sorted(
-        (f.capture_time, f.capture_time.timestamp() + f.duration_samples / f.sample_rate, f)
-        for f in timed
-        if f.capture_time
-    )
+    spans = _spans(timed)
     clashes = [
         (a[2].record_id, b[2].record_id)
         for a, b in zip(spans, spans[1:], strict=False)
-        if b[0].timestamp() < a[1]
+        if b[0] < a[1]
     ]
     if clashes:
         first = ", ".join(f"{x} / {y}" for x, y in clashes[:2])

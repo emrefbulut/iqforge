@@ -949,23 +949,52 @@ def _audit_folder(
     if not meta_paths:
         raise IQForgeError(f"No {META_EXT} files found under '{path}'.")
 
+    if labels not in ("dirname", "annotations"):
+        raise IQForgeError(f"--labels must be dirname or annotations for audit, got '{labels}'.")
+
     exclude = resolve_exclude_labels(None)
     features: list[RecordFeatures] = []
+    unreadable: list[tuple[str, str]] = []
     for meta in meta_paths:
-        rec = load(meta)
-        if labels == "dirname":
-            label: str | None = dirname_at_level(meta, dirname_level)
-        elif labels == "annotations":
-            starts = np.array([0], dtype=np.int64)
-            window_labels, _ = label_from_annotations(rec, starts, window, exclude, False)
-            label = dominant_label(window_labels)
-        else:
-            raise IQForgeError(
-                f"--labels must be dirname or annotations for audit, got '{labels}'."
-            )
-        features.append(measure_recording(rec, meta.name, label))
+        # One unreadable recording used to abort the whole run, so a single
+        # cf16_le file in a 330-file set produced no report at all. A dataset
+        # this tool cannot fully read is exactly the case worth reporting on,
+        # and the dataset-mode path already skipped per file -- this makes the
+        # two agree.
+        try:
+            rec = load(meta)
+            if labels == "dirname":
+                label: str | None = dirname_at_level(meta, dirname_level)
+            else:
+                starts = np.array([0], dtype=np.int64)
+                window_labels, _ = label_from_annotations(rec, starts, window, exclude, False)
+                label = dominant_label(window_labels)
+            features.append(measure_recording(rec, _record_id(meta, path), label))
+        except (IQForgeError, OSError, ValueError) as exc:
+            unreadable.append((_record_id(meta, path), str(exc)))
 
-    return audit_recordings(path, features, window, stride, __version__, meta_paths)
+    if not features:
+        raise IQForgeError(
+            f"None of the {len(meta_paths)} recording(s) under '{path}' could be read. "
+            f"First error: {unreadable[0][1] if unreadable else 'unknown'}"
+        )
+
+    return audit_recordings(
+        path, features, window, stride, __version__, meta_paths, unreadable=unreadable
+    )
+
+
+def _record_id(meta: Path, root: Path) -> str:
+    """Identify a recording by its path relative to the audited root.
+
+    The bare file name is ambiguous: a LoRa capture set holds a `3.sigmf-meta`
+    under every session and receiver, so a finding that named two of them read
+    `3.sigmf-meta / 3.sigmf-meta` and pointed at nothing.
+    """
+    try:
+        return meta.relative_to(root).as_posix()
+    except ValueError:
+        return meta.name
 
 
 @app.command()

@@ -411,3 +411,101 @@ def test_sample_spread_covers_the_whole_recording(tmp_path: Path) -> None:
     samples = _sample_spread(FakeRecording())  # type: ignore[arg-type]
     assert samples.size <= 2_000_000
     assert float(samples.real.max()) > 0.9 * FakeRecording.num_samples
+
+
+# --------------------------------------------------------------------------
+# Robustness of the folder scan
+# --------------------------------------------------------------------------
+
+
+def test_one_unreadable_recording_does_not_abort_the_folder(tmp_path: Path) -> None:
+    """A set the tool cannot fully read is a finding about the set.
+
+    Aborting produced no report at all for a 330-file dataset containing one
+    cf16_le file, which is the opposite of useful when the command is being
+    used to survey datasets.
+    """
+    from iqforge.cli import _audit_folder
+
+    write_record(tmp_path / "a", np.zeros(4096, dtype=np.complex64), name="good")
+    write_record(tmp_path / "b", np.zeros(4096, dtype=np.complex64), name="bad", datatype="cf16_le")
+
+    report = _audit_folder(tmp_path, 1024, 512, "dirname", 1)
+    readable = next(f for f in report.findings if f.check == "recordings readable")
+    assert readable.status is Status.RISK
+    assert "1 of 2" in readable.detail
+    assert "cf16_le" in readable.detail
+    assert any("1 unreadable, skipped" in line for line in report.input_lines)
+
+
+def test_a_fully_readable_folder_says_so_by_proof(tmp_path: Path) -> None:
+    from iqforge.cli import _audit_folder
+
+    write_record(tmp_path / "a", np.zeros(4096, dtype=np.complex64), name="one")
+    write_record(tmp_path / "b", np.zeros(4096, dtype=np.complex64), name="two")
+    report = _audit_folder(tmp_path, 1024, 512, "dirname", 1)
+    readable = next(f for f in report.findings if f.check == "recordings readable")
+    assert readable.status is Status.PASS_PROOF
+
+
+def test_a_folder_of_only_unreadable_recordings_is_an_error(tmp_path: Path) -> None:
+    from iqforge.cli import _audit_folder
+    from iqforge.io import IQForgeError
+
+    write_record(tmp_path, np.zeros(4096, dtype=np.complex64), datatype="cf16_le")
+    with pytest.raises(IQForgeError, match="could be read"):
+        _audit_folder(tmp_path, 1024, 512, "dirname", 1)
+
+
+def test_record_ids_are_paths_relative_to_the_audited_root(tmp_path: Path) -> None:
+    """`3.sigmf-meta / 3.sigmf-meta` named two different files and pointed at none."""
+    from iqforge.cli import _record_id
+
+    meta = tmp_path / "session" / "rrh2" / "3.sigmf-meta"
+    assert _record_id(meta, tmp_path) == "session/rrh2/3.sigmf-meta"
+    assert _record_id(meta, Path("/elsewhere")) == "3.sigmf-meta"
+
+
+# --------------------------------------------------------------------------
+# Shared air time across splits
+# --------------------------------------------------------------------------
+
+
+def _timed(record_id: str, start: dt.datetime, seconds: float = 1.0) -> RecordFeatures:
+    return RecordFeatures(
+        record_id=record_id,
+        label="a",
+        capture_time=start,
+        duration_samples=int(seconds * 100),
+        sample_rate=100.0,
+    )
+
+
+def test_recordings_sharing_air_time_in_different_splits_are_a_leak() -> None:
+    """One transmission heard by four receivers is four files and one event."""
+    from iqforge.audit import _split_time_overlap
+
+    start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    features = [_timed("rrh1/1", start), _timed("rrh2/1", start)]
+    finding = _split_time_overlap(features, {"rrh1/1": "train", "rrh2/1": "test"})
+    assert finding.status is Status.LEAK
+    assert "--group-by" in finding.detail
+
+
+def test_grouping_those_recordings_together_closes_the_finding() -> None:
+    from iqforge.audit import _split_time_overlap
+
+    start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    features = [_timed("rrh1/1", start), _timed("rrh2/1", start)]
+    finding = _split_time_overlap(features, {"rrh1/1": "train", "rrh2/1": "train"})
+    assert finding.status is Status.PASS_PROOF
+    assert "single split" in finding.detail
+
+
+def test_identical_timestamps_do_not_crash_the_span_sort() -> None:
+    """Sorting the tuples directly compares RecordFeatures and raises TypeError."""
+    from iqforge.audit import _spans
+
+    start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    spans = _spans([_timed("b", start), _timed("a", start)])
+    assert [s[2].record_id for s in spans] == ["a", "b"]
