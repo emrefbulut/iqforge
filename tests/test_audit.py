@@ -482,11 +482,15 @@ def _timed(record_id: str, start: dt.datetime, seconds: float = 1.0) -> RecordFe
 
 
 def test_recordings_sharing_air_time_in_different_splits_are_a_leak() -> None:
-    """One transmission heard by four receivers is four files and one event."""
+    """One transmission heard by four receivers is four files and one event.
+
+    Timestamps differ by microseconds, as they do in a real multi-receiver
+    capture -- bit-identical values are a generator constant, not simultaneity.
+    """
     from iqforge.audit import _split_time_overlap
 
     start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-    features = [_timed("rrh1/1", start), _timed("rrh2/1", start)]
+    features = [_timed("rrh1/1", start), _timed("rrh2/1", start + dt.timedelta(microseconds=300))]
     finding = _split_time_overlap(features, {"rrh1/1": "train", "rrh2/1": "test"})
     assert finding.status is Status.LEAK
     assert "--group-by" in finding.detail
@@ -496,7 +500,7 @@ def test_grouping_those_recordings_together_closes_the_finding() -> None:
     from iqforge.audit import _split_time_overlap
 
     start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
-    features = [_timed("rrh1/1", start), _timed("rrh2/1", start)]
+    features = [_timed("rrh1/1", start), _timed("rrh2/1", start + dt.timedelta(microseconds=300))]
     finding = _split_time_overlap(features, {"rrh1/1": "train", "rrh2/1": "train"})
     assert finding.status is Status.PASS_PROOF
     assert "single split" in finding.detail
@@ -509,3 +513,32 @@ def test_identical_timestamps_do_not_crash_the_span_sort() -> None:
     start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
     spans = _spans([_timed("b", start), _timed("a", start)])
     assert [s[2].record_id for s in spans] == ["a", "b"]
+
+
+def test_one_constant_timestamp_is_a_placeholder_not_simultaneity() -> None:
+    """`examples/` dates all 16 recordings 2024-01-01T00:00:00Z.
+
+    Read literally that is sixteen simultaneous captures, and the check turned a
+    generator's constant into a proven leak on the project's own example data.
+    """
+    from iqforge.audit import _split_time_overlap
+
+    start = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+    features = [_timed(f"r{i}", start) for i in range(6)]
+    finding = _split_time_overlap(features, {f"r{i}": "train" for i in range(6)})
+    assert finding.status is Status.NOT_CHECKED
+    assert "placeholder" in finding.detail
+
+
+def test_distinct_timestamps_are_still_compared() -> None:
+    """The guard must not swallow a real overlap."""
+    from iqforge.audit import _split_time_overlap
+
+    start = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    features = [
+        _timed("a", start),
+        _timed("b", start + dt.timedelta(seconds=0.5)),
+        _timed("c", start + dt.timedelta(seconds=90)),
+    ]
+    finding = _split_time_overlap(features, {"a": "train", "b": "test", "c": "train"})
+    assert finding.status is Status.LEAK

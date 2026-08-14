@@ -77,6 +77,23 @@ After Now is done — still reliability-first:
       metadata — a session UUID, `core:hw` for the receiver. The resolution
       logic already exists in `annotation_field_value`, so it is a small
       addition once there is a reason.
+
+      **A fifth dataset sharpened this into an argument for a SigMF
+      extension.** LoRaIQ (Zenodo 20341802) does record its acquisition
+      provenance — `sigmf_file`, `sigmf_file_offset`, `sigmf_file_n_samples`
+      per frame, for 103 802 files — but in a sidecar CSV under column names
+      its authors invented, because SigMF has no field for it. So the problem
+      is not that authors withhold the information; it is that there is no
+      standard place to put it, and every author who records it invents a
+      private schema that needs a bespoke parser.
+
+      A `recording:` namespace naming the acquisition a file belongs to would
+      let the DASH7 43-second pairs, the Vega-C shared passes and the LoRaIQ
+      simultaneous receptions all be stated in one field rather than
+      reconstructed from timestamps, flowgraphs and file names. Worth drafting
+      as a SigMF extension proposal — the sigmf-python issue (#159) is
+      precedent that upstream engages. `--group-by` by SigMF field becomes the
+      obvious consumer once such a field exists.
 - [x] **`iqforge audit`** — leakage risk and measurability, without training.
       Reports what it checked, what it found and what it could not check, and
       has no "clean" status: `NOT CHECKED` is counted separately from passes so

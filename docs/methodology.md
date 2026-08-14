@@ -140,8 +140,8 @@ Reproduce: `uv run python scripts/leakage_experiment.py --sweep stride`.
 
 ### The same sweep on a real capture
 
-§6 explains why the SNR sweep of §2 cannot be reproduced on any of the four
-public datasets assessed. The stride sweep is a different question — it asks
+§6 explains why the SNR sweep of §2 cannot be reproduced on any of the public
+datasets assessed. The stride sweep is a different question — it asks
 what the mechanism is, not how large the effect gets — and it does not need a
 graded task, so it was run on the DASH7 cabled set: 3 channels, 10 independent
 recorder runs each, added noise fixed at −19 dB wideband, 15 seed pairs per
@@ -302,9 +302,9 @@ labelling is the fix and is not implemented.
 ## 6. Why the SNR sweep was not repeated on real data
 
 The obvious next step after §2 is to run the same comparison on a real
-capture. Four public datasets were assessed for it, and the reasons none of them
-carried the measurement are worth recording because they are not accidents of
-this particular search.
+capture. Five public datasets were assessed for it, and the reasons are worth
+recording because they are not accidents of this particular search. The fifth
+is the one that changes the conclusion.
 
 A leakage measurement needs three things: real hardware, several **independent**
 recordings per class — enough that a recording-level split has something to
@@ -509,6 +509,50 @@ the search criteria are four, not three: real hardware, documented independence,
 a readable format, and **a task whose difficulty is graded**. Only the first
 three can be checked before downloading anything.
 
+### A fifth dataset that changes the claim
+
+**LoRaIQ** (Zenodo 20341802, CC BY 4.0, 71 GB, four rooftop receivers at EPFL,
+30 000+ LoRa frames) is the case the paragraphs above did not anticipate. It
+publishes exactly what they say nobody publishes.
+
+Its `dataset.csv` carries, per frame, the columns `sigmf_file`,
+`sigmf_file_offset` and `sigmf_file_n_samples` — which capture a frame came
+from, where in it, and how long. That is acquisition provenance at sample
+resolution, for 103 802 files, written down by the authors. The claim that
+published RF datasets do not record which of their files share an acquisition
+is, for this dataset, simply false.
+
+So the thesis narrows rather than weakening. **The information sometimes
+exists. What does not exist is a standard place to put it.** LoRaIQ's provenance
+lives in a sidecar CSV under column names its authors invented; SigMF's own
+metadata carries none of it. Nothing in the format has a field for "these two
+recordings are the same acquisition" or "this file is a slice of that one", so
+an author who wants to record it must invent a private schema, and a reader who
+wants to use it must write a parser per dataset. `iqforge` reads the CSV
+because someone wrote a converter for that one file, not because a tool can
+know where to look.
+
+That is a stronger argument for a SigMF extension than the original one. "Nobody
+records it" invites the reply that authors should be more careful. "Authors do
+record it, in mutually incompatible private formats" is a gap in the standard,
+and it is the kind of gap an extension exists to close: a `core:` or
+`recording:` namespace naming the acquisition a file belongs to would let the
+DASH7 43-second pairs, the Vega-C shared passes and the LoRaIQ simultaneous
+receptions all be stated in the same field instead of reconstructed from
+timestamps, flowgraphs and filenames.
+
+The dataset also demonstrates why the field would earn its place. A LoRa frame
+is heard by up to four receivers at the same instant, so one transmission is
+four files and one event: 23 742 of its transmissions have exactly four
+receptions. Split those files independently and the same instant of radio lands
+on both sides of the split — recording-level splitting does not help, because
+the unit of independence is the transmission, not the file. Built from 312 of
+its recordings without grouping, `iqforge audit` reports **271 of 465
+air-time-sharing pairs split across sides**; built with `--group-by` on the
+transmission id from that same CSV, it reports **all 465 held together**. The
+constraint is expressible and checkable — but only because one dataset chose to
+write it down, in a form only it uses.
+
 ## 7. Silent failures found along the way
 
 Each of these produced plausible output. None was found by reading code.
@@ -635,18 +679,20 @@ row is unaffected by this and carries the causal claim on its own.
 Open questions this repository does not answer:
 
 - **How large is the inflation on a real capture, with real channel effects?**
-  Attempted, partly achieved. Four public datasets were assessed: AirID ruled
+  Attempted, partly achieved. Five public datasets were assessed: AirID ruled
   out on format, Vega-C on sessions crossed with class, DASH7 `ds_indoor` on
   recordings that are structurally independent and physically near-duplicate,
-  and DASH7 cabled on a task whose difficulty is a step function rather than a
-  gradient. §6 gives the reasoning for each.
+  DASH7 cabled on a task whose difficulty is a step function rather than a
+  gradient, and LoRaIQ — which is not ruled out, and which publishes the
+  acquisition provenance the other four withhold. §6 gives the reasoning for
+  each.
 
   The cabled set did carry the stride sweep (§3), which reproduced the
   zero-overlap null — the row the causal claim rests on. It could not size the
   effect: the trend is in the right direction at t = 2.07 and no individual row
   is significant. So the mechanism is confirmed outside synthetic data and the
   magnitude is not. Two blockers, and they are different. Published RF datasets
-  do not state which of their files share an acquisition, so independence has
+  mostly do not state which of their files share an acquisition, so independence has
   to be inferred; and a dataset can satisfy every structural criterion and still
   pose a task with no region of partial competence to measure in.
 - How does it scale with model capacity, window length, or the number of

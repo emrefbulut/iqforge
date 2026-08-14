@@ -11,7 +11,36 @@ can tell whether the format it is looking at is one it understands.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`--labels csv` and `--group-by csv:` identified recordings by file name.**
+  In a nested layout the same name repeats under every directory, so a 312-row
+  label table collapsed to 47 keys and 310 of 312 recordings came out with one
+  label, silently. Both now match the value as written — normally the path
+  relative to the input directory — and fall back to the bare name only when it
+  is unambiguous, refusing with a message that names the fix when it is not. A
+  flat layout is unaffected.
+- `iqforge audit` had the same bug against its own manifest, which left the
+  class-axis checks silent and made the split lookup compare `None` to `None`.
+- `iqforge audit` read `core:datetime` from `global`; SigMF puts it in
+  `captures`. The capture-time confound check reported NOT CHECKED on every
+  conforming recording.
+- `iqforge audit` ranked class axes by raw score, so an axis measurable on one
+  class only scored 100% against a chance of 100% and was reported as the reason
+  a task sits at the ceiling. Axes are ranked by margin over chance now.
+- A folder audit no longer stops at the first unreadable recording; it reports
+  how many could not be opened and audits the rest.
+
+### Added
+
+- `iqforge audit` reports **shared air time**: recordings whose capture
+  intervals intersect must land in the same split. One transmission heard by
+  four receivers is four files and one event, and recording-level splitting
+  does not help — the unit of independence is the transmission. This is how
+  `--group-by` gets verified rather than assumed.
+- `docs/methodology.md` §6 gains a fifth dataset, LoRaIQ, which publishes
+  acquisition provenance the other four withhold — and narrows the section's
+  claim from "nobody records it" to "there is no standard place to put it".
 
 ## [0.3.0] — 2026-08-12
 

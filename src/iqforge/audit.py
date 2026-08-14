@@ -995,6 +995,19 @@ def _predicted_overlap(features: list[RecordFeatures], window: int, stride: int)
     )
 
 
+def _is_placeholder_time(timed: list[RecordFeatures]) -> bool:
+    """Do all these recordings declare one identical timestamp?
+
+    A generator that stamps every file with the same constant is common --
+    `examples/` here ships 16 recordings all dated 2024-01-01T00:00:00Z -- and
+    reading that as sixteen simultaneous captures turns a placeholder into a
+    proven leak. Genuinely simultaneous captures do not agree to the
+    microsecond and do not all overlap each other; a single distinct value
+    across the whole set is a constant, not a measurement.
+    """
+    return len({f.capture_time for f in timed}) == 1
+
+
 def _spans(timed: list[RecordFeatures]) -> list[tuple[float, float, RecordFeatures]]:
     """`(start, end, feature)` per recording, ordered by start.
 
@@ -1037,6 +1050,13 @@ def _split_time_overlap(features: list[RecordFeatures], assignment: dict[str, st
             Status.NOT_CHECKED,
             "shared air time",
             "core:datetime missing or unparseable, so air time cannot be compared",
+        )
+    if _is_placeholder_time(timed):
+        return Finding(
+            Status.NOT_CHECKED,
+            "shared air time",
+            f"all {len(timed)} recordings declare the same core:datetime, which is a "
+            f"placeholder rather than a capture time; air time cannot be compared",
         )
     spans = _spans(timed)
     together = 0
@@ -1086,6 +1106,13 @@ def _time_overlap(features: list[RecordFeatures]) -> Finding:
             Status.NOT_CHECKED,
             "recording time overlap",
             "core:datetime missing or unparseable, so air time cannot be compared",
+        )
+    if _is_placeholder_time(timed):
+        return Finding(
+            Status.NOT_CHECKED,
+            "recording time overlap",
+            f"all {len(timed)} recordings declare the same core:datetime, which is a "
+            f"placeholder rather than a capture time; air time cannot be compared",
         )
     spans = _spans(timed)
     clashes = [
