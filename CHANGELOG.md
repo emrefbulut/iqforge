@@ -13,39 +13,90 @@ can tell whether the format it is looking at is one it understands.
 
 ### Fixed
 
-- **`--labels csv` and `--group-by csv:` identified recordings by file name.**
-  In a nested layout the same name repeats under every directory, so a 312-row
-  label table collapsed to 47 keys and 310 of 312 recordings came out with one
-  label, silently. Both now match the value as written — normally the path
-  relative to the input directory — and fall back to the bare name only when it
-  is unambiguous, refusing with a message that names the fix when it is not. A
-  flat layout is unaffected.
-- `iqforge audit` had the same bug against its own manifest, which left the
-  class-axis checks silent and made the split lookup compare `None` to `None`.
+- **Correctness: `--labels csv` and `--group-by csv:` identified recordings by
+  file name, not by path.** In a nested directory layout the same file name
+  repeats under every directory, so rows for different recordings collided and
+  the surviving one won. Measured on a public capture set: a 312-row label table
+  collapsed to 47 distinct keys and **310 of 312 recordings came out carrying a
+  single label**. Nothing warned — every recording was labelled, every window
+  was labelled, the class counts looked plausible, and the split satisfied every
+  constraint the tool checks.
+
+  **Affects `0.1.0`, `0.2.0` and `0.3.0`** (`--labels csv` since `0.1.0`,
+  `--group-by csv:` since `0.2.0`). A **flat** directory of uniquely named
+  recordings is unaffected, because there the file name is already a unique key
+  — which is why the repository's own fixtures never caught it.
+
+  If you built a dataset from a CSV over a nested layout with an affected
+  version, check it:
+
+  ```bash
+  iqforge audit <dataset-or-folder>
+  ```
+
+  The report's `classes:` line shows the distribution, and `label source` says
+  whether every label the table declares survived the lookup.
+
+  Both paths now match the value as written — normally the path relative to the
+  input directory — and fall back to the bare name only when that name is
+  unambiguous, refusing with a message naming the fix when it is not.
+
+- `build --labels csv` now **errors** when the labels the CSV gives the
+  recordings being built do not all survive into the dataset, naming the ones
+  that were lost. No threshold and no notion of "too imbalanced": a rare-event
+  dataset with 200 background against 1 event passes silently, while 4 declared
+  labels arriving as 1 does not. Compared after `--exclude-label` and after
+  unlabelled windows are dropped, so neither can look like a collapse.
+- `iqforge audit` carried the same file-name bug against its own manifest, which
+  left the class-axis checks silent and made the shared-air-time lookup compare
+  `None` to `None` — reporting 465 unchecked pairs as a pass, inside the one
+  command written on the principle that an unexamined area must never read as
+  one.
 - `iqforge audit` read `core:datetime` from `global`; SigMF puts it in
   `captures`. The capture-time confound check reported NOT CHECKED on every
-  conforming recording.
-- `iqforge audit` ranked class axes by raw score, so an axis measurable on one
-  class only scored 100% against a chance of 100% and was reported as the reason
-  a task sits at the ceiling. Axes are ranked by margin over chance now.
-- A folder audit no longer stops at the first unreadable recording; it reports
-  how many could not be opened and audits the rest.
+  conforming recording — including a public set whose two classes were recorded
+  a week apart.
+- `iqforge audit` ranked class axes by raw score, so an axis measurable on only
+  one class scored 100% against a chance of 100% and was reported as the reason
+  a task sits at the ceiling. Axes are ranked by margin over chance now, and the
+  `unknown` verdict prints that margin.
+- `iqforge audit` treated a constant `core:datetime` as evidence of simultaneous
+  capture. `examples/` stamps all 16 recordings `2024-01-01T00:00:00Z`, which
+  read literally is sixteen simultaneous captures; a single distinct timestamp
+  across a whole set is now reported as a placeholder.
+- A folder audit no longer stops at the first unreadable recording. One
+  `cf16_le` file in a 330-file set produced no report at all; it now reports how
+  many could not be opened and audits the rest, with the denominator on its own
+  row so every other check is read against it.
+- Findings identify recordings by path relative to the audited root. A capture
+  set with a `3.sigmf-meta` under every session and receiver produced findings
+  reading `3.sigmf-meta / 3.sigmf-meta`, which named two files and pointed at
+  neither.
 
 ### Added
 
 - `iqforge audit` reports **shared air time**: recordings whose capture
   intervals intersect must land in the same split. One transmission heard by
-  four receivers is four files and one event, and recording-level splitting
-  does not help — the unit of independence is the transmission. This is how
-  `--group-by` gets verified rather than assumed.
-- `iqforge audit --labels csv` (with `--label-file`), so a dataset labelled from
-  a table can be assessed before it is built — which is what auditing a folder
-  is for. It applies the same relative-path matching as `build` and reports a
-  collapsed table as a proven finding rather than refusing, plus any recordings
-  the table does not list.
-- `docs/methodology.md` §6 gains a fifth dataset, LoRaIQ, which publishes
-  acquisition provenance the other four withhold — and narrows the section's
-  claim from "nobody records it" to "there is no standard place to put it".
+  four receivers is four files and one event, and recording-level splitting does
+  not help — the unit of independence is the transmission, not the file. This is
+  how `--group-by` gets verified rather than assumed.
+- **`iqforge audit --labels csv`** (with `--label-file`), so a dataset labelled
+  from a table can be assessed *before* it is built, which is what auditing a
+  folder is for. Same relative-path matching as `build`; a collapsed table is
+  reported as a proven finding rather than refused, along with any recordings
+  the table omits.
+- `build --labels annotations` warns when every window lands in one class. That
+  source has no declared label set to compare against, so discovery finding a
+  single label is the closest analogue of a collapse.
+- `iqforge audit` and `iqforge stats` always print the class distribution and
+  the **chance line** — what a constant predictor would score. Not a check and
+  not a status: imbalance is a property of the input, and a rare-event dataset
+  is a normal thing to build. There is deliberately no threshold on skew.
+- `Recording.capture_datetime`, read from the first capture segment.
+- `docs/methodology.md` gains three cases: LoRaIQ as a fifth assessed dataset,
+  a disqualification that is a property of a dataset *paired with a class
+  definition* rather than of the data, and an acquisition method that was
+  technically correct per file and invalid in aggregate.
 
 ## [0.3.0] — 2026-08-12
 

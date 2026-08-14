@@ -523,14 +523,29 @@ published RF datasets do not record which of their files share an acquisition
 is, for this dataset, simply false.
 
 So the thesis narrows rather than weakening. **The information sometimes
-exists. What does not exist is a standard place to put it.** LoRaIQ's provenance
-lives in a sidecar CSV under column names its authors invented; SigMF's own
-metadata carries none of it. Nothing in the format has a field for "these two
-recordings are the same acquisition" or "this file is a slice of that one", so
-an author who wants to record it must invent a private schema, and a reader who
-wants to use it must write a parser per dataset. `iqforge` reads the CSV
-because someone wrote a converter for that one file, not because a tool can
-know where to look.
+exists, and where the format can hold it, it cannot say what it means.**
+
+SigMF is not silent here, and an earlier draft of this section overstated the
+gap. `core:collection` in the Global Object names a Collection file, and that
+file lists member recordings in `core:streams` — whose own example is "channels
+from a phased array", which is simultaneous multi-channel acquisition, the
+LoRaIQ case exactly. `core:offset` is documented as "typically used when a
+Recording is split over multiple files". The `capture_details` extension carries
+`source_file`, the recording a file was cut from. NTIA's `ntia-scos` carries
+`schedule.id`, `task` and `recording`, which together identify an acquisition
+run.
+
+What none of them carries is the **constraint**. A Collection asserts that
+recordings are related; it does not assert that they are statistically dependent
+and must not be separated, and a tool cannot tell a collection of "everything in
+my paper" from a collection of "four simultaneous receptions of one frame". A
+recording may also belong to at most one collection, since `core:collection` is
+a single string, so nested grouping levels — this transmission, within this
+session, within this deployment — cannot all be stated.
+
+LoRaIQ's provenance therefore lives in a sidecar CSV under column names its
+authors invented, and `iqforge` reads it because someone wrote a converter for
+that one file, not because a tool can know where to look.
 
 That is a stronger argument for a SigMF extension than the original one. "Nobody
 records it" invites the reply that authors should be more careful. "Authors do

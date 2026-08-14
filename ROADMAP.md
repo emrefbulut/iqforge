@@ -78,22 +78,35 @@ After Now is done — still reliability-first:
       logic already exists in `annotation_field_value`, so it is a small
       addition once there is a reason.
 
-      **A fifth dataset sharpened this into an argument for a SigMF
-      extension.** LoRaIQ (Zenodo 20341802) does record its acquisition
-      provenance — `sigmf_file`, `sigmf_file_offset`, `sigmf_file_n_samples`
-      per frame, for 103 802 files — but in a sidecar CSV under column names
-      its authors invented, because SigMF has no field for it. So the problem
-      is not that authors withhold the information; it is that there is no
-      standard place to put it, and every author who records it invents a
-      private schema that needs a bespoke parser.
+      **The concrete first step is `collection:`, and it is a SigMF field that
+      already exists.** A survey of the spec and its extensions found more
+      than an earlier draft of this item assumed: `core:collection` in the
+      Global Object names a Collection file, which lists member recordings in
+      `core:streams` — whose own example is "channels from a phased array",
+      i.e. simultaneous multi-channel acquisition. `core:offset` is documented
+      for a Recording "split over multiple files", `capture_details:source_file`
+      names the recording a file was cut from, and `ntia-scos` carries
+      `schedule.id` / `task` / `recording`.
 
-      A `recording:` namespace naming the acquisition a file belongs to would
-      let the DASH7 43-second pairs, the Vega-C shared passes and the LoRaIQ
-      simultaneous receptions all be stated in one field rather than
-      reconstructed from timestamps, flowgraphs and file names. Worth drafting
-      as a SigMF extension proposal — the sigmf-python issue (#159) is
-      precedent that upstream engages. `--group-by` by SigMF field becomes the
-      obvious consumer once such a field exists.
+      So the mechanism largely exists and `iqforge` should read it. Scope:
+      a third `--group-by` scheme reading `core:collection`, an audit finding
+      for recordings that declare a collection whose members land in different
+      splits, and documentation of the two limits below.
+
+      **What is missing is meaning, not structure.** A Collection asserts that
+      recordings are *related*; it does not assert that they are statistically
+      dependent and must not be separated, and nothing distinguishes a
+      collection of "everything in my paper" from one of "four simultaneous
+      receptions of one frame". A recording may also belong to at most one
+      collection — `core:collection` is a single string — so nested grouping
+      levels cannot all be stated.
+
+      An extension proposal is therefore about a *qualifier* on existing
+      grouping, not a new grouping mechanism. Precedent argues for doing the
+      work first: the `rfml` extension was accepted (#113) and later removed
+      (#233) because it shipped without examples and its datasets were never
+      released. Write the `collection:` scheme, use it on real data, measure
+      what it cannot express, and only then propose.
 - [x] **`iqforge audit`** — leakage risk and measurability, without training.
       Reports what it checked, what it found and what it could not check, and
       has no "clean" status: `NOT CHECKED` is counted separately from passes so
@@ -127,7 +140,7 @@ After Now is done — still reliability-first:
       Missing users is a product gap; more features will not close it.
 - [ ] Docs site (CLI + Python API reference) when the surface stops thrashing
 
-Versioning: cut `0.2.x` / `0.3.0` when useful, on a schedule if needed — not
+Versioning: cut `0.3.x` / `0.4.0` when useful, on a schedule if needed — not
 “only when hardware is done.”
 
 ---

@@ -109,8 +109,8 @@ iqforge train <dataset_dir> [--epochs 10] [--batch-size 64]
     but proving the dataset is actually trainable.
 
 iqforge audit <path> [--window 1024] [--stride 512]
-              [--labels {dirname,annotations}] [--dirname-level 1]
-              [--format {text,json}] [--strict]
+              [--labels {annotations,dirname,csv}] [--label-file <path>]
+              [--dirname-level 1] [--format {text,json}] [--strict]
     Reports leakage risk and whether a leakage measurement is possible.
     <path> is either a built dataset (manifest.json present) or a folder of
     recordings; the mode is detected and named in the report. --window,

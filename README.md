@@ -19,6 +19,25 @@
 > `0.x` — see the [Roadmap](#roadmap) for what is planned and what is
 > deliberately out of scope.
 
+> [!IMPORTANT]
+> **If you built a dataset with `--labels csv` or `--group-by csv:` over a
+> directory tree, check it.** Through `0.3.0` those options matched recordings
+> by file name rather than by path, so in a layout where the same file name
+> appears under several directories, rows for different recordings collided and
+> the dataset could be labelled or grouped wrongly with no warning. On one
+> public capture set, 310 of 312 recordings ended up with a single label.
+>
+> A **flat** directory of uniquely named recordings is unaffected. To check an
+> existing dataset or folder:
+>
+> ```bash
+> iqforge audit <dataset-or-folder>
+> ```
+>
+> Read the `classes:` line for the distribution and the `label source` row for
+> whether every label the table declares survived. Fixed after `0.3.0`; both
+> paths now match on the path relative to the input directory.
+
 ## The problem
 
 You have an SDR recording. You want to train a model on it.
