@@ -553,6 +553,48 @@ transmission id from that same CSV, it reports **all 465 held together**. The
 constraint is expressible and checkable — but only because one dataset chose to
 write it down, in a form only it uses.
 
+### A dataset can be unusable for one task and fine for another
+
+LoRaIQ produced a disqualification that is not on the list above. The first
+four are properties of the *dataset*: the format, the recording count, the
+physical twinning, the task's difficulty gradient. This one is a property of the
+**pairing of a dataset with a class definition**, and it rules out no dataset at
+all — only a combination.
+
+Take the class to be the **receiver**, which is the natural reading of a set
+with four rooftop radios: four classes, 22 capture sessions each, sessions
+perfectly crossed with class. On the count criteria it is the best-structured
+dataset in this survey.
+
+It cannot be split without leaking, and the reason is arithmetic rather than
+empirical. Every transmission is heard by all four receivers simultaneously, so
+each transmission yields one recording per class. Holding a transmission
+together — which physical independence requires, since the four files are one
+instant of radio — puts one recording of *every* class into whichever split the
+transmission lands in. The unit of independence therefore spans all four
+classes, and a unit cannot belong to one class and to four classes at once.
+`iqforge build` refuses the combination outright:
+
+```
+A group goes to one split as a whole, so it cannot belong to two classes at
+once. Either the grouping key is wrong, or the labels are.
+```
+
+Nothing is wrong with the data. The same 312 recordings, labelled by
+**propagation environment** instead, split cleanly: a transmission is received
+from one location, so a transmission group carries exactly one environment
+label, and the constraint and the class definition stop competing. That is the
+build §3's LoRaIQ sweep uses.
+
+So the fifth criterion is not another hurdle for datasets to clear. It is a
+check to run on the *question* being asked of one: **is the class you have
+chosen constant within the unit of independence?** When it is not — when the
+thing that must stay together is exactly the thing that must be told apart — no
+amount of data fixes it, and no split exists. The failure is worth naming
+because it is invisible from a dataset description: file counts, licences,
+formats and difficulty all look fine, and the contradiction only appears when
+the grouping key and the label are written down side by side.
+
 ## 7. Silent failures found along the way
 
 Each of these produced plausible output. None was found by reading code.
@@ -603,6 +645,47 @@ version is now read before the dict is handed over, and `info` shows both values
 when they differ. A test pins the upstream behaviour so that a future fix
 upstream is noticed; an issue draft is in
 [`docs/sigmf-python-issue-draft.md`](sigmf-python-issue-draft.md).
+
+**A recording identified by its file name.** `--labels csv` and `--group-by
+csv:` both reduced their lookup key to the bare file name. On LoRaIQ, where
+`3.sigmf-meta` exists under every capture session and every receiver, a
+312-row label table collapsed to 47 distinct keys and **310 of 312 recordings
+came out carrying one label**. The build printed no warning. `iqforge audit`
+carried the same blindness against its own manifest — it keyed features by file
+name while the manifest keys records by relative path, so every lookup missed,
+the class-axis checks fell silent, and the split lookup compared `None` to
+`None` and reported 465 pairs of recordings as correctly grouped without having
+checked one of them.
+
+*Why it was silent:* the collapsed table is still a valid table. Every
+recording gets a label, every window is labelled, the class counts are
+plausible, and the split satisfies every constraint the tool checks — it is
+simply a dataset of confidently wrong labels, which is exactly the outcome the
+annotation path refuses to produce and documents refusing (README, *Known
+limitations*). The audit's version was worse: `None == None` is `True`, so an
+unchecked property reported as a **pass**, in the one command written on the
+principle that an unexamined area must never read as a pass.
+
+*How it was found:* not by reading the code, and not reachable from the test
+suite as it stood. Every fixture in this repository is a flat directory of
+uniquely named recordings — `bpsk_01`, `qpsk_03` — and in a flat layout the file
+name *is* a unique key, so the bug is invisible. It appeared the first time the
+tool was pointed at a real nested layout, and even then only because the class
+distribution in the manifest was implausible enough to read twice: 310 of one
+class and 2 of another, from a table that had four balanced classes in it.
+
+*What it cost to fix:* both tables now match the value as written — normally the
+path relative to the input directory — and fall back to the bare name only when
+that name is unambiguous, refusing with a message that names the fix when it is
+not. A flat layout is unaffected, which is why nothing caught it.
+
+The general lesson is the one this section keeps producing in different forms:
+**the tool violated its own stated principle inside its own code.** iqforge
+exists because a silent fallback to a plausible-but-wrong answer is worse than
+an error, and here it had one, in the identifier that decides what every
+downstream guarantee is about. Fixtures that share the shape of the code's
+assumptions cannot find that class of bug. Real data with an inconvenient
+layout can.
 
 ---
 

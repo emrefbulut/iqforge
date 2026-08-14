@@ -1,0 +1,50 @@
+[
+  {
+    "noise_sigma": 0.0,
+    "snr_db": NaN,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.6498829039812647,
+    "train_accuracy": 0.735475051264525,
+    "train_windows": 2926,
+    "test_windows": 854,
+    "stride": 1024
+  },
+  {
+    "noise_sigma": 0.0,
+    "snr_db": NaN,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 1,
+    "test_accuracy": 0.6405152224824356,
+    "train_accuracy": 0.734107997265892,
+    "train_windows": 2926,
+    "test_windows": 854,
+    "stride": 1024
+  },
+  {
+    "noise_sigma": 0.0,
+    "snr_db": NaN,
+    "strategy": "recording-level",
+    "split_seed": 42,
+    "train_seed": 2,
+    "test_accuracy": 0.6569086651053864,
+    "train_accuracy": 0.7361585782638415,
+    "train_windows": 2926,
+    "test_windows": 854,
+    "stride": 1024
+  },
+  {
+    "noise_sigma": 0.0,
+    "snr_db": NaN,
+    "strategy": "window-level",
+    "split_seed": 42,
+    "train_seed": 0,
+    "test_accuracy": 0.6787383177570093,
+    "train_accuracy": 0.7169230769230769,
+    "train_windows": 2925,
+    "test_windows": 856,
+    "stride": 1024
+  }
+]

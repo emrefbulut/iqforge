@@ -1,0 +1,18 @@
+C:\Users\Emre\Desktop\project\scripts\leakage_loraiq.py:133: DeprecationWarning: SigMFFile.DATATYPE_KEY is deprecated and will be removed in a future version, use sigmf.DATATYPE_KEY
+  SigMFFile.DATATYPE_KEY: "cf32_le",
+C:\Users\Emre\Desktop\project\scripts\leakage_loraiq.py:134: DeprecationWarning: SigMFFile.SAMPLE_RATE_KEY is deprecated and will be removed in a future version, use sigmf.SAMPLE_RATE_KEY
+  SigMFFile.SAMPLE_RATE_KEY: rec.sample_rate,
+C:\Users\Emre\Desktop\project\scripts\leakage_loraiq.py:135: DeprecationWarning: SigMFFile.VERSION_KEY is deprecated and will be removed in a future version, use sigmf.VERSION_KEY
+  SigMFFile.VERSION_KEY: "1.0.0",
+C:\Users\Emre\Desktop\project\scripts\leakage_loraiq.py:136: DeprecationWarning: SigMFFile.DESCRIPTION_KEY is deprecated and will be removed in a future version, use sigmf.DESCRIPTION_KEY
+  SigMFFile.DESCRIPTION_KEY: f"LoRaIQ segment from {start}",
+C:\Users\Emre\Desktop\project\scripts\leakage_loraiq.py:139: DeprecationWarning: SigMFFile.START_INDEX_KEY is deprecated and will be removed in a future version, use sigmf.SAMPLE_START_KEY or SigMFFile.SAMPLE_START_KEY
+  capture = {SigMFFile.START_INDEX_KEY: 0}
+C:\Users\Emre\Desktop\project\scripts\leakage_loraiq.py:141: DeprecationWarning: SigMFFile.FREQUENCY_KEY is deprecated and will be removed in a future version, use sigmf.FREQUENCY_KEY
+  capture[SigMFFile.FREQUENCY_KEY] = rec.center_frequency
+prepared 312 recordings in 15s -> C:\Users\Emre\AppData\Local\Temp\iqforge-loraiq-src-efjawudw
+5 strides x 5 split x 3 train x 2 = 150 runs, 20 epochs each
+  [  1/150] stride=1024 recording-level split=42 train=0  test=64.99% train=73.55%  (26s/run, 2926/854 windows, ~81 min left)
+  [  2/150] stride=1024 recording-level split=42 train=1  test=64.05% train=73.41%  (23s/run, 2926/854 windows, ~69 min left)
+  [  3/150] stride=1024 recording-level split=42 train=2  test=65.69% train=73.62%  (24s/run, 2926/854 windows, ~65 min left)
+  [  4/150] stride=1024 window-level    split=42 train=0  test=67.87% train=71.69%  (23s/run, 2925/856 windows, ~62 min left)
