@@ -298,15 +298,21 @@ def _label_one(
     keep_unlabeled: bool,
     csv_table: dict[str, str] | None,
     dirname_level: int = 1,
+    record_id: str | None = None,
 ) -> tuple[list[str | None], LabelingStats]:
-    """Label one recording's windows using the selected source."""
+    """Label one recording's windows using the selected source.
+
+    `record_id` is the recording's path relative to the input directory. A CSV
+    table is matched on it first, because a bare file name does not identify a
+    recording in a nested layout.
+    """
     if source == "annotations":
         return label_from_annotations(rec, starts, window, exclude, keep_unlabeled)
     if source == "dirname":
         return label_from_dirname(rec, starts, exclude, level=dirname_level)
     if source == "csv":
         assert csv_table is not None  # validated on the CLI side
-        return label_from_csv(rec, starts, csv_table, exclude)
+        return label_from_csv(rec, starts, csv_table, exclude, record_id=record_id)
     raise IQForgeError(f"Unknown label source '{source}'. Supported: {', '.join(LABEL_SOURCES)}.")
 
 
@@ -503,6 +509,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             )
             continue
 
+        record_id = meta.relative_to(root).as_posix() if meta != root else meta.name
         window_labels, stats = _label_one(
             rec,
             starts,
@@ -512,6 +519,7 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             keep_unlabeled=keep_unlabeled,
             csv_table=csv_table,
             dirname_level=dirname_level,
+            record_id=record_id,
         )
         totals.merge(stats)
 
@@ -520,7 +528,6 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             skipped.append(f"{meta.name}: no window received a label")
             continue
 
-        record_id = meta.relative_to(root).as_posix() if meta != root else meta.name
         kept_labels = [window_labels[i] for i in kept]
         assert all(label is not None for label in kept_labels)
         dominant = dominant_label(window_labels)

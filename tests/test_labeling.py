@@ -411,3 +411,40 @@ def test_label_from_dirname_honours_the_level(tmp_path: Path) -> None:
 
     assert label_from_dirname(rec, starts, frozenset(), level=1)[0] == ["rec4"]
     assert label_from_dirname(rec, starts, frozenset(), level=2)[0] == ["CH93"]
+
+
+def test_label_csv_matches_on_relative_path_when_names_collide(tmp_path):
+    """310 of 312 recordings were silently given one label by name-only matching."""
+    csv_path = tmp_path / "labels.csv"
+    csv_path.write_text(
+        "filename,label\nsess1/rrh1/3.sigmf-meta,indoor\nsess2/rrh1/3.sigmf-meta,outdoor\n",
+        encoding="utf-8",
+    )
+    table = load_label_csv(csv_path)
+    meta = write_record(tmp_path / "sess1" / "rrh1", np.zeros(4096, dtype=np.complex64), name="3")
+    rec = load(meta)
+    labels, _ = label_from_csv(
+        rec, np.array([0]), table, frozenset(), record_id="sess1/rrh1/3.sigmf-meta"
+    )
+    assert labels == ["indoor"]
+
+
+def test_label_csv_refuses_a_name_two_rows_disagree_on(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    csv_path.write_text(
+        "filename,label\nsess1/3.sigmf-meta,indoor\nsess2/3.sigmf-meta,outdoor\n", encoding="utf-8"
+    )
+    table = load_label_csv(csv_path)
+    meta = write_record(tmp_path / "other", np.zeros(4096, dtype=np.complex64), name="3")
+    rec = load(meta)
+    with pytest.raises(IQForgeError, match="more than one"):
+        label_from_csv(rec, np.array([0]), table, frozenset())
+
+
+def test_label_csv_still_matches_a_flat_layout_by_name(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    csv_path.write_text("filename,label\nrec.sigmf-meta,bpsk\n", encoding="utf-8")
+    table = load_label_csv(csv_path)
+    meta = write_record(tmp_path / "d", np.zeros(4096, dtype=np.complex64))
+    labels, _ = label_from_csv(load(meta), np.array([0]), table, frozenset())
+    assert labels == ["bpsk"]

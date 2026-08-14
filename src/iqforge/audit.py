@@ -832,17 +832,34 @@ def _split_findings(splits: dict[str, Any], window: int, stride: int) -> list[Fi
 def _dataset_features(
     root: Path, splits: dict[str, Any], source_files: list[Path]
 ) -> tuple[list[RecordFeatures], int]:
-    """Measure the axes for a built dataset's source recordings."""
+    """Measure the axes for a built dataset's source recordings.
+
+    Features are keyed by the manifest's own record id -- a path relative to the
+    build input, not a file name. Keying them by file name made every lookup
+    against the manifest miss: labels came back empty, so the axis checks went
+    quiet, and the split lookup in `_split_time_overlap` compared None to None
+    and reported 465 overlapping pairs as correctly grouped when none of them
+    had been checked at all.
+    """
     labels: dict[str, str] = {}
     for entry in splits.values():
         for record in entry.get("records") or []:
             if record.get("label") is not None:
                 labels[str(record["id"])] = str(record["label"])
 
+    by_suffix = {p.as_posix(): p for p in source_files}
     features: list[RecordFeatures] = []
     unresolved = 0
-    for path in source_files:
-        resolved = _resolve(path, root)
+    for record_id in sorted(labels) or [p.as_posix() for p in source_files]:
+        source = next(
+            (
+                p
+                for key, p in by_suffix.items()
+                if key == record_id or key.endswith("/" + record_id)
+            ),
+            Path(record_id),
+        )
+        resolved = _resolve(source, root)
         if resolved is None:
             unresolved += 1
             continue
@@ -851,7 +868,7 @@ def _dataset_features(
         except Exception:  # noqa: BLE001 - an unreadable source is a skip, not a crash
             unresolved += 1
             continue
-        features.append(measure_recording(rec, resolved.name, labels.get(resolved.name)))
+        features.append(measure_recording(rec, record_id, labels.get(record_id)))
     return features, unresolved
 
 

@@ -319,8 +319,12 @@ def dirname_level_warning(meta_paths: list[Path], level: int) -> str | None:
 def load_label_csv(path: Path) -> dict[str, str]:
     """Read a CSV with `filename,label` columns.
 
-    The `filename` field may contain path separators; matching is done on the
-    file name alone.
+    Keys are kept exactly as written AND under the bare file name, so a table
+    may address recordings either way. A bare name that two rows disagree on is
+    deliberately not stored: matching on it alone silently relabelled 310 of
+    312 recordings on a public capture set where `3.sigmf-meta` exists under
+    every session and every receiver. `_ambiguous_names` records those so the
+    lookup can refuse rather than guess.
 
     Raises:
         IQForgeError: If the file is missing or the expected columns are absent.
@@ -336,7 +340,31 @@ def load_label_csv(path: Path) -> dict[str, str]:
                 f"'{path.name}' must have 'filename' and 'label' columns. "
                 f"Columns found: {', '.join(sorted(fields)) or '(none)'}."
             )
-        return {Path(row["filename"]).name: row["label"] for row in reader if row.get("filename")}
+        rows = [(r["filename"], r["label"]) for r in reader if r.get("filename")]
+
+    table: dict[str, str] = {}
+    by_name: dict[str, set[str]] = {}
+    for raw, label in rows:
+        table[raw] = label
+        table[Path(raw).as_posix()] = label
+        by_name.setdefault(Path(raw).name, set()).add(label)
+    for name, labels in by_name.items():
+        if len(labels) == 1:
+            table.setdefault(name, next(iter(labels)))
+            table.setdefault(Path(name).stem, next(iter(labels)))
+        else:
+            _ambiguous_names(table)[name] = sorted(labels)
+    return table
+
+
+#: Bare file names the table cannot resolve, kept alongside it so a lookup can
+#: say WHY it failed instead of returning one of several possible answers.
+_AMBIGUOUS_KEY = "__iqforge_ambiguous_names__"
+
+
+def _ambiguous_names(table: dict[str, Any]) -> dict[str, list[str]]:
+    """The ambiguous-basename side table, created on first use."""
+    return table.setdefault(_AMBIGUOUS_KEY, {})  # type: ignore[arg-type,return-value]
 
 
 def label_from_csv(
@@ -344,15 +372,28 @@ def label_from_csv(
     starts: np.ndarray,
     table: dict[str, str],
     exclude_labels: frozenset[str],
+    record_id: str | None = None,
 ) -> tuple[list[str | None], LabelingStats]:
     """Look the recording up in the CSV table and label every window with it.
 
     Raises:
         IQForgeError: If the recording is not listed in the CSV.
     """
-    candidates = (rec.meta_path.name, rec.meta_path.stem, rec.data_path.name)
-    label = next((table[c] for c in candidates if c in table), None)
+    candidates: tuple[str, ...] = ()
+    if record_id:
+        candidates += (record_id, str(Path(record_id)))
+    candidates += (rec.meta_path.name, rec.meta_path.stem, rec.data_path.name)
+    label = next((table[c] for c in candidates if c in table and c != _AMBIGUOUS_KEY), None)
     if label is None:
+        clash = _ambiguous_names(table).get(rec.meta_path.name)
+        if clash:
+            raise IQForgeError(
+                f"'{rec.meta_path.name}' appears in the label CSV under more than one "
+                f"label ({', '.join(clash)}), and the recording could not be matched by "
+                f"its path. Several directories hold a file of this name, so the bare "
+                f"name does not identify it. Write the 'filename' column as the path "
+                f"relative to the input directory, e.g. 'session/rrh1/3.sigmf-meta'."
+            )
         raise IQForgeError(
             f"'{rec.meta_path.name}' is not in the label CSV. The 'filename' column must "
             f"contain one of: {', '.join(candidates)}."

@@ -73,8 +73,13 @@ def _from_path(record_ids: list[str], pattern: str) -> dict[str, str]:
 def _from_csv(record_ids: list[str], path_text: str) -> dict[str, str]:
     """Group by an explicit `recording,group` table.
 
-    Recordings are matched on file name, like `--labels csv`, so the table does
-    not have to reproduce the directory layout.
+    A row is matched first on its value as written -- normally the path relative
+    to the input directory -- and only then on the bare file name, which is
+    offered so a flat layout need not spell out directories. A bare name that
+    two rows disagree on is not used at all: on a public LoRa set where
+    `3.sigmf-meta` exists under every session and receiver, name-only matching
+    collapsed 23 554 groups into a handful and would have grouped unrelated
+    recordings together while reporting nothing.
     """
     path = Path(path_text)
     if not path.exists():
@@ -88,18 +93,52 @@ def _from_csv(record_ids: list[str], path_text: str) -> dict[str, str]:
                 f"'{path.name}' must have 'recording' and 'group' columns. "
                 f"Columns found: {', '.join(sorted(fields)) or '(none)'}."
             )
-        table = {
-            Path(row["recording"]).name: row["group"]
+        rows = [
+            (row["recording"], row["group"])
             for row in reader
             if row.get("recording") and row.get("group")
-        }
+        ]
 
+    table: dict[str, str] = {}
+    by_name: dict[str, set[str]] = {}
+    for raw, group in rows:
+        table[raw] = group
+        table[Path(raw).as_posix()] = group
+        by_name.setdefault(Path(raw).name, set()).add(group)
+    ambiguous = set()
+    for name, groups in by_name.items():
+        if len(groups) == 1:
+            table.setdefault(name, next(iter(groups)))
+            table.setdefault(Path(name).stem, next(iter(groups)))
+        else:
+            ambiguous.add(name)
+
+    # An ambiguous bare name only matters for a recording that has to fall back
+    # to it. A table written as relative paths resolves every record exactly and
+    # never reaches the fallback, so rejecting it up front would refuse the one
+    # form that is unambiguous.
     keys: dict[str, str] = {}
+    unresolvable: list[str] = []
     for record_id in record_ids:
+        exact = table.get(record_id) or table.get(Path(record_id).as_posix())
+        if exact:
+            keys[record_id] = exact
+            continue
         name = Path(record_id).name
-        stem = Path(record_id).stem
-        value = table.get(name) or table.get(stem)
+        if name in ambiguous:
+            unresolvable.append(record_id)
+            continue
+        value = table.get(name) or table.get(Path(record_id).stem)
         keys[record_id] = value if value else f"{UNMATCHED_PREFIX}{record_id}"
+
+    if unresolvable:
+        listed = ", ".join(sorted(unresolvable)[:3]) + (" ..." if len(unresolvable) > 3 else "")
+        raise IQForgeError(
+            f"{len(unresolvable)} recording(s) match no row of '{path.name}' by path, and "
+            f"their file names appear under more than one group ({listed}). The bare name "
+            f"does not identify them. Write the 'recording' column as the path relative to "
+            f"the input directory, e.g. 'session/rrh1/3.sigmf-meta'."
+        )
     return keys
 
 

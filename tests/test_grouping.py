@@ -340,3 +340,45 @@ def test_written_dataset_records_the_group(tmp_path: Path) -> None:
     assert manifest["config"]["group_by"] == r"path:(bpsk|qpsk)_0(\d)"
     entries = [e for s in ("train", "val", "test") for e in manifest["splits"][s]["records"]]
     assert all(e["group"] for e in entries)
+
+
+def test_group_csv_matches_on_relative_path_when_names_collide(tmp_path):
+    """A nested layout repeats file names; the path is what identifies a record.
+
+    Measured on a public LoRa set: `3.sigmf-meta` exists under every session and
+    every receiver, so name-only matching collapsed 23 554 transmission groups
+    into a handful and silently grouped unrelated recordings together.
+    """
+    csv_path = tmp_path / "groups.csv"
+    csv_path.write_text(
+        "recording,group\n"
+        "sess1/rrh1/3.sigmf-meta,tx1\n"
+        "sess1/rrh2/3.sigmf-meta,tx1\n"
+        "sess2/rrh1/3.sigmf-meta,tx2\n",
+        encoding="utf-8",
+    )
+    keys = resolve_group_keys(
+        ["sess1/rrh1/3.sigmf-meta", "sess1/rrh2/3.sigmf-meta", "sess2/rrh1/3.sigmf-meta"],
+        f"csv:{csv_path}",
+    )
+    assert keys["sess1/rrh1/3.sigmf-meta"] == "tx1"
+    assert keys["sess1/rrh2/3.sigmf-meta"] == "tx1"
+    assert keys["sess2/rrh1/3.sigmf-meta"] == "tx2"
+
+
+def test_group_csv_refuses_an_ambiguous_name_it_actually_needs(tmp_path):
+    """Falling back to a name that two rows disagree on must not pick one."""
+    csv_path = tmp_path / "groups.csv"
+    csv_path.write_text(
+        "recording,group\nsess1/3.sigmf-meta,tx1\nsess2/3.sigmf-meta,tx2\n", encoding="utf-8"
+    )
+    with pytest.raises(IQForgeError, match="does not identify"):
+        resolve_group_keys(["elsewhere/3.sigmf-meta"], f"csv:{csv_path}")
+
+
+def test_a_flat_layout_still_matches_by_name(tmp_path):
+    """The convenience the bare name was offered for keeps working."""
+    csv_path = tmp_path / "groups.csv"
+    csv_path.write_text("recording,group\na.sigmf-meta,g1\nb.sigmf-meta,g1\n", encoding="utf-8")
+    keys = resolve_group_keys(["a.sigmf-meta", "b.sigmf-meta"], f"csv:{csv_path}")
+    assert keys == {"a.sigmf-meta": "g1", "b.sigmf-meta": "g1"}
