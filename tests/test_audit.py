@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -542,3 +543,79 @@ def test_distinct_timestamps_are_still_compared() -> None:
     ]
     finding = _split_time_overlap(features, {"a": "train", "b": "test", "c": "train"})
     assert finding.status is Status.LEAK
+
+
+# --------------------------------------------------------------------------
+# CSV labelling in folder mode
+# --------------------------------------------------------------------------
+
+
+def _csv(path: Path, rows: list[tuple[str, str]]) -> Path:
+    path.write_text("filename,label\n" + "".join(f"{k},{v}\n" for k, v in rows), encoding="utf-8")
+    return path
+
+
+def _nested(tmp_path: Path, sessions: list[str]) -> None:
+    for session in sessions:
+        write_record(tmp_path / session, np.zeros(4096, dtype=np.complex64), name="3")
+
+
+def test_audit_labels_from_a_csv_keyed_by_relative_path(tmp_path: Path) -> None:
+    from iqforge.cli import _audit_folder
+
+    _nested(tmp_path, ["s1", "s2"])
+    csv_path = _csv(tmp_path / "l.csv", [("s1/3.sigmf-meta", "a"), ("s2/3.sigmf-meta", "b")])
+    report = _audit_folder(tmp_path, 1024, 512, "csv", 1, csv_path)
+    source = next(f for f in report.findings if f.check == "label source")
+    assert source.status is Status.PASS_PROOF
+    assert any("classes: " in line for line in report.input_lines)
+
+
+def test_audit_reports_a_collapsed_csv_before_anything_is_built(tmp_path: Path) -> None:
+    """The point of auditing a folder is to decide before building."""
+    from iqforge.cli import _audit_folder
+
+    _nested(tmp_path, ["s1", "s2", "s3"])
+    csv_path = _csv(
+        tmp_path / "l.csv",
+        [("3.sigmf-meta", "a"), ("3.sigmf-meta", "b"), ("3.sigmf-meta", "c")],
+    )
+    report = _audit_folder(tmp_path, 1024, 512, "csv", 1, csv_path)
+    source = next(f for f in report.findings if f.check == "label source")
+    assert source.status is Status.RISK
+    assert "proven" in source.detail
+
+
+def test_audit_flags_recordings_the_table_does_not_list(tmp_path: Path) -> None:
+    """A name absent from the table entirely -- not merely absent as a path.
+
+    A bare name that only one row carries is still used, deliberately, so a flat
+    layout keeps working; the recording has to be genuinely unlisted.
+    """
+    from iqforge.cli import _audit_folder
+
+    write_record(tmp_path / "s1", np.zeros(4096, dtype=np.complex64), name="3")
+    write_record(tmp_path / "s2", np.zeros(4096, dtype=np.complex64), name="9")
+    csv_path = _csv(tmp_path / "l.csv", [("s1/3.sigmf-meta", "a")])
+    report = _audit_folder(tmp_path, 1024, 512, "csv", 1, csv_path)
+    source = next(f for f in report.findings if f.check == "label source")
+    assert source.status is Status.RISK
+    assert "not in" in source.detail
+
+
+def test_audit_csv_needs_a_label_file(tmp_path: Path) -> None:
+    from iqforge.cli import _audit_folder
+    from iqforge.io import IQForgeError
+
+    _nested(tmp_path, ["s1"])
+    with pytest.raises(IQForgeError, match="--label-file"):
+        _audit_folder(tmp_path, 1024, 512, "csv", 1, None)
+
+
+def test_the_chance_line_is_always_printed(tmp_path: Path) -> None:
+    """Imbalance is input description, not a check: no status, no threshold."""
+    from iqforge.audit import class_distribution_lines
+
+    lines = class_distribution_lines(Counter({"background": 200, "event": 1}))
+    assert any("chance 99.5%" in line for line in lines)
+    assert any("background 200" in line for line in lines)

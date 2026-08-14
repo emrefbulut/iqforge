@@ -957,8 +957,11 @@ def audit(
         int, typer.Option("--stride", help="Step between windows, folder mode")
     ] = 512,
     labels: Annotated[
-        str, typer.Option("--labels", help="Label source in folder mode: dirname, annotations")
+        str, typer.Option("--labels", help=f"Label source, folder mode: {', '.join(LABEL_SOURCES)}")
     ] = "dirname",
+    label_file: Annotated[
+        Path | None, typer.Option("--label-file", help="CSV path for --labels csv")
+    ] = None,
     dirname_level: Annotated[
         int, typer.Option("--dirname-level", help="Ancestor directory to read as the class")
     ] = 1,
@@ -980,7 +983,7 @@ def audit(
         if (path / MANIFEST_NAME).exists():
             report = audit_dataset(path, read_manifest(path), __version__)
         else:
-            report = _audit_folder(path, window, stride, labels, dirname_level)
+            report = _audit_folder(path, window, stride, labels, dirname_level, label_file)
     except IQForgeError as exc:
         raise _fail(exc) from exc
 
@@ -991,19 +994,32 @@ def audit(
 
 
 def _audit_folder(
-    path: Path, window: int, stride: int, labels: str, dirname_level: int
+    path: Path,
+    window: int,
+    stride: int,
+    labels: str,
+    dirname_level: int,
+    label_file: Path | None = None,
 ) -> AuditReport:
     """Measure a folder of recordings for `audit`."""
     meta_paths = collect_meta_paths(path) if path.is_dir() else [path]
     if not meta_paths:
         raise IQForgeError(f"No {META_EXT} files found under '{path}'.")
 
-    if labels not in ("dirname", "annotations"):
-        raise IQForgeError(f"--labels must be dirname or annotations for audit, got '{labels}'.")
+    if labels not in LABEL_SOURCES:
+        raise IQForgeError(
+            f"--labels must be one of {', '.join(LABEL_SOURCES)} for audit, got '{labels}'."
+        )
+    csv_table: dict[str, str] | None = None
+    if labels == "csv":
+        if label_file is None:
+            raise IQForgeError("--labels csv needs --label-file.")
+        csv_table = load_label_csv(label_file)
 
     exclude = resolve_exclude_labels(None)
     features: list[RecordFeatures] = []
     unreadable: list[tuple[str, str]] = []
+    unlisted: list[str] = []
     for meta in meta_paths:
         # One unreadable recording used to abort the whole run, so a single
         # cf16_le file in a 330-file set produced no report at all. A dataset
@@ -1012,13 +1028,26 @@ def _audit_folder(
         # two agree.
         try:
             rec = load(meta)
+            record_id = _record_id(meta, path)
             if labels == "dirname":
                 label: str | None = dirname_at_level(meta, dirname_level)
+            elif labels == "csv":
+                assert csv_table is not None
+                try:
+                    window_labels, _ = label_from_csv(
+                        rec, np.array([0]), csv_table, exclude, record_id=record_id
+                    )
+                    label = dominant_label(window_labels)
+                except IQForgeError:
+                    # A recording the table does not cover is unlabelled here,
+                    # not fatal: audit reports what it found, and a partial
+                    # table is itself worth reporting rather than refusing.
+                    label, _ = None, unlisted.append(record_id)
             else:
                 starts = np.array([0], dtype=np.int64)
                 window_labels, _ = label_from_annotations(rec, starts, window, exclude, False)
                 label = dominant_label(window_labels)
-            features.append(measure_recording(rec, _record_id(meta, path), label))
+            features.append(measure_recording(rec, record_id, label))
         except (IQForgeError, OSError, ValueError) as exc:
             unreadable.append((_record_id(meta, path), str(exc)))
 
@@ -1028,8 +1057,25 @@ def _audit_folder(
             f"First error: {unreadable[0][1] if unreadable else 'unknown'}"
         )
 
+    label_source: dict[str, object] | None = None
+    if labels == "csv" and label_file is not None:
+        assigned = {f.label for f in features if f.label is not None}
+        label_source = {
+            "path": label_file,
+            "declared": csv_declared_labels(label_file, [f.record_id for f in features], exclude),
+            "assigned": assigned,
+            "unlisted": unlisted,
+        }
+
     return audit_recordings(
-        path, features, window, stride, __version__, meta_paths, unreadable=unreadable
+        path,
+        features,
+        window,
+        stride,
+        __version__,
+        meta_paths,
+        unreadable=unreadable,
+        label_source=label_source,
     )
 
 

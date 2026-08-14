@@ -553,6 +553,39 @@ transmission id from that same CSV, it reports **all 465 held together**. The
 constraint is expressible and checkable — but only because one dataset chose to
 write it down, in a form only it uses.
 
+### More data is not more independent units
+
+Only 13 of LoRaIQ's 22 capture sessions were gathered at first. Completing the
+set quadrupled the recordings — 312 to 1194 — and moved the number that
+actually constrains a split not at all:
+
+| environment | recordings | independent sessions |
+|---|---|---|
+| drone_los | 757 | 12 |
+| drone_nlos | 269 | 3 |
+| pedestrian_partial_los | 96 | 4 |
+| pedestrian_nlos | 48 | 2 |
+| **indoor** | **24** | **1** |
+
+Every session was already represented in the first 13 for the classes that
+matter; the remaining nine added more recordings from environments that already
+had sessions. `indoor` is one session, and no quantity of files drawn from it
+makes it two — a three-way split cannot put that class in train, validation and
+test, and `iqforge build` says so rather than pretending otherwise.
+
+This is the concrete version of a distinction that is easy to state and easy to
+forget when a dataset page advertises its size. **The number that bounds a
+leak-free split is not how many files there are but how many independent
+acquisitions they came from**, and the two can differ by any factor at all: a
+class with 757 recordings and 12 sessions and a class with 24 recordings and 1
+session sit in the same table. Collecting more of the same session buys
+statistical precision within it and buys nothing at all against the failure a
+recording-level split exists to prevent.
+
+It is also why the criteria in this section are stated in sessions and
+acquisitions rather than in file counts, and why the survey in §6 keeps
+reporting "N recordings, M independent units" as two numbers instead of one.
+
 ### A dataset can be unusable for one task and fine for another
 
 LoRaIQ produced a disqualification that is not on the list above. The first
@@ -686,6 +719,44 @@ an error, and here it had one, in the identifier that decides what every
 downstream guarantee is about. Fixtures that share the shape of the code's
 assumptions cannot find that class of bug. Real data with an inconvenient
 layout can.
+
+**An acquisition method that broke the experiment.** Fetching a 71 GB archive's
+contents over HTTP range requests, one request per file, ran at 20 KB/s: the
+files of one capture session are spread across half a gigabyte of the archive,
+so each request paid full latency for 70 KB of payload. Sorting the archive's
+entries by their stored offset and taking one contiguous 25 MB request per
+(session, receiver) cut 480 requests to 32 and ran 25-35 times faster. Every
+byte extracted was correct, verified against the ZIP64 central directory's
+recorded sizes.
+
+It also destroyed the experimental design. Selecting files by *storage
+adjacency* rather than by *transmission id* means the six files taken for
+receiver 1 are a different set of transmissions from those taken for receiver 2,
+so the simultaneous receptions that make a transmission one event stop landing
+in the sample together. Of 479 transmission groups in the resulting set only 115
+hold all four receivers, against a clean four-per-group in the set gathered the
+slow way; and the number of files per (session, receiver) went from a uniform 6
+to anywhere between 1 and 25.
+
+*Why it was silent:* nothing about the result looks wrong. The files are
+byte-correct, the directory layout is identical, the audit still returns
+`unknown`, the class counts are plausible and larger than before, and every
+per-file check passes. The damage is entirely in the *relationships between*
+files, which no per-file check can see, and it was introduced by an operation
+whose only stated purpose was to go faster.
+
+*How it was found:* by counting group sizes after the download, because the
+transmission grouping was going to be used next. Had the set been used directly,
+the `--group-by` constraint would have been satisfied trivially — most groups
+had one member — and the experiment would have reported a clean split that
+enforced nothing.
+
+This is not leakage, but it belongs to the same family: **an operation that is
+technically correct per item and invalid in aggregate, and that cannot be
+detected by looking at the result.** A dataset assembled by a sampling procedure
+carries that procedure's structure whether or not anyone wrote it down, which is
+§6's argument arriving from the other direction — there about published data,
+here about data we gathered ourselves.
 
 ---
 

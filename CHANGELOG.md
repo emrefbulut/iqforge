@@ -38,6 +38,11 @@ can tell whether the format it is looking at is one it understands.
   four receivers is four files and one event, and recording-level splitting
   does not help — the unit of independence is the transmission. This is how
   `--group-by` gets verified rather than assumed.
+- `iqforge audit --labels csv` (with `--label-file`), so a dataset labelled from
+  a table can be assessed before it is built — which is what auditing a folder
+  is for. It applies the same relative-path matching as `build` and reports a
+  collapsed table as a proven finding rather than refusing, plus any recordings
+  the table does not list.
 - `docs/methodology.md` §6 gains a fifth dataset, LoRaIQ, which publishes
   acquisition provenance the other four withhold — and narrows the section's
   claim from "nobody records it" to "there is no standard place to put it".

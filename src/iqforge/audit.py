@@ -899,6 +899,7 @@ def audit_recordings(
     tool_version: str,
     meta_paths: list[Path],
     unreadable: list[tuple[str, str]] | None = None,
+    label_source: dict[str, Any] | None = None,
 ) -> AuditReport:
     """Audit a folder of recordings that has not been built into a dataset.
 
@@ -929,6 +930,8 @@ def audit_recordings(
         class_distribution_lines(Counter(f.label for f in features if f.label is not None))
     )
     report.findings.append(_readable_finding(len(meta_paths), unreadable))
+    if label_source is not None:
+        report.findings.append(_label_source_finding(label_source))
     report.findings.append(_predicted_overlap(features, window, stride))
     report.findings.append(_time_overlap(features))
     report.findings.append(_duplicate_finding(meta_paths))
@@ -979,6 +982,46 @@ def _readable_finding(total: int, unreadable: list[tuple[str, str]]) -> Finding:
         "recordings readable",
         f"{len(unreadable)} of {total} could not be opened and are excluded from "
         f"every check below ({listed}): {unreadable[0][1]}",
+    )
+
+
+def _label_source_finding(source: dict[str, Any]) -> Finding:
+    """Do the labels the CSV declares survive into the labelling?
+
+    `build` refuses a collapse outright. Here it is a finding, because the whole
+    point of auditing a folder is to decide before building, and the answer is
+    more useful than the refusal: a table whose file names do not identify
+    recordings gives every one of them a plausible label, so nothing downstream
+    looks wrong.
+    """
+    declared: set[str] = source["declared"]
+    assigned: set[str] = source["assigned"]
+    unlisted: list[str] = source["unlisted"]
+    name = Path(source["path"]).name
+
+    lost = sorted(declared - assigned)
+    if lost:
+        return Finding(
+            Status.RISK,
+            "label source",
+            f"proven: '{name}' gives these recordings {len(declared)} distinct label(s) but "
+            f"only {len(assigned)} survive the lookup. Missing: {', '.join(lost)}. The "
+            f"'filename' column does not identify recordings uniquely -- write it as the "
+            f"path relative to this directory. build refuses this outright",
+        )
+    if unlisted:
+        listed = ", ".join(sorted(unlisted)[:2]) + (" ..." if len(unlisted) > 2 else "")
+        return Finding(
+            Status.RISK,
+            "label source",
+            f"{len(unlisted)} recording(s) are not in '{name}' and would be dropped by "
+            f"build ({listed})",
+        )
+    return Finding(
+        Status.PASS_PROOF,
+        "label source",
+        f"all {len(declared)} label(s) '{name}' gives these recordings survive the lookup, "
+        f"and every recording is listed",
     )
 
 
