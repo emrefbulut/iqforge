@@ -484,3 +484,66 @@ def resolve_exclude_labels(values: list[str] | None) -> frozenset[str]:
     if values is None or not values:
         return frozenset(DEFAULT_EXCLUDE_LABELS)
     return frozenset(values)
+
+
+def csv_declared_labels(
+    path: Path, record_ids: list[str], exclude_labels: frozenset[str]
+) -> set[str]:
+    """Distinct labels the CSV assigns to these recordings, read from its rows.
+
+    Deliberately independent of how `label_from_csv` resolves a key. The point
+    is to have a second opinion: if the lookup collapses -- as it did when it
+    reduced every key to a bare file name and gave 310 of 312 LoRaIQ recordings
+    one label -- the rows themselves still carry the labels that were lost, and
+    comparing the two sets makes the loss an arithmetic fact rather than
+    something a reader has to notice in a distribution table.
+
+    A row counts when its key matches a recording by path, file name or stem, so
+    a table covering a whole corpus can be used to build one subdirectory
+    without the rows for other files counting against it.
+
+    Args:
+        path: The label CSV.
+        record_ids: Recordings that were actually built, as relative paths.
+        exclude_labels: Labels dropped on purpose; removed from the result so
+            `--exclude-label` cannot look like a collapse.
+    """
+    wanted: set[str] = set()
+    for record_id in record_ids:
+        wanted.update({record_id, Path(record_id).as_posix(), Path(record_id).name})
+        wanted.add(Path(record_id).stem)
+
+    declared: set[str] = set()
+    with path.open(newline="", encoding="utf-8") as handle:
+        for row in csv.DictReader(handle):
+            key = (row.get("filename") or "").strip()
+            label = (row.get("label") or "").strip()
+            if not key or not label:
+                continue
+            candidates = {key, Path(key).as_posix(), Path(key).name, Path(key).stem}
+            if candidates & wanted:
+                declared.add(label)
+    return declared - exclude_labels
+
+
+def csv_collapse_error(declared: set[str], assigned: set[str], path: Path) -> str | None:
+    """Message for labels the CSV gave these recordings that no window carries.
+
+    Returns None when nothing was lost. There is no threshold here and no notion
+    of "too imbalanced": a skewed dataset is a normal thing to want, and the
+    only defensible signal is that the labelling did not do what the user's own
+    input said.
+    """
+    lost = sorted(declared - assigned)
+    if not lost:
+        return None
+    return (
+        f"'{path.name}' gives these recordings {len(declared)} distinct label(s), but the "
+        f"built dataset carries {len(assigned)}. Missing: {', '.join(lost)}.\n\n"
+        f"Every recording was labelled, so this is not a matching failure -- the labels "
+        f"that survived are simply not the ones the CSV lists. The usual cause is a "
+        f"'filename' column that does not identify recordings uniquely: in a nested "
+        f"layout the same file name appears under several directories, and rows for "
+        f"different recordings collide. Write the column as the path relative to the "
+        f"input directory, e.g. 'session/rrh1/3.sigmf-meta'."
+    )

@@ -18,6 +18,8 @@ from iqforge.labeling import (
     AnnotationLabelSurvey,
     annotation_field_value,
     carrier_offset_hz,
+    csv_collapse_error,
+    csv_declared_labels,
     dirname_at_level,
     dirname_level_warning,
     dominant_label,
@@ -448,3 +450,86 @@ def test_label_csv_still_matches_a_flat_layout_by_name(tmp_path):
     meta = write_record(tmp_path / "d", np.zeros(4096, dtype=np.complex64))
     labels, _ = label_from_csv(load(meta), np.array([0]), table, frozenset())
     assert labels == ["bpsk"]
+
+
+# --------------------------------------------------------------------------
+# Label-source collapse (no threshold, no notion of "too imbalanced")
+# --------------------------------------------------------------------------
+
+
+def _nested_label_csv(path, rows):
+    path.write_text("filename,label\n" + "".join(f"{k},{v}\n" for k, v in rows), encoding="utf-8")
+    return path
+
+
+def test_csv_declared_labels_reads_the_rows_not_the_lookup(tmp_path):
+    """The LoRaIQ scenario: one file name under many directories, four labels."""
+    csv_path = _nested_label_csv(
+        tmp_path / "labels.csv",
+        [
+            ("s1/rrh1/3.sigmf-meta", "drone_los"),
+            ("s2/rrh1/3.sigmf-meta", "indoor"),
+            ("s3/rrh1/3.sigmf-meta", "pedestrian_nlos"),
+            ("s4/rrh1/3.sigmf-meta", "pedestrian_partial_los"),
+        ],
+    )
+    built = [
+        "s1/rrh1/3.sigmf-meta",
+        "s2/rrh1/3.sigmf-meta",
+        "s3/rrh1/3.sigmf-meta",
+        "s4/rrh1/3.sigmf-meta",
+    ]
+    assert len(csv_declared_labels(csv_path, built, frozenset())) == 4
+
+
+def test_a_collapsed_lookup_is_an_error_naming_the_lost_labels(tmp_path):
+    """310 of 312 recordings carried one label and the build said nothing."""
+    csv_path = _nested_label_csv(
+        tmp_path / "labels.csv",
+        [("s1/1.sigmf-meta", "a"), ("s2/1.sigmf-meta", "b"), ("s3/1.sigmf-meta", "c")],
+    )
+    declared = csv_declared_labels(csv_path, ["s1/1.sigmf-meta", "s2/1.sigmf-meta"], frozenset())
+    message = csv_collapse_error(declared, {"a"}, csv_path)
+    assert message is not None
+    assert "b" in message
+    assert "labels.csv" in message
+
+
+def test_no_error_when_every_declared_label_survives(tmp_path):
+    csv_path = _nested_label_csv(
+        tmp_path / "labels.csv", [("a.sigmf-meta", "x"), ("b.sigmf-meta", "y")]
+    )
+    declared = csv_declared_labels(csv_path, ["a.sigmf-meta", "b.sigmf-meta"], frozenset())
+    assert csv_collapse_error(declared, {"x", "y"}, csv_path) is None
+
+
+def test_an_extremely_skewed_but_complete_labelling_is_not_an_error(tmp_path):
+    """Rare-event detection is a normal thing to build. No threshold on skew."""
+    rows = [(f"r{i}.sigmf-meta", "background") for i in range(200)]
+    rows.append(("rare.sigmf-meta", "event"))
+    csv_path = _nested_label_csv(tmp_path / "labels.csv", rows)
+    built = [k for k, _ in rows]
+    declared = csv_declared_labels(csv_path, built, frozenset())
+    assert csv_collapse_error(declared, {"background", "event"}, csv_path) is None
+
+
+def test_excluded_labels_do_not_look_like_a_collapse(tmp_path):
+    csv_path = _nested_label_csv(
+        tmp_path / "labels.csv",
+        [("a.sigmf-meta", "x"), ("b.sigmf-meta", "y"), ("c.sigmf-meta", "ref_tone")],
+    )
+    built = ["a.sigmf-meta", "b.sigmf-meta", "c.sigmf-meta"]
+    declared = csv_declared_labels(csv_path, built, frozenset({"ref_tone"}))
+    assert declared == {"x", "y"}
+    assert csv_collapse_error(declared, {"x", "y"}, csv_path) is None
+
+
+def test_a_csv_covering_a_superset_does_not_trigger_the_check(tmp_path):
+    """A table for a whole corpus, used to build one subdirectory."""
+    csv_path = _nested_label_csv(
+        tmp_path / "labels.csv",
+        [("s1/a.sigmf-meta", "x"), ("s2/b.sigmf-meta", "y"), ("s3/c.sigmf-meta", "z")],
+    )
+    declared = csv_declared_labels(csv_path, ["s1/a.sigmf-meta"], frozenset())
+    assert declared == {"x"}
+    assert csv_collapse_error(declared, {"x"}, csv_path) is None

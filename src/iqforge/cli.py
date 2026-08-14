@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
@@ -34,6 +35,8 @@ from iqforge.labeling import (
     LabelingStats,
     annotation_field_value,
     carrier_offset_hz,
+    csv_collapse_error,
+    csv_declared_labels,
     dirname_at_level,
     dirname_level_warning,
     dominant_label,
@@ -553,6 +556,24 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
             message = f"{message}\n\n{survey.hint()}"
         raise IQForgeError(message)
 
+    assigned_labels = {item.dominant for item in work.values() if item.dominant is not None}
+    if source == "csv" and label_file is not None:
+        # Compared after exclusion, so --exclude-label and dropped unlabelled
+        # windows cannot look like a collapse.
+        declared = csv_declared_labels(label_file, sorted(work), exclude)
+        collapse = csv_collapse_error(declared, assigned_labels, label_file)
+        if collapse is not None:
+            raise IQForgeError(collapse)
+    if source == "annotations" and len(assigned_labels) == 1:
+        only = next(iter(assigned_labels))
+        console.print(
+            f"[yellow]warning[/] every window was labelled '{escape(only)}'; the dataset "
+            f"has one class and nothing to classify. {survey.annotations} annotation(s) "
+            f"were scanned. If other classes were expected, check --exclude-label "
+            f"({escape(', '.join(sorted(exclude)) or 'none')}) and whether the other "
+            f"annotations carry 'core:label'."
+        )
+
     record_groups: dict[str, str] | None = None
     if balance_by is not None:
         missing: list[str] = []
@@ -756,6 +777,27 @@ def stats(
             str(len(entry["shards"])),
         )
     console.print(distribution)
+
+    # The chance line, always. A skewed dataset is a normal thing to want, so
+    # there is no threshold and no warning here -- but an accuracy figure is
+    # unreadable without the number a constant predictor would score, and that
+    # number is free to compute.
+    window_counts = Counter[str]()
+    for name in SPLIT_NAMES:
+        entry = manifest["splits"][name]
+        if not entry["labels"]:
+            continue
+        counts = np.bincount(entry["labels"], minlength=len(label_map))
+        for label in label_map:
+            window_counts[label] += int(counts[label_map[label]])
+    total_windows = sum(window_counts.values())
+    if total_windows:
+        largest, largest_count = window_counts.most_common(1)[0]
+        console.print(
+            f"[dim]chance:[/] {largest_count / total_windows:.1%} — a constant predictor "
+            f"answering '{escape(largest)}' every time. Any accuracy below this is worse "
+            f"than guessing."
+        )
 
     balanced = config.get("balance_by")
     grouped = config.get("group_by")

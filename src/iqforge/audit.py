@@ -689,6 +689,10 @@ def data_digest(path: Path, chunk: int = 1 << 20) -> str:
 #: Stated on every run, whatever the input. These are the things no amount of
 #: index arithmetic or metadata reading can reach.
 UNIVERSAL_CAVEATS = [
+    "Whether the labels are correct. What was checked is that they are "
+    "consistent with what the label source says, not that the source is right. "
+    "A label table that is internally consistent and wrong throughout looks "
+    "identical from here.",
     "Physical independence of recordings. Two files sharing no samples and no "
     "air time can still be near-duplicates: a static indoor path does not "
     "change between two recorder runs seconds apart. No index arithmetic "
@@ -729,6 +733,13 @@ def audit_dataset(root: Path, manifest: dict[str, Any], tool_version: str) -> Au
         fingerprint=fingerprint(source_files),
         did_not_check=list(UNIVERSAL_CAVEATS),
     )
+
+    label_counts: Counter[str] = Counter()
+    for entry in splits.values():
+        for record in entry.get("records") or []:
+            if record.get("label") is not None:
+                label_counts[str(record["label"])] += 1
+    report.input_lines.extend(class_distribution_lines(label_counts))
 
     report.findings.extend(_split_findings(splits, window, stride))
     features, unresolved = _dataset_features(root, splits, source_files)
@@ -914,6 +925,9 @@ def audit_recordings(
         did_not_check=list(UNIVERSAL_CAVEATS),
     )
 
+    report.input_lines.extend(
+        class_distribution_lines(Counter(f.label for f in features if f.label is not None))
+    )
     report.findings.append(_readable_finding(len(meta_paths), unreadable))
     report.findings.append(_predicted_overlap(features, window, stride))
     report.findings.append(_time_overlap(features))
@@ -1163,6 +1177,29 @@ def _duplicate_finding(meta_paths: list[Path]) -> Finding:
         "duplicate data files",
         f"no two of {checked} data files match on size and their first and last megabyte",
     )
+
+
+def class_distribution_lines(counts: Counter[str]) -> list[str]:
+    """Class counts and the chance line, as input description rather than a check.
+
+    Imbalance is not a finding. Rare-event detection is a normal thing to build
+    a dataset for, so a threshold on skew would fire on a whole legitimate
+    category until the warning stopped being read. What makes a distribution
+    actionable is the number a constant predictor would score, and that needs no
+    threshold at all -- it is reported always, and the reader decides.
+    """
+    if not counts:
+        return []
+    total = sum(counts.values())
+    ranked = counts.most_common()
+    shown = ", ".join(f"{name} {n}" for name, n in ranked[:4])
+    if len(ranked) > 4:
+        shown += f", +{len(ranked) - 4} more"
+    return [
+        f"classes: {shown}",
+        f"chance {ranked[0][1] / total:.1%} (a constant predictor scoring "
+        f"'{ranked[0][0]}' every time)",
+    ]
 
 
 def _next_step(is_ceiling: bool, root: Path) -> list[str]:

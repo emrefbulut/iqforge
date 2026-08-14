@@ -8,6 +8,7 @@ printed as `pip install 'iqforge'` until this was caught.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -181,3 +182,85 @@ def test_error_message_with_brackets_survives(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "capture[1].sigmf-meta" in _flat(result.output)
+
+
+def test_build_refuses_a_label_csv_whose_names_collapse(tmp_path):
+    """The LoRaIQ regression, reconstructed at fixture scale.
+
+    Four recordings under four session directories all named 3.sigmf-meta, a
+    CSV that labels each one differently, and a lookup that used to reduce the
+    key to the bare name. The build produced a one-class dataset and printed
+    nothing; now it stops and names what was lost.
+    """
+    labels = []
+    for session, label in (("s1", "alpha"), ("s2", "beta"), ("s3", "gamma"), ("s4", "delta")):
+        write_record(
+            tmp_path / "recs" / session,
+            np.exp(2j * np.pi * 0.05 * np.arange(8192)).astype(np.complex64),
+            name="3",
+        )
+        labels.append((f"{session}/3.sigmf-meta", label))
+
+    # A table keyed by bare name, as a user would write it for a flat layout.
+    csv_path = tmp_path / "labels.csv"
+    csv_path.write_text(
+        "filename,label\n" + "".join(f"{Path(k).name},{v}\n" for k, v in labels), encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "build",
+            str(tmp_path / "recs"),
+            "-o",
+            str(tmp_path / "ds"),
+            "--labels",
+            "csv",
+            "--label-file",
+            str(csv_path),
+            "--split",
+            "1.0,0,0",
+            "--seed",
+            "1",
+        ],
+    )
+    assert result.exit_code == 1
+    assert "distinct label" in result.output
+    assert "does not identify recordings uniquely" in result.output
+
+
+def test_build_accepts_the_same_table_written_as_relative_paths(tmp_path):
+    """The fix the error message tells the user to apply."""
+    rows = []
+    for session, label in (("s1", "alpha"), ("s2", "beta")):
+        write_record(
+            tmp_path / "recs" / session,
+            np.exp(2j * np.pi * 0.05 * np.arange(8192)).astype(np.complex64),
+            name="3",
+        )
+        rows.append((f"{session}/3.sigmf-meta", label))
+    csv_path = tmp_path / "labels.csv"
+    csv_path.write_text(
+        "filename,label\n" + "".join(f"{k},{v}\n" for k, v in rows), encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "build",
+            str(tmp_path / "recs"),
+            "-o",
+            str(tmp_path / "ds"),
+            "--labels",
+            "csv",
+            "--label-file",
+            str(csv_path),
+            "--split",
+            "1.0,0,0",
+            "--seed",
+            "1",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    manifest = json.loads((tmp_path / "ds" / "manifest.json").read_text(encoding="utf-8"))
+    assert set(manifest["label_map"]) == {"alpha", "beta"}
