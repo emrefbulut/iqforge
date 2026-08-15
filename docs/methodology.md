@@ -190,6 +190,96 @@ why no run on this dataset could.
 
 Reproduce: `uv run python scripts/leakage_real.py --sweep stride`.
 
+### The same sweep on a dataset that can carry it
+
+DASH7 confirmed the null and could not size the effect, because its task is a
+step function (§6). LoRaIQ is the first assessed dataset `iqforge audit` returns
+`unknown` for — no single measurable axis separates the classes — and it has the
+region of partial competence the measurement needs: the honest arm sits around
+65%, against a 46% chance line.
+
+**Setup.** 312 recordings over 13 capture sessions, class = propagation
+environment (`drone_los`, `drone_nlos`, `pedestrian_partial_los`,
+`pedestrian_nlos`, `indoor`), split 0.6/0.2/0.2 and **grouped by transmission
+id**, because one LoRa frame is heard by up to four rooftop receivers at the same
+instant and those four files are one event. A fixed 15 244-sample segment is
+taken around each frame so every recording contributes equally. No noise added.
+15 seed pairs per stride, 150 runs.
+
+| stride | overlap | recording-level | window-level | inflation (paired) | t | n |
+|---|---|---|---|---|---|---|
+| 1024 | 0% | 66.8% ± 6.7% | 68.3% ± 2.1% | **+1.5 pp** ± 1.7 | 0.9 | 15 |
+| 768 | 25% | 67.8% ± 9.0% | 67.3% ± 2.8% | **−0.4 pp** ± 2.3 | −0.2 | 15 |
+| 512 | 50% | 65.8% ± 9.0% | 69.4% ± 3.2% | **+3.7 pp** ± 2.3 | 1.6 | 15 |
+| 256 | 75% | 69.2% ± 5.8% | 68.8% ± 4.8% | **−0.4 pp** ± 1.7 | −0.2 | 15 |
+| 128 | 88% | 64.5% ± 10.0% | 74.1% ± 4.5% | **+9.6 pp** ± 2.7 | **3.5** | 15 |
+
+**What this establishes.** Two things, and they are the two the experiment was
+pointed at.
+
+*The null holds a third time.* At zero overlap the inflation is +1.5 pp ± 1.7 —
+indistinguishable from zero, as on synthetic data (+0.2 ± 2.7) and on DASH7
+(−3.7 ± 3.7). Three independent datasets, three times, the row the causal claim
+rests on.
+
+*The effect is now individually significant on real data.* At 88% overlap,
++9.6 pp ± 2.7, **t = 3.5**. The DASH7 repeat could only report a trend at
+t = 2.07 and had to be written up as consistent-with rather than established;
+this one does not. Across all 75 seed pairs, a per-seed regression of inflation
+on overlap gives **+6.2 pp per unit overlap, t = 2.49**, the 88%-versus-0%
+contrast is **+8.1 pp ± 3.3 (t = 2.48)**, and 12 of 15 seeds show 88% beating 0%.
+
+**What this does not establish: the shape of the dose-response curve.** The
+intermediate rows do not line up — 25% and 75% both came out at −0.4 pp. Nor do
+they line up on the other two datasets:
+
+| overlap | synthetic | DASH7 | LoRaIQ |
+|---|---|---|---|
+| 0% | +0.2 | −3.7 | +1.5 |
+| 25% | +0.5 | −3.4 | −0.4 |
+| 50% | +11.5 | +4.3 | +3.7 |
+| 75% | **+22.9** | **+8.7** | −0.4 |
+| 88% | +13.4 | +7.7 | **+9.6** |
+
+Synthetic peaks at 75% and falls; DASH7 peaks at 75% and falls; LoRaIQ is
+non-monotone with its maximum at 88%. The per-pair spread says why n = 15 cannot
+resolve this: at stride 256 the fifteen paired differences run from −11 to +14 pp,
+at stride 128 from −6 to +38 pp. Only the largest effect clears that noise.
+
+So the honest statement is narrower than a curve: **overlap is the mechanism —
+remove it and the effect goes, increase it to 7/8 and the effect is large and
+significant — but how the effect grows in between is not measured.**
+
+**The stride column still must not be read downward.** Shrinking the stride
+multiplies the window count (2 926 windows at stride 1024, 20 048 at stride 128
+for one split seed), so the recording-level arm trains on more data as the rows
+descend. Each row's comparison is exact — same windows, same counts, same class
+balance, only the assignment differs — and each row's inflation figure stands on
+its own. The column is not a dose-response curve and no row's number should be
+subtracted from another's.
+
+**This was a confirmatory test, not an exploratory one.** The direction was
+predicted in advance: §3's synthetic result says inflation is zero at zero
+overlap and rises with overlap, and this run was designed to check that
+prediction on a dataset chosen before any of its numbers were seen. That is the
+answer to the multiple-comparisons objection — five strides were measured
+because the synthetic sweep measured five, not because five were tried until one
+worked.
+
+**The intermediate points were not re-run with more seeds**, although 45 minutes
+of compute would have done it. Enlarging a sample after seeing the result means
+letting the result choose the stopping rule, and a +6.2 pp trend that only
+becomes significant once the analyst has decided to keep going is not a finding.
+The rows stand at the n they were planned with.
+
+**Measured on** CPU (`torch 2.13.0+cpu`, 8 threads, AMD64). No GPU was used, and
+`iqforge train` pins the device on purpose (§8) — mixing devices inside one
+paired experiment would break the "only the assignment differs" property that
+the whole design rests on.
+
+Reproduce: `uv run python scripts/leakage_loraiq.py`. Raw runs in
+[`artifacts/leakage_loraiq_runs.json`](../artifacts/leakage_loraiq_runs.json).
+
 ---
 
 ## 4. Experimental design
