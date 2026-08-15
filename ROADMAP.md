@@ -102,11 +102,30 @@ After Now is done — still reliability-first:
       levels cannot all be stated.
 
       An extension proposal is therefore about a *qualifier* on existing
-      grouping, not a new grouping mechanism. Precedent argues for doing the
-      work first: the `rfml` extension was accepted (#113) and later removed
-      (#233) because it shipped without examples and its datasets were never
-      released. Write the `collection:` scheme, use it on real data, measure
-      what it cannot express, and only then propose.
+      grouping, not a new grouping mechanism.
+
+      **`--group-by collection` is now shipped**, so the first half of that is
+      done. What is not done is the part that decides whether a proposal is
+      worth writing: using it on a public dataset and recording what it could
+      not express.
+
+      **The precedent says do not propose before that.** SigMF accepted an ML
+      extension and then took it back. `rfml.sigmf-ext.md` was contributed by
+      NSWC Crane for DARPA's RFMLS programme (sigmf/SigMF#113) and removed two
+      years later (#233), with the maintainer writing that it "has no examples
+      and it is not clear how to use it ... I have been asked about what SigMF
+      using this should look like several times over the past 6 months, and I
+      have no useful answer." The datasets it was designed for were never
+      publicly released, so nobody could demonstrate it.
+
+      That is the bar. A proposal here needs a worked example, a public dataset
+      it demonstrably fixes, and a tool that consumes it — LoRaIQ and DASH7 are
+      the datasets, `iqforge audit` is the consumer, and the missing piece is a
+      measured account of what `core:collection` cannot say. Searching the SigMF
+      issue tracker found no prior discussion to join: `provenance` and
+      `grouping` return zero results, `training` returns one unrelated hit, and
+      the nearest open item is #146, asking for `capture_tags` because "there is
+      currently no way to track why a segment exists".
 - [x] **`iqforge audit`** — leakage risk and measurability, without training.
       Reports what it checked, what it found and what it could not check, and
       has no "clean" status: `NOT CHECKED` is counted separately from passes so
