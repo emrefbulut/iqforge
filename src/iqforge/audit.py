@@ -165,6 +165,9 @@ class RecordFeatures:
     #: Where `occupied_bw_hz` came from: "annotation" or "spectrum". Reported,
     #: because a declared bandwidth and an estimated one deserve different trust.
     bw_source: str | None = None
+    #: `core:collection`, the SigMF field naming the Collection this recording
+    #: belongs to. A hint about grouping, never a proof -- see `_collection_finding`.
+    collection: str | None = None
 
     def axes(self) -> dict[str, float | None]:
         """The numeric axes, by the name the report shows."""
@@ -309,6 +312,8 @@ def measure_recording(rec: Recording, record_id: str, label: str | None) -> Reco
         sample_rate=rec.sample_rate,
         capture_time=_capture_time(rec),
     )
+    collection = rec.global_info.get("core:collection")
+    features.collection = str(collection) if collection else None
     offset, bandwidth = _declared_band(rec)
     if bandwidth:
         features.carrier_offset_hz = offset
@@ -689,6 +694,10 @@ def data_digest(path: Path, chunk: int = 1 << 20) -> str:
 #: Stated on every run, whatever the input. These are the things no amount of
 #: index arithmetic or metadata reading can reach.
 UNIVERSAL_CAVEATS = [
+    "Whether a SigMF Collection means its members are statistically dependent. "
+    "The format expresses that recordings are related and not that they must "
+    "stay together, so a collection check is a hint in either direction and "
+    "never a proof.",
     "Whether the labels are correct. What was checked is that they are "
     "consistent with what the label source says, not that the source is right. "
     "A label table that is internally consistent and wrong throughout looks "
@@ -750,6 +759,7 @@ def audit_dataset(root: Path, manifest: dict[str, Any], tool_version: str) -> Au
     }
     if features:
         report.findings.append(_split_time_overlap(features, assignment))
+        report.findings.append(_collection_finding(features, assignment))
         report.findings.extend(axis_findings(features))
         report.findings.append(processing_gain_finding(features))
     else:
@@ -1084,6 +1094,50 @@ def _spans(timed: list[RecordFeatures]) -> list[tuple[float, float, RecordFeatur
     ]
     spans.sort(key=lambda s: (s[0], s[1], s[2].record_id))
     return spans
+
+
+def _collection_finding(features: list[RecordFeatures], assignment: dict[str, str]) -> Finding:
+    """Do members of one `core:collection` sit in different splits?
+
+    Never `PASS/proof`, however clean the answer, and the ceiling is deliberate.
+    A Collection asserts that recordings are *related*; it does not assert that
+    they are statistically dependent. A collection of "every recording in my
+    paper" and one of "the four simultaneous receptions of one frame" are the
+    same object here, and only the second is a constraint. So members landing
+    together is worth reporting and is not evidence of anything, while members
+    landing apart is worth flagging and is not proof of a leak either -- it is
+    the strongest hint the format is able to give.
+    """
+    declared = [f for f in features if f.collection]
+    if not declared:
+        return Finding(
+            Status.NOT_CHECKED,
+            "collection members",
+            "no recording declares core:collection, so SigMF's own grouping field "
+            "says nothing about this dataset",
+        )
+    where: dict[str, set[str]] = {}
+    for feature in declared:
+        assert feature.collection is not None
+        where.setdefault(feature.collection, set()).add(assignment.get(feature.record_id, "?"))
+    split_apart = sorted(name for name, splits in where.items() if len(splits) > 1)
+    if split_apart:
+        listed = ", ".join(split_apart[:3]) + (" ..." if len(split_apart) > 3 else "")
+        return Finding(
+            Status.RISK,
+            "collection members",
+            f"{len(split_apart)} of {len(where)} collection(s) have members in more than "
+            f"one split ({listed}). SigMF does not say whether a collection means "
+            f"'not independent', so this is a hint rather than a proven leak; "
+            f"--group-by collection holds them together",
+        )
+    return Finding(
+        Status.PASS_SAMPLE,
+        "collection members",
+        f"all {len(where)} declared collection(s) are each within one split. Not proof "
+        f"of independence: a collection asserts that recordings are related, not that "
+        f"they are dependent, and unrelated recordings may share one",
+    )
 
 
 def _split_time_overlap(features: list[RecordFeatures], assignment: dict[str, str]) -> Finding:

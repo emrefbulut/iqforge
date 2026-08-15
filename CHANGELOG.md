@@ -92,6 +92,18 @@ can tell whether the format it is looking at is one it understands.
   the **chance line** — what a constant predictor would score. Not a check and
   not a status: imbalance is a property of the input, and a rare-event dataset
   is a normal thing to build. There is deliberately no threshold on skew.
+- **`--group-by collection`**, reading `core:collection` — the field SigMF
+  already has for this, whose own specification example is "channels from a
+  phased array". `iqforge audit` gains a `collection members` row reporting
+  whether a declared collection's members landed in one split.
+
+  Documented as a **hint, not a proof**, and the code enforces the distinction:
+  the audit row is never better than `PASS/sample`, because a Collection asserts
+  that recordings are *related* and not that they are statistically dependent —
+  a collection of "everything in my paper" and one of "four simultaneous
+  receptions of one frame" are the same object to a reader of the format. A
+  recording can also declare at most one collection, so nested grouping levels
+  cannot all be expressed.
 - `Recording.capture_datetime`, read from the first capture segment.
 - **`iqforge train --device auto|cpu|cuda`**, defaulting to `cpu`. The default
   is a reproducibility promise: cuDNN selects kernels by heuristic, so the same

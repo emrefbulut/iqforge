@@ -599,7 +599,13 @@ def _run_build(  # noqa: PLR0913, PLR0915 — one linear pipeline
                 "recordings that share a key together; balancing spreads them apart. One key "
                 "cannot do both."
             )
-        record_units = resolve_group_keys(sorted(work), group_by)
+        record_units = resolve_group_keys(
+            sorted(work),
+            group_by,
+            collections={
+                rid: item.recording.global_info.get("core:collection") for rid, item in work.items()
+            },
+        )
         for warning in grouping_warnings(record_units, group_by):
             console.print(f"[yellow]warning[/] {escape(warning)}")
 

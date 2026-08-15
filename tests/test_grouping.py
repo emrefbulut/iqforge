@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from helpers import write_record
-from iqforge.grouping import grouping_warnings, resolve_group_keys
+from iqforge.grouping import UNMATCHED_PREFIX, grouping_warnings, resolve_group_keys
 from iqforge.io import IQForgeError
 from iqforge.splitting import stratified_record_split
 
@@ -382,3 +382,54 @@ def test_a_flat_layout_still_matches_by_name(tmp_path):
     csv_path.write_text("recording,group\na.sigmf-meta,g1\nb.sigmf-meta,g1\n", encoding="utf-8")
     keys = resolve_group_keys(["a.sigmf-meta", "b.sigmf-meta"], f"csv:{csv_path}")
     assert keys == {"a.sigmf-meta": "g1", "b.sigmf-meta": "g1"}
+
+
+def test_collection_scheme_groups_by_the_sigmf_field(tmp_path):
+    """`core:collection` is the field SigMF already has for this."""
+    keys = resolve_group_keys(
+        ["a.sigmf-meta", "b.sigmf-meta", "c.sigmf-meta"],
+        "collection",
+        collections={"a.sigmf-meta": "run1", "b.sigmf-meta": "run1", "c.sigmf-meta": "run2"},
+    )
+    assert keys["a.sigmf-meta"] == keys["b.sigmf-meta"] == "run1"
+    assert keys["c.sigmf-meta"] == "run2"
+
+
+def test_a_recording_declaring_no_collection_stays_its_own_unit(tmp_path):
+    keys = resolve_group_keys(
+        ["a.sigmf-meta", "b.sigmf-meta"],
+        "collection",
+        collections={"a.sigmf-meta": "run1", "b.sigmf-meta": None},
+    )
+    assert keys["b.sigmf-meta"].startswith(UNMATCHED_PREFIX)
+    assert keys["a.sigmf-meta"] != keys["b.sigmf-meta"]
+
+
+def test_collection_takes_no_argument_but_needs_the_metadata(tmp_path):
+    with pytest.raises(IQForgeError, match="needs the recordings' metadata"):
+        resolve_group_keys(["a.sigmf-meta"], "collection")
+
+
+def test_collection_members_in_two_splits_are_a_risk_not_a_proof(tmp_path):
+    """SigMF does not say a collection means 'not independent'."""
+    from iqforge.audit import RecordFeatures, Status, _collection_finding
+
+    features = [
+        RecordFeatures(record_id="a", label="x", collection="run1"),
+        RecordFeatures(record_id="b", label="x", collection="run1"),
+    ]
+    apart = _collection_finding(features, {"a": "train", "b": "test"})
+    assert apart.status is Status.RISK
+    assert "hint rather than a proven leak" in apart.detail
+
+    together = _collection_finding(features, {"a": "train", "b": "train"})
+    # Never PASS/proof: relatedness is not dependence.
+    assert together.status is Status.PASS_SAMPLE
+    assert "Not proof" in together.detail
+
+
+def test_no_collection_declared_is_not_checked(tmp_path):
+    from iqforge.audit import RecordFeatures, Status, _collection_finding
+
+    features = [RecordFeatures(record_id="a", label="x")]
+    assert _collection_finding(features, {"a": "train"}).status is Status.NOT_CHECKED

@@ -82,7 +82,8 @@ iqforge build <input> -o <output_dir>
               [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
               [--exclude-label <label>] [--split 0.7,0.15,0.15] [--seed 42]
-              [--balance-by <sigmf field>] [--group-by {path:<re>,csv:<file>}]
+              [--balance-by <sigmf field>]
+              [--group-by {path:<re>,csv:<file>,collection}]
               [--dirname-level 1]
               [--repr {iq2ch,complex,magphase}] [--normalize/--no-normalize]
     --exclude-label: annotations with this label are completely ignored during
@@ -94,6 +95,11 @@ iqforge build <input> -o <output_dir>
     --group-by: recordings sharing the key become one indivisible unit that
               cannot be split across splits. The counterpart of --balance-by,
               which spreads; this holds together. See 5.6 for details.
+              `collection` takes no argument and reads `core:collection`, the
+              SigMF field for exactly this. It is a HINT, not a proof: the
+              format says a Collection's members are related, not that they are
+              statistically dependent, so audit never reports it better than
+              PASS/sample. A recording may declare at most one collection.
     --dirname-level: which ancestor directory --labels dirname reads. 1 is the
               recording's own directory, 2 its parent. See 5.3.
     <input> can be a single .sigmf-meta file OR a directory containing multiple

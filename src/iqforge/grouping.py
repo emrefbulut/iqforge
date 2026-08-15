@@ -4,14 +4,34 @@ The counterpart to `--balance-by`. Balancing spreads a nuisance variable ACROSS
 splits; grouping keeps related recordings TOGETHER in one split, because they
 are not independent of each other and separating them leaks.
 
-Two schemes, and they exist because of what real datasets turned out to look
-like rather than what would be tidy. In every public set examined for
+Three schemes, and the first two exist because of what real datasets turned out
+to look like rather than what would be tidy. In every public set examined for
 `docs/methodology.md` the information identifying an acquisition lived in the
 file path, not in the SigMF metadata: DASH7 puts the location in a directory and
 the channel in the file name while every file declares the same centre
 frequency; AirID encodes the burst in the file name; the Vega-C recordings carry
-their session as a timestamp. A metadata-field scheme would have solved none of
-them, so it is not offered yet.
+their session as a timestamp.
+
+`collection:` is the third, and it reads the one field SigMF already has for
+this: `core:collection` in the Global Object, which names a `.sigmf-collection`
+file listing member recordings. Its own specification example is "channels from
+a phased array" -- simultaneous multi-channel acquisition, exactly the case that
+recording-level splitting cannot see.
+
+**It is a hint, not a proof, and the code must not pretend otherwise.** A
+Collection asserts that recordings are *related*; it does not assert that they
+are statistically dependent. To this module, a collection holding "every
+recording in my paper" and one holding "the four simultaneous receptions of one
+frame" are the same object, and only the second is a constraint. Grouping on it
+is therefore safe -- holding independent recordings together costs split
+flexibility, never correctness -- but a passing check on it is never evidence
+that a dataset is free of acquisition leakage. `iqforge audit` reports it as
+`PASS/sample` at best for that reason.
+
+A second limit worth knowing before relying on it: `core:collection` is a single
+string, so a recording belongs to at most one collection. A dataset needing
+nested levels -- this transmission, within this session, within this deployment
+-- can express exactly one of them.
 """
 
 from __future__ import annotations
@@ -23,7 +43,10 @@ from pathlib import Path
 from iqforge.io import IQForgeError
 
 #: Accepted `--group-by` prefixes.
-GROUP_SCHEMES = ("path", "csv")
+GROUP_SCHEMES = ("path", "csv", "collection")
+
+#: Schemes that take no argument -- the key is read from the recordings.
+ARGUMENTLESS_SCHEMES = ("collection",)
 
 #: Group key given to a recording the spec did not match. Kept distinct per
 #: recording so an unmatched recording is its own unit rather than being pooled
@@ -35,6 +58,8 @@ UNMATCHED_PREFIX = "(ungrouped) "
 def _parse_spec(spec: str) -> tuple[str, str]:
     """Split `scheme:argument`, or explain what the accepted forms are."""
     scheme, _, argument = spec.partition(":")
+    if scheme in ARGUMENTLESS_SCHEMES and not argument:
+        return scheme, ""
     if not argument or scheme not in GROUP_SCHEMES:
         raise IQForgeError(
             f"--group-by must be '<scheme>:<argument>' with scheme one of "
@@ -142,25 +167,51 @@ def _from_csv(record_ids: list[str], path_text: str) -> dict[str, str]:
     return keys
 
 
-def resolve_group_keys(record_ids: list[str], spec: str) -> dict[str, str]:
+def resolve_group_keys(
+    record_ids: list[str],
+    spec: str,
+    *,
+    collections: dict[str, str | None] | None = None,
+) -> dict[str, str]:
     """Map each recording id to the key of the unit it belongs to.
 
     Args:
         record_ids: Recording ids, as they appear in the manifest.
-        spec: The `--group-by` argument, `path:<regex>` or `csv:<file>`.
+        spec: The `--group-by` argument: `path:<regex>`, `csv:<file>` or
+            `collection`.
+        collections: Recording id -> its `core:collection` value, required by
+            the `collection` scheme and ignored by the others. The caller reads
+            it, because this module does not open recordings.
 
     Returns:
         Recording id -> group key. Recordings the spec did not match get a key
         of their own, so they stay independent units.
 
     Raises:
-        IQForgeError: If the spec is malformed, the regex invalid, or the CSV
-            missing or short of columns.
+        IQForgeError: If the spec is malformed, the regex invalid, the CSV
+            missing or short of columns, or `collection` used without the map.
     """
     scheme, argument = _parse_spec(spec)
     if scheme == "path":
         return _from_path(record_ids, argument)
+    if scheme == "collection":
+        return _from_collection(record_ids, collections)
     return _from_csv(record_ids, argument)
+
+
+def _from_collection(
+    record_ids: list[str], collections: dict[str, str | None] | None
+) -> dict[str, str]:
+    """Group by `core:collection`, the SigMF field meant for exactly this."""
+    if collections is None:
+        raise IQForgeError(
+            "--group-by collection needs the recordings' metadata, which was not available here."
+        )
+    return {
+        rid: (collections.get(rid) or f"{UNMATCHED_PREFIX}{rid}").strip()
+        or f"{UNMATCHED_PREFIX}{rid}"
+        for rid in record_ids
+    }
 
 
 def grouping_warnings(keys: dict[str, str], spec: str) -> list[str]:
