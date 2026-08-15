@@ -389,18 +389,25 @@ labelling is the fix and is not implemented.
 
 ---
 
-## 6. Why the SNR sweep was not repeated on real data
+## 6. What it took to find a dataset that could carry the measurement
 
-The obvious next step after §2 is to run the same comparison on a real
-capture. Five public datasets were assessed for it, and the reasons are worth
-recording because they are not accidents of this particular search. The fifth
-is the one that changes the conclusion.
+The obvious next step after §2 is to run the same comparison on a real capture.
+It took **five public datasets** to find one that could carry it, and the fifth
+did: the LoRaIQ result in §3 reproduces the zero-overlap null and reaches
+t = 3.5 at high overlap. This section is the record of the four that could not,
+because the reasons they failed are not accidents of this particular search and
+they are more instructive than the success.
 
-A leakage measurement needs three things: real hardware, several **independent**
-recordings per class — enough that a recording-level split has something to
-split — and a format the reader can be trusted on. The third turned out to be
-the easy one. The fourth dataset cleared all three and still could not carry
-§2, for a reason none of the three criteria would have caught.
+An earlier version of this section was titled "why the measurement was not
+repeated on real data", which was accurate when it was written and is not now.
+What survives the correction is the search cost: the criteria below are real,
+they eliminated four datasets in a row, and only one of them can be checked
+before downloading anything.
+
+A leakage measurement needs real hardware, several **independent** recordings
+per class — enough that a recording-level split has something to split — a
+format the reader can be trusted on, and a task that is neither trivial nor
+impossible. Format turned out to be the easy one.
 
 **AirID** (GENESYS Lab, 4 UAV transmitters with deliberately distinct IQ
 imbalances). Recording count is not the problem: the sibling *hovering-uavs*
@@ -626,20 +633,49 @@ Recording is split over multiple files". The `capture_details` extension carries
 run.
 
 What none of them carries is the **constraint**. A Collection asserts that
-recordings are related; it does not assert that they are statistically dependent
-and must not be separated, and a tool cannot tell a collection of "everything in
-my paper" from a collection of "four simultaneous receptions of one frame". A
-recording may also belong to at most one collection, since `core:collection` is
-a single string, so nested grouping levels — this transmission, within this
-session, within this deployment — cannot all be stated.
+recordings are *related*; it does not assert that they are statistically
+dependent and must not be separated. To a tool, a collection of "every recording
+in my paper" and a collection of "the four simultaneous receptions of one frame"
+are the same object. The first must not constrain a split; the second must. The
+format cannot tell them apart, so neither can a reader of the format.
+
+Five limits, concretely, from reading the spec against what LoRaIQ needs:
+
+1. **No dependence semantics.** As above: relatedness is expressible, and it is
+   the wrong predicate. Grouping a split correctly requires knowing that members
+   are not independent, which no field states.
+2. **One collection per recording.** `core:collection` is a single string, so a
+   recording belongs to at most one collection. LoRaIQ needs three nested
+   levels — this transmission, within this session, within this deployment —
+   and only one of them can be recorded.
+3. **One group per collection file.** A Collection holds a single `core:streams`
+   array. Expressing LoRaIQ's 23 554 transmission groups means 23 554
+   `.sigmf-collection` files.
+4. **Co-location is mandatory.** The spec requires a collection file to sit "in
+   the same directory as the Recordings that it references, or in the top-level
+   directory of an Archive", which a grouping that cuts across directories
+   cannot satisfy without restructuring the tree.
+5. **Membership is sealed with a hash.** A Recording Object "MUST contain both a
+   `name` field ... and a `hash` which is the SHA512 hash of the Recording
+   Metadata file". Correcting one label in one `.sigmf-meta` invalidates every
+   collection that references it — so the grouping breaks whenever the metadata
+   is fixed.
+
+Points 3 to 5 are friction and could be lived with. Points 1 and 2 are the
+substance: the format can say *these belong together* but not *these must not be
+separated*, and it can say it only once per recording.
 
 LoRaIQ's provenance therefore lives in a sidecar CSV under column names its
 authors invented, and `iqforge` reads it because someone wrote a converter for
 that one file, not because a tool can know where to look.
 
-That is a stronger argument for a SigMF extension than the original one. "Nobody
-records it" invites the reply that authors should be more careful. "Authors do
-record it, in mutually incompatible private formats" is a gap in the standard,
+**The thesis narrows; it does not weaken.** The original claim here — that
+there is no standard place to record which files share an acquisition — was too
+strong, and surveying the spec is what corrected it. The accurate claim is
+sharper and harder to dismiss: there *is* a place, and it carries no meaning a
+splitter can act on. "Nobody records it" invites the reply that authors should
+be more careful. "Authors do record it, and the standard field that could hold
+it cannot distinguish a bibliography from a constraint" is a gap in the standard,
 and it is the kind of gap an extension exists to close: a `core:` or
 `recording:` namespace naming the acquisition a file belongs to would let the
 DASH7 43-second pairs, the Vega-C shared passes and the LoRaIQ simultaneous
@@ -938,22 +974,27 @@ row is unaffected by this and carries the causal claim on its own.
 Open questions this repository does not answer:
 
 - **How large is the inflation on a real capture, with real channel effects?**
-  Attempted, partly achieved. Five public datasets were assessed: AirID ruled
+  **Answered for the mechanism, open for the magnitude.** On LoRaIQ (§3) the
+  zero-overlap null holds at +1.5 pp ± 1.7 and the 7/8-overlap inflation is
+  +9.6 pp ± 2.7, t = 3.5 — the first individually significant real-data result
+  in this project. What no dataset has yet produced is the *shape* of the
+  dose-response curve: the intermediate overlaps disagree across all three
+  datasets, and n = 15 does not resolve them.
+
+  Getting there took five datasets: AirID ruled
   out on format, Vega-C on sessions crossed with class, DASH7 `ds_indoor` on
   recordings that are structurally independent and physically near-duplicate,
   DASH7 cabled on a task whose difficulty is a step function rather than a
-  gradient, and LoRaIQ — which is not ruled out, and which publishes the
-  acquisition provenance the other four withhold. §6 gives the reasoning for
-  each.
+  gradient, and LoRaIQ — which carried it. §6 gives the reasoning for each.
 
-  The cabled set did carry the stride sweep (§3), which reproduced the
-  zero-overlap null — the row the causal claim rests on. It could not size the
-  effect: the trend is in the right direction at t = 2.07 and no individual row
-  is significant. So the mechanism is confirmed outside synthetic data and the
-  magnitude is not. Two blockers, and they are different. Published RF datasets
-  mostly do not state which of their files share an acquisition, so independence has
-  to be inferred; and a dataset can satisfy every structural criterion and still
-  pose a task with no region of partial competence to measure in.
+  The DASH7 cabled set carried the stride sweep first (§3) and reproduced the
+  zero-overlap null, but could not size the effect: the trend was in the right
+  direction at t = 2.07 with no individual row significant. LoRaIQ closed that
+  gap. The two obstacles that made the search long are different from each
+  other and both remain: published RF datasets mostly do not state which of
+  their files share an acquisition, so independence has to be inferred; and a
+  dataset can satisfy every structural criterion and still pose a task with no
+  region of partial competence to measure in.
 - How does it scale with model capacity, window length, or the number of
   recordings?
 - Does recording-level splitting remain sufficient when recordings share a
