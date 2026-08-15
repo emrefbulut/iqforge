@@ -31,6 +31,38 @@ without the extra should still be fully green.
 Every module has a matching test file. Tests use synthetic data and never touch
 the network.
 
+## Training on a GPU
+
+`iqforge train` runs on the **CPU** by default, and that default is deliberate
+rather than an oversight. The README promises the same seed gives the same
+bytes; cuDNN selects kernels by heuristic, so the same seed on the same GPU can
+pick a different reduction order between runs. The paired experiments in
+[docs/methodology.md](docs/methodology.md) depend on it even more strongly —
+their whole design is "everything identical except the split assignment", which
+stops being true the moment two rows land on different devices.
+
+The `[torch]` extra installs a CPU-only wheel and **stays that way**. To use a
+GPU, install a CUDA build yourself first, then the package without the extra:
+
+```bash
+uv pip install torch --index-url https://download.pytorch.org/whl/cu124
+uv sync --group dev
+```
+
+Then:
+
+```bash
+uv run iqforge train dataset/ --device cuda
+```
+
+`--device auto` picks CUDA when it is available and CPU otherwise; `--device
+cuda` errors rather than falling back, because a run that silently used a
+different device than it was asked for is worse than one that stops. A CUDA run
+prints a warning that its numbers are not bit-comparable with CPU runs, and
+`TrainingResult.environment` records the device, torch version and CUDA version
+so a results file can be checked later. The sweep scripts in `scripts/` refuse
+to extend a checkpoint that was measured on a different device.
+
 ## The most useful bug report
 
 **If `iqforge` misreads a recording from your hardware, that is the single most

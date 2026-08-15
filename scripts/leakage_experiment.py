@@ -46,7 +46,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -124,6 +124,10 @@ class Run:
     test_windows: int
     #: None for the SNR sweep, which leaves the tool's default stride alone.
     stride: int | None = None
+    #: Device / torch / CUDA versions this run was measured on. Rows measured on
+    #: different devices are not comparable, and a table that does not carry
+    #: this has already lost the ability to say so.
+    environment: dict[str, str] = field(default_factory=dict)
 
 
 def generate_recordings(noise_sigma: float, out_dir: Path) -> None:
@@ -301,6 +305,40 @@ def train_once(dataset: Path, train_seed: int) -> tuple[float, float, int, int]:
     )
 
 
+def current_environment() -> dict[str, str]:
+    """Device / torch / CUDA of the process about to run a grid."""
+    from iqforge.training import DEFAULT_DEVICE, describe_environment, resolve_device
+
+    return describe_environment(resolve_device(DEFAULT_DEVICE))
+
+
+def check_environment(runs_path: Path) -> None:
+    """Refuse to extend a checkpoint that was measured on another device.
+
+    A grid resumed on a different device produces a table whose rows are not
+    comparable, and nothing in the output would show it. Better to stop: this
+    is the same class of mistake as the acquisition method in §7 -- each run
+    individually correct, the aggregate invalid, invisible in the result.
+    """
+    if not runs_path.exists():
+        return
+    try:
+        existing = json.loads(runs_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    recorded = next((r.get("environment") for r in existing if r.get("environment")), None)
+    if not recorded:
+        return
+    now = current_environment()
+    if recorded != now:
+        raise SystemExit(
+            f"{runs_path.name} holds runs measured on {recorded}, but this process "
+            f"would measure on {now}. Rows from different devices are not comparable "
+            f"and the table would not show it. Move the checkpoint aside to start a "
+            f"fresh grid, or run on the original device."
+        )
+
+
 def run_grid(
     cells: list[tuple[float, int | None]],
     split_seeds: list[int],
@@ -322,6 +360,7 @@ def run_grid(
             what happened the first time.
     """
     runs: list[Run] = []
+    environment = current_environment()
     work = Path(tempfile.mkdtemp(prefix="iqforge-leakage-"))
     total = len(cells) * len(split_seeds) * len(train_seeds) * 2
     done = 0
@@ -353,6 +392,7 @@ def run_grid(
                                 train_windows=n_train,
                                 test_windows=n_test,
                                 stride=stride,
+                                environment=environment,
                             )
                         )
                         done += 1
@@ -512,6 +552,8 @@ def main() -> None:
     suffix = "_quick" if args.quick else ""
     runs_path = ARTIFACTS / f"{stem}_runs{suffix}.json"
     table_path = ARTIFACTS / f"{stem}_table{suffix}.md"
+
+    check_environment(runs_path)
 
     def checkpoint(runs: list[Run]) -> None:
         """Persist after every run so an interruption keeps what it earned."""

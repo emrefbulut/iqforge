@@ -60,6 +60,8 @@ from leakage_experiment import (  # noqa: E402
     EPOCHS,
     Run,
     build_window_level,
+    check_environment,
+    current_environment,
     paired_differences,
     train_once,
 )
@@ -204,6 +206,7 @@ def run(
 ) -> list[Run]:
     """Sweep the stride, holding everything else fixed."""
     runs: list[Run] = []
+    environment = current_environment()
     work = Path(tempfile.mkdtemp(prefix="iqforge-loraiq-"))
     total = len(strides) * len(split_seeds) * len(train_seeds) * 2
     done = 0
@@ -232,6 +235,7 @@ def run(
                                 train_windows=n_train,
                                 test_windows=n_test,
                                 stride=stride,
+                                environment=environment,
                             )
                         )
                         if checkpoint is not None:
@@ -319,6 +323,8 @@ def main() -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     runs_path = ARTIFACTS / f"{args.stem}_runs.json"
     table_path = ARTIFACTS / f"{args.stem}_table.md"
+
+    check_environment(runs_path)
 
     def checkpoint(runs: list[Run]) -> None:
         """Persist after every run so an interruption keeps what it earned."""

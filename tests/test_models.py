@@ -64,3 +64,60 @@ def test_count_parameters_can_include_frozen_weights() -> None:
 
     assert count_parameters(model, trainable_only=True) == 130  # only Linear(64->2)
     assert count_parameters(model, trainable_only=False) == 13_490
+
+
+def test_device_defaults_to_cpu_and_is_recorded(tmp_path):
+    """The CPU default is a reproducibility promise, not an accident."""
+    from iqforge.training import DEFAULT_DEVICE, describe_environment, resolve_device
+
+    assert DEFAULT_DEVICE == "cpu"
+    device = resolve_device()
+    assert device.type == "cpu"
+    env = describe_environment(device)
+    assert env["device"] == "cpu"
+    assert env["torch"]
+    assert "cuda" in env
+
+
+def test_an_unavailable_device_errors_rather_than_falling_back():
+    """A run that silently used another device is worse than one that stops."""
+    import torch
+
+    from iqforge.io import IQForgeError
+    from iqforge.training import resolve_device
+
+    if torch.cuda.is_available():
+        pytest.skip("CUDA is available here, so the refusal cannot be exercised")
+    with pytest.raises(IQForgeError, match="no CUDA device"):
+        resolve_device("cuda")
+
+
+def test_an_unknown_device_name_is_rejected():
+    from iqforge.io import IQForgeError
+    from iqforge.training import resolve_device
+
+    with pytest.raises(IQForgeError, match="must be auto, cpu or cuda"):
+        resolve_device("gpu")
+
+
+def test_a_sweep_refuses_to_extend_a_checkpoint_from_another_device(tmp_path):
+    """Rows measured on different devices are not comparable, and no table shows it."""
+    import json
+    import sys
+
+    sys.path.insert(0, "scripts")
+    from leakage_experiment import check_environment, current_environment
+
+    same = tmp_path / "same.json"
+    same.write_text(json.dumps([{"environment": current_environment()}]), encoding="utf-8")
+    check_environment(same)  # must not raise
+
+    other = tmp_path / "other.json"
+    other.write_text(
+        json.dumps([{"environment": {"device": "cuda", "torch": "9.9", "cuda": "12.4"}}]),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="not comparable"):
+        check_environment(other)
+
+    check_environment(tmp_path / "absent.json")  # nothing to compare against

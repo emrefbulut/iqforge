@@ -55,6 +55,8 @@ from leakage_experiment import (  # noqa: E402
     EPOCHS,
     Run,
     build_window_level,
+    check_environment,
+    current_environment,
     paired_differences,
     train_once,
 )
@@ -240,6 +242,7 @@ def run(
     realisation and nothing else.
     """
     runs: list[Run] = []
+    environment = current_environment()
     work = Path(tempfile.mkdtemp(prefix="iqforge-real-"))
     total = len(cells) * len(split_seeds) * len(train_seeds) * 2
     done = 0
@@ -278,6 +281,7 @@ def run(
                                 train_windows=n_train,
                                 test_windows=n_test,
                                 stride=stride,
+                                environment=environment,
                             )
                         )
                         if checkpoint is not None:
@@ -453,6 +457,8 @@ def main() -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     runs_path = ARTIFACTS / f"{stem}_runs.json"
     table_path = ARTIFACTS / f"{stem}_table.md"
+
+    check_environment(runs_path)
 
     def checkpoint(runs: list[Run]) -> None:
         """Persist after every run so an interruption keeps what it earned."""

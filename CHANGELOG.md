@@ -93,6 +93,17 @@ can tell whether the format it is looking at is one it understands.
   not a status: imbalance is a property of the input, and a rare-event dataset
   is a normal thing to build. There is deliberately no threshold on skew.
 - `Recording.capture_datetime`, read from the first capture segment.
+- **`iqforge train --device auto|cpu|cuda`**, defaulting to `cpu`. The default
+  is a reproducibility promise: cuDNN selects kernels by heuristic, so the same
+  seed on the same GPU can pick a different reduction order between runs. `cuda`
+  errors rather than falling back when none is present, and warns that its
+  numbers are not bit-comparable with CPU runs. The `[torch]` extra still
+  installs a CPU wheel; CONTRIBUTING documents installing a CUDA build.
+- `TrainingResult.environment` records the device, torch version and CUDA
+  version, and the sweep scripts stamp every run with it and **refuse to extend
+  a checkpoint measured on a different device**. A grid resumed on another
+  device yields a table whose rows are not comparable and whose output would not
+  show it.
 - `docs/methodology.md` gains three cases: LoRaIQ as a fifth assessed dataset,
   a disqualification that is a property of a dataset *paired with a class
   definition* rather than of the data, and an acquisition method that was

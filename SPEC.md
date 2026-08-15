@@ -105,8 +105,16 @@ iqforge stats <dataset_dir>
     split sizes, disk usage.
 
 iqforge train <dataset_dir> [--epochs 10] [--batch-size 64]
+              [--seed 0] [--lr 0.001] [--device {auto,cpu,cuda}]
     Trains a simple baseline CNN. The goal is not accuracy records,
     but proving the dataset is actually trainable.
+    --device: default `cpu`, and the default is a reproducibility promise
+              rather than an oversight -- cuDNN picks kernels by heuristic, so
+              the same seed on the same GPU can select a different reduction
+              order between runs. `cuda` errors rather than falling back when
+              no CUDA device is present, and warns that its numbers are not
+              bit-comparable with CPU runs. TrainingResult.environment records
+              device, torch version and CUDA version.
 
 iqforge audit <path> [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]

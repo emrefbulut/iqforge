@@ -49,6 +49,11 @@ class TrainingResult:
         test_accuracy: Accuracy on the test split, or None if it is empty.
         test_per_class: Per-class accuracy on the test split.
         classes: Label names, in integer order.
+        environment: What produced the numbers -- device, torch version, CUDA
+            version. Accuracy figures are only comparable across runs that share
+            these, and a table that does not carry them has already lost the
+            information: nothing in a results file otherwise records whether two
+            rows were measured on the same hardware.
     """
 
     parameters: int
@@ -56,11 +61,58 @@ class TrainingResult:
     test_accuracy: float | None = None
     test_per_class: dict[str, float] = field(default_factory=dict)
     classes: list[str] = field(default_factory=list)
+    environment: dict[str, str] = field(default_factory=dict)
 
     @property
     def final_train_accuracy(self) -> float:
         """Training accuracy of the last epoch."""
         return self.epochs[-1].train_accuracy if self.epochs else 0.0
+
+
+#: Device the baseline trains on unless asked otherwise.
+#:
+#: CPU by default, and the default is the point rather than an oversight. The
+#: README promises the same seed gives the same bytes, and cuDNN picks kernels
+#: by heuristic: the same seed on the same GPU can select a different reduction
+#: order between runs, so a GPU default would quietly break that promise. It
+#: also makes the paired experiments in docs/methodology.md invalid the moment
+#: two rows land on different devices, since their whole design rests on
+#: "everything is identical except the split assignment". `--device cuda` is
+#: available and warns; it is not the default.
+DEFAULT_DEVICE = "cpu"
+
+
+def resolve_device(choice: str = DEFAULT_DEVICE) -> torch.device:
+    """Turn `auto|cpu|cuda` into a device, refusing what is not available.
+
+    Raises:
+        IQForgeError: If `cuda` is requested and torch reports none. Silently
+            falling back to CPU would make a run claim a device it did not use.
+    """
+    if choice not in ("auto", "cpu", "cuda"):
+        raise IQForgeError(f"--device must be auto, cpu or cuda, got '{choice}'.")
+    if choice == "cuda" and not torch.cuda.is_available():
+        raise IQForgeError(
+            "--device cuda was requested but torch reports no CUDA device. "
+            f"The installed build is '{torch.__version__}' with CUDA "
+            f"'{torch.version.cuda}'. A CPU-only wheel cannot use a GPU that is "
+            "physically present; see CONTRIBUTING.md for installing a CUDA build."
+        )
+    if choice == "auto":
+        choice = "cuda" if torch.cuda.is_available() else "cpu"
+    return torch.device(choice)
+
+
+def describe_environment(device: torch.device) -> dict[str, str]:
+    """What produced a result, recorded so a table can be compared honestly."""
+    environment = {
+        "device": device.type,
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda or "none",
+    }
+    if device.type == "cuda":
+        environment["device_name"] = torch.cuda.get_device_name(device)
+    return environment
 
 
 def seed_everything(seed: int) -> None:
@@ -115,6 +167,7 @@ def train_baseline(
     seed: int = 0,
     learning_rate: float = 1e-3,
     on_epoch: Callable[[EpochResult], None] | None = None,
+    device_choice: str = DEFAULT_DEVICE,
 ) -> TrainingResult:
     """Train the baseline CNN and measure test accuracy.
 
@@ -126,6 +179,8 @@ def train_baseline(
             seed.
         learning_rate: Adam learning rate.
         on_epoch: Callback invoked at the end of every epoch.
+            device_choice: `auto`, `cpu` or `cuda`. Defaults to CPU; see
+            `DEFAULT_DEVICE` for why that is deliberate.
 
     Returns:
         The results of the run.
@@ -135,7 +190,7 @@ def train_baseline(
             exceeds the parameter budget.
     """
     seed_everything(seed)
-    device = torch.device("cpu")
+    device = resolve_device(device_choice)
 
     train_set = IQForgeDataset(dataset_dir, split="train")
     if train_set[0][0].is_complex():
@@ -172,7 +227,9 @@ def train_baseline(
 
     optimiser = torch.optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss()
-    result = TrainingResult(parameters=parameters, classes=classes)
+    result = TrainingResult(
+        environment=describe_environment(device), parameters=parameters, classes=classes
+    )
 
     for epoch in range(1, epochs + 1):
         model.train()

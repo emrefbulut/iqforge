@@ -895,12 +895,18 @@ def train(
         int, typer.Option("--seed", help="TRAINING seed (weight init + batch order)")
     ] = 0,
     learning_rate: Annotated[float, typer.Option("--lr", help="Adam learning rate")] = 1e-3,
+    device: Annotated[
+        str, typer.Option("--device", help="auto, cpu or cuda. Default cpu, deliberately")
+    ] = "cpu",
 ) -> None:
     """Train a small baseline CNN.
 
     The point is not a record accuracy but proof that the dataset is actually
     trainable. `--seed` affects training only; how the dataset was split is
     fixed by `build --seed` and cannot be changed here.
+
+    `--device` defaults to CPU on purpose: the same seed gives the same bytes
+    there, and it does not on a GPU.
     """
     try:
         # torch is optional: import only when `train` runs, so that
@@ -930,6 +936,7 @@ def train(
             seed=seed,
             learning_rate=learning_rate,
             on_epoch=_report,
+            device_choice=device,
         )
     except IQForgeError as exc:
         raise _fail(exc) from exc
@@ -942,6 +949,13 @@ def train(
         console.print("[yellow]the test split is empty - no test accuracy computed[/]")
         return
 
+    if result.environment.get("device") == "cuda":
+        err_console.print(
+            "[yellow]warning[/] trained on CUDA. cuDNN selects kernels by heuristic, so "
+            "these numbers are NOT bit-comparable with CPU runs or with each other across "
+            "machines. Do not mix devices inside one paired experiment - see "
+            "docs/methodology.md §4."
+        )
     console.print(f"[bold]test accuracy: {result.test_accuracy:.2%}[/]")
     for name, accuracy in result.test_per_class.items():
         console.print(f"[dim]  {escape(name)}:[/] {accuracy:.2%}")
