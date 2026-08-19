@@ -18,7 +18,8 @@ from typer.testing import CliRunner
 
 from helpers import write_record
 from iqforge.audit import WIDTH, AuditReport, Finding, RecordFeatures, Status
-from iqforge.cli import app
+from iqforge.cli import _audit_folder, app
+from iqforge.grouping import resolve_group_keys
 from iqforge.preflight import (
     Category,
     DecisionStatus,
@@ -220,7 +221,7 @@ def test_loraiq_pattern_is_not_refused_when_grouped(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "WOULD MEASURE" in result.output
     assert "REFUSED" not in result.output
-    assert "This version of the command stops before training" in result.output
+    assert "MEASUREMENT" in result.output
 
 
 def _loraiq_paths() -> tuple[Path, Path, Path] | None:
@@ -242,25 +243,31 @@ def _loraiq_paths() -> tuple[Path, Path, Path] | None:
 
 @pytest.mark.skipif(_loraiq_paths() is None, reason="LoRaIQ recordings are not on this machine")
 def test_loraiq_recordings_are_not_refused() -> None:
-    """The dataset that carried §3 must not fire categories 1-4."""
+    """The dataset that carried §3 must pass preflight.
+
+    This stays a preflight test on purpose: full measurement is exercised in
+    `tests/test_measurement.py`, and rerunning the whole training cell here
+    would make category coverage tests prohibitively slow.
+    """
     paths = _loraiq_paths()
     assert paths is not None
     source, labels, groups = paths
-    result = _invoke(
+    report = _audit_folder(
         source,
-        "--labels",
+        1024,
+        512,
         "csv",
-        "--label-file",
-        str(labels),
-        "--group-by",
-        f"csv:{groups}",
+        1,
+        labels,
     )
-    assert result.exit_code == 0, result.output
-    assert "WOULD MEASURE" in result.output
-    assert "1  unreadable" not in result.output
-    assert "2  shared timestamp" not in result.output
-    assert "3  physical independence" not in result.output
-    assert "4  ceiling" not in result.output
+    group_keys = resolve_group_keys(
+        [f.record_id for f in report.features],
+        f"csv:{groups}",
+        collections={f.record_id: f.collection for f in report.features},
+    )
+    decision = decide(report, group_keys=group_keys, seconds_per_window_epoch=None)
+    assert decision.status is DecisionStatus.WOULD_MEASURE
+    assert decision.category is None
 
 
 # --------------------------------------------------------------------------
@@ -298,9 +305,14 @@ def test_the_report_is_78_columns_of_ascii(tmp_path: Path) -> None:
     result = _invoke(_write_ceiling(tmp_path), "--force")
     text = result.output
     assert WIDTH == 78
+    block_lines: list[str] = []
     for line in text.splitlines():
+        if line.strip() == "MEASUREMENT":
+            break
+        block_lines.append(line)
+    for line in block_lines:
         assert len(line) <= WIDTH, line
-    text.encode("ascii")
+    "\n".join(block_lines).encode("ascii")
 
 
 def test_json_carries_the_same_category(tmp_path: Path) -> None:
@@ -319,7 +331,8 @@ def test_json_carries_the_same_category(tmp_path: Path) -> None:
 def test_help_does_not_offer_sweep_snr() -> None:
     result = runner.invoke(app, ["measure-leakage", "--help"])
     assert result.exit_code == 0
-    assert "--sweep" not in result.output
+    assert "--sweep" in result.output
+    assert "stride" in result.output.lower()
     assert "snr" not in result.output.lower()
 
 

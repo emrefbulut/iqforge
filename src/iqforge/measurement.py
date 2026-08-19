@@ -311,6 +311,7 @@ def run_grid(
     *,
     checkpoint: Callable[[list[Run]], None] | None = None,
     epochs: int = EPOCHS,
+    verbose: bool = True,
 ) -> list[Run]:
     """Build both arms and train them, for every cell and seed pair.
 
@@ -366,19 +367,21 @@ def run_grid(
                         label = cell.label or (
                             f"stride={run.stride:4d}" if run.stride is not None else "cell"
                         )
-                        print(
-                            f"  [{done:3d}/{total}] {label} {strategy:15s} "
-                            f"split={split_seed} train={train_seed}  "
-                            f"test={acc:6.2%}  train={train_acc:6.2%}  "
-                            f"({time.time() - t0:.0f}s/run, {n_train}/{n_test} windows, "
-                            f"~{rate * (total - done) / 60:.0f} min left)",
-                            flush=True,
-                        )
+                        if verbose:
+                            print(
+                                f"  [{done:3d}/{total}] {label} {strategy:15s} "
+                                f"split={split_seed} train={train_seed}  "
+                                f"test={acc:6.2%}  train={train_acc:6.2%}  "
+                                f"({time.time() - t0:.0f}s/run, {n_train}/{n_test} windows, "
+                                f"~{rate * (total - done) / 60:.0f} min left)",
+                                flush=True,
+                            )
                 shutil.rmtree(rec_ds, ignore_errors=True)
                 shutil.rmtree(win_ds, ignore_errors=True)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    print(f"\ntotal wall time {(time.time() - started) / 60:.1f} min for {done} runs")
+    if verbose:
+        print(f"\ntotal wall time {(time.time() - started) / 60:.1f} min for {done} runs")
     return runs
 
 
@@ -389,6 +392,7 @@ def measure_pair(
     split_seed: int,
     train_seed: int,
     epochs: int = EPOCHS,
+    verbose: bool = True,
 ) -> tuple[Run, Run]:
     """One seed pair, both arms. The unit the LoRaIQ acceptance cell is."""
     cell = GridCell(
@@ -397,7 +401,7 @@ def measure_pair(
         stride=spec.stride,
         label=f"stride={spec.stride}" if spec.stride is not None else "",
     )
-    runs = run_grid([cell], [split_seed], [train_seed], epochs=epochs)
+    runs = run_grid([cell], [split_seed], [train_seed], epochs=epochs, verbose=verbose)
     rec = next(r for r in runs if r.strategy == "recording-level")
     win = next(r for r in runs if r.strategy == "window-level")
     return rec, win

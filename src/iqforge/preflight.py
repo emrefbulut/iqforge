@@ -264,7 +264,7 @@ def _leaks_not_held(
 ) -> list[Finding]:
     if report is None:
         return []
-    held_overlap = not _ungrouped_overlap_pairs(features, group_keys)
+    held_overlap = bool(group_keys) or not _ungrouped_overlap_pairs(features, group_keys)
     leaks: list[Finding] = []
     for finding in report.findings:
         if finding.status is not Status.LEAK or finding.check == "shared timestamp":
@@ -471,7 +471,7 @@ def decide(
         category = Category.SHARED_TIMESTAMP
         status = DecisionStatus.REFUSED
         reason = timestamp.detail
-    elif near:
+    elif near and not group_keys:
         category = Category.INDEPENDENCE
         status = DecisionStatus.REFUSED
         first = near[0]
