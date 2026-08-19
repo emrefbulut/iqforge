@@ -82,6 +82,20 @@ from iqforge.windowing import (
     window_starts,
 )
 
+
+def _torch_available() -> bool:
+    """True when the optional torch extra is importable."""
+    import importlib.util
+
+    if importlib.util.find_spec("torch") is None:
+        return False
+    try:
+        import torch  # noqa: F401
+    except ModuleNotFoundError:
+        return False
+    return True
+
+
 app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
@@ -1129,6 +1143,11 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         print(printed, flush=True)
     if decision.status is not DecisionStatus.WOULD_MEASURE:
         raise typer.Exit(code=1)
+
+    if not _torch_available():
+        if sweep is not None:
+            raise _fail(IQForgeError(TORCH_REQUIRED.format(what="iqforge measure-leakage --sweep")))
+        return
 
     if not path.is_dir():
         raise _fail(
