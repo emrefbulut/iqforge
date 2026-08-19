@@ -79,7 +79,7 @@ iqforge inspect examples/bpsk_01.sigmf-meta   # look at it, in your terminal
 iqforge build   examples/ -o dataset/ --balance-by core:freq_lower_edge
 iqforge stats   dataset/                      # what did I just build?
 iqforge audit   dataset/                      # what could be wrong with it?
-iqforge measure-leakage recordings/           # would a measurement mean anything?
+iqforge measure-leakage recordings/           # preflight + paired measurement (if allowed)
 ```
 
 ```python
@@ -315,9 +315,14 @@ unaltered; `--format json` gives the same content, `did_not_check` included.
 
 `iqforge measure-leakage` runs that audit, classifies the result into the six
 categories that eliminated four public datasets and let a fifth through
-([methodology §6](docs/methodology.md)), and stops. This version does not train.
-`--force` overrides a refusal and puts the reason in the header so a pasted
-block cannot be mistaken for a clean run.
+([methodology §6](docs/methodology.md)), then:
+- `REFUSED` exits non-zero
+- `WOULD MEASURE` runs the paired cell (recording-level vs window-level) at
+  split seed 42 and train seed 0
+
+`--force` overrides a refusal and keeps the overridden category in the header
+so a pasted block cannot be mistaken for a clean run. `--sweep stride` runs the
+fixed overlap ladder; there is intentionally no `--sweep snr`.
 
 ## Known limitations
 
@@ -370,7 +375,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
       real capture
 - [x] Real SigMF verification with public captures
 - [x] `iqforge audit` — leakage risk and measurability, without training
-- [x] `iqforge measure-leakage` — refuse path: six categories, no training yet
+- [x] `iqforge measure-leakage` — preflight + paired measurement (`--sweep stride` only)
 - [ ] Verification with own hardware capture
 
 **Not planned for 0.x** — out of scope rather than pending:

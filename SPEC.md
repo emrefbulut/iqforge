@@ -140,15 +140,16 @@ iqforge audit <path> [--window 1024] [--stride 512]
 iqforge measure-leakage <path> [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
               [--dirname-level 1] [--group-by {path:<re>,csv:<file>,collection}]
+              [--balance-by <sigmf field>]
               [--split 0.6,0.2,0.2] [--force] [--format {text,json}]
-    Decide whether a leakage measurement would mean anything. Runs `audit`,
-    classifies the result into the six categories in methodology §6, estimates
-    the work a paired cell would do, and stops. This version does not train.
-    REFUSED: a category fired (exit 1). INCONCLUSIVE: the sources the
-    categories need are missing (exit 1). WOULD MEASURE: nothing fired; a
-    later version would train (exit 0). --force overrides a refusal and puts
-    the overridden category in the header so a pasted block cannot be mistaken
-    for a clean run. There is no SNR-injection flag; see 5.10.
+              [--sweep stride]
+    Runs `audit`, classifies into the six categories in methodology §6, then:
+    REFUSED / INCONCLUSIVE => exit 1; WOULD MEASURE => run the paired
+    measurement cell (recording-level and window-level) and report inflation.
+    Default operating point is split_seed=42 and train_seed=0.
+    --force overrides a refusal and keeps the overridden category in the
+    header so a pasted block cannot be mistaken for a clean run.
+    --sweep supports only `stride`; no SNR-injection flag (see 5.10).
 ```
 
 ---
@@ -329,7 +330,7 @@ The report is fixed-width ASCII (78 columns) so it can be quoted unaltered, and 
 
 ### 5.10 Leakage measurement
 
-The paired measurement lives in `src/iqforge/measurement.py` (library) and the refuse path lives in `src/iqforge/preflight.py`. `iqforge measure-leakage` is the command. This version of the command does not train: it runs `audit`, classifies, estimates the work, and stops.
+The paired measurement lives in `src/iqforge/measurement.py` (library) and the refuse path lives in `src/iqforge/preflight.py`. `iqforge measure-leakage` is the command. It runs `audit`, classifies, and when the decision is `WOULD MEASURE` it trains the paired cell (recording-level and window-level) and reports inflation.
 
 **Six refuse categories**, numbered as methodology §6 numbers the datasets, so the report can cite `category 4` rather than a paragraph. Category 5 is any remaining proven leak `audit` already names; category 6 is a split `build` would refuse. There is no category for LoRaIQ — that is the case that is not refused (§6.5).
 
@@ -352,7 +353,7 @@ Overlapping air time that `--group-by` already holds together is not category 5:
 
 SNR injection is a **preparation recipe**, not a command flag. A script under `scripts/` produces a folder; the command measures that folder. The dataset-specific decisions (where the signal is, how much processing gain the band has, that noise is added before windowing so overlapping windows share the draw) stay visible in the script that made them.
 
-`--sweep stride` does not have this problem: it only varies how the existing samples are windowed. It is not in this version of the command, because this version does not train.
+`--sweep stride` does not have this problem: it only varies how the existing samples are windowed. It is the only supported sweep mode.
 
 This is a deliberate deviation from an earlier design that listed `--sweep snr` as an opt-in. The objection is not that it is opt-in; it is that it breaks read-only-ness.
 

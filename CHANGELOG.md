@@ -13,6 +13,9 @@ can tell whether the format it is looking at is one it understands.
 
 ### Added
 
+- `iqforge measure-leakage` now accepts `--balance-by`, so the command path can
+  run the same nuisance-balancing setup that the published synthetic measurement
+  tables used.
 - `TrainingResult.environment` now also records the **numpy, scipy and sigmf**
   versions. Windowing and normalisation run on numpy, the spectrogram on scipy,
   the reader on sigmf; none of those were in the environment dict, so two tables
@@ -46,6 +49,15 @@ can tell whether the format it is looking at is one it understands.
 
 ### Changed
 
+- The three leakage scripts (`scripts/leakage_experiment.py`,
+  `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`) now execute measured
+  cells through `iqforge measure-leakage --format json` instead of keeping a
+  second direct measurement path. Dataset-specific preparation remains in
+  scripts; pairing/training stays in the command path.
+- Migration safety gate added: published-table sample cells are compared exactly
+  (test/train accuracy and train/test window counts) before retiring duplicate
+  paths. The synthetic gate runs forced preflight intentionally because its
+  annotation labels are not visible to folder-audit's single-window probe.
 - SPEC §5.10 now describes the refuse path that shipped, not a constraint on a
   command that did not exist. The command is read-only on the user's recordings
   and will not grow a `--sweep snr` flag. Adding noise requires writing altered

@@ -1028,14 +1028,19 @@ uv sync --extra torch
 uv run python scripts/leakage_experiment.py                  # section 2
 uv run python scripts/leakage_experiment.py --sweep stride   # section 3
 uv run python scripts/leakage_real.py --sweep stride         # section 3, real
+uv run python scripts/leakage_loraiq.py                      # section 3, LoRaIQ
 ```
 
-All three write to `artifacts/`. None touches `examples/`; the synthetic
+All scripts write to `artifacts/` and run through the same shipped command path
+(`python -m iqforge measure-leakage`) for each measured cell; there is no second
+measurement logic path in `scripts/`. None touches `examples/`; the synthetic
 experiment generates its own recordings at each noise level, and the real one
-reads a DASH7 capture set you supply with `--source`. The grids are 180, 150 and
-150 training runs; runtime is dominated by training on CPU and is measured in
-hours rather than minutes. Results are checkpointed after every run, so an
-interrupted grid keeps what it has completed.
+reads a DASH7 capture set you supply with `--source`. Results are checkpointed
+after every run, so an interrupted grid keeps what it has completed.
+
+`--sweep snr` is intentionally absent from `iqforge measure-leakage`. SNR
+injection is dataset-specific preparation done in scripts; the command measures
+the prepared folder and supports only `--sweep stride`.
 
 The audit in §6 needs no training and takes seconds:
 

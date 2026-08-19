@@ -9,10 +9,9 @@ Make the branch easy to hand off as a **locally readable** and **GitHub-readable
 
 ## Current state snapshot
 
-- Branch exists and is ahead of remote.
-- Migration implementation is in progress in code files and should continue independently.
-- Prep checklist exists at `docs/phase5-phase6-checklist.md`.
-- This stream adds only additive handoff/readability docs and no migration logic.
+- Phase 5 migration completed with sample-gate parity checks passing.
+- Phase 6 docs synchronization completed for README/SPEC/methodology/changelog/release notes.
+- Branch is ready for push + PR handoff once commits are finalized.
 
 ## Remaining gaps vs handoff goal
 
@@ -20,38 +19,38 @@ Make the branch easy to hand off as a **locally readable** and **GitHub-readable
 
 - [x] There is a concrete migration-prep checklist (`docs/phase5-phase6-checklist.md`).
 - [x] There is now a branch-level handoff status note (this file).
-- [ ] Final migration outcome summary is still pending (must be authored after implementation stabilizes).
-- [ ] Explicit validation evidence for final migration behavior is pending (must come from migration worker outputs).
+- [x] Final migration outcome summary is now captured in commit + PR body.
+- [x] Validation evidence captured with exact command/output checks.
 
 ### GitHub / PR readability
 
 - [x] README/SPEC/Methodology already explain current shipped behavior and boundaries.
 - [x] PR readability template/checklist is added in `.github/pull_request_template.md`.
-- [ ] Final PR body must include concrete before/after behavior excerpts once migration is complete.
-- [ ] Final PR should link artifacts proving outcome (logs/tables) produced by migration worker.
+- [x] Final PR body includes phase-by-phase summary and decisions.
+- [x] Final PR body includes acceptance checks and exact command results.
 
 ### Clean local state
 
-- [ ] Working tree is not clean (expected while migration worker is active).
-- [ ] Post-migration branch should be restaged and rechecked before push/PR creation.
+- [x] Migration verification completed before commit/push.
+- [x] Post-migration branch staged and committed for PR.
 
 ## Coordination notes for the main migration worker
 
-1. Keep ownership of implementation files:
+1. Main migration implementation files:
    - `src/iqforge/cli.py`
    - `scripts/leakage_experiment.py`
    - `scripts/leakage_loraiq.py`
    - `scripts/leakage_real.py`
-2. Use this stream's docs as handoff framing only; do not treat them as migration completion proof.
-3. Before opening/updating PR, fill the template checklist with:
-   - exact command/output deltas
-   - refusal/force-path behavior confirmation
-   - any docs text synchronized after final behavior lands
+2. Migration safety guard:
+   - published-table sample gates must pass exactly before claiming parity
+3. PR body requirements:
+   - exact command list and observed results
+   - refusal/force-path behavior explanation
+   - explicit statement that `--sweep snr` is still intentionally unsupported
 
 ## Suggested finalization checklist (after migration lands)
 
-- [ ] Re-run targeted tests/commands for the migrated path.
-- [ ] Update `CHANGELOG.md` `[Unreleased]` with final behavior wording.
-- [ ] Refresh docs sections that are migration-dependent (`README.md`, `SPEC.md` 4/5.10, `docs/methodology.md` reproducing block as needed).
-- [ ] Confirm clean `git status` (except intentional tracked artifacts).
-- [ ] Prepare PR description using `.github/pull_request_template.md`.
+- [x] Re-ran targeted tests/commands for migrated path.
+- [x] Updated `CHANGELOG.md` `[Unreleased]`.
+- [x] Refreshed migration-dependent docs (`README.md`, `SPEC.md`, `docs/methodology.md`).
+- [x] Prepared PR description with template checklist.
