@@ -59,9 +59,10 @@ uv run iqforge train dataset/ --device cuda
 cuda` errors rather than falling back, because a run that silently used a
 different device than it was asked for is worse than one that stops. A CUDA run
 prints a warning that its numbers are not bit-comparable with CPU runs, and
-`TrainingResult.environment` records the device, torch version and CUDA version
-so a results file can be checked later. The sweep scripts in `scripts/` refuse
-to extend a checkpoint that was measured on a different device.
+`TrainingResult.environment` records the device, torch version, CUDA version,
+and the numpy / scipy / sigmf versions windowing, normalisation and reading
+depend on, so a results file can be checked later. The sweep scripts in `scripts/`
+refuse to extend a checkpoint that was measured on a different environment.
 
 ## The most useful bug report
 

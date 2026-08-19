@@ -472,10 +472,12 @@ def test_record_ids_are_paths_relative_to_the_audited_root(tmp_path: Path) -> No
 # --------------------------------------------------------------------------
 
 
-def _timed(record_id: str, start: dt.datetime, seconds: float = 1.0) -> RecordFeatures:
+def _timed(
+    record_id: str, start: dt.datetime, seconds: float = 1.0, label: str = "a"
+) -> RecordFeatures:
     return RecordFeatures(
         record_id=record_id,
-        label="a",
+        label=label,
         capture_time=start,
         duration_samples=int(seconds * 100),
         sample_rate=100.0,
@@ -543,6 +545,169 @@ def test_distinct_timestamps_are_still_compared() -> None:
     ]
     finding = _split_time_overlap(features, {"a": "train", "b": "test", "c": "train"})
     assert finding.status is Status.LEAK
+
+
+# --------------------------------------------------------------------------
+# Shared timestamp (Vega-C pattern)
+# --------------------------------------------------------------------------
+
+_VEGA_STAMPS = (
+    dt.datetime(2022, 7, 24, 18, 47, 38, tzinfo=dt.UTC),
+    dt.datetime(2022, 7, 24, 19, 25, 49, tzinfo=dt.UTC),
+    dt.datetime(2022, 7, 24, 19, 29, 2, tzinfo=dt.UTC),
+)
+_VEGA_SATS = ("ASTROBIO", "CELESTA", "MTCube-2", "NESS", "ROBUSTA-3A")
+_VEGA_SPLITS = ("train", "val", "test")
+
+
+def _vega_c_pattern() -> tuple[list[RecordFeatures], dict[str, str]]:
+    """Five satellites, three shared stamps, one stamp per split.
+
+    Passes are minutes apart, so their capture intervals do not intersect.
+    Duration matches the public recordings (~70 s at 40 kS/s).
+    """
+    features: list[RecordFeatures] = []
+    assignment: dict[str, str] = {}
+    for sat in _VEGA_SATS:
+        for stamp, split in zip(_VEGA_STAMPS, _VEGA_SPLITS, strict=True):
+            record_id = f"{sat}/{stamp:%H_%M_%S}"
+            features.append(
+                RecordFeatures(
+                    record_id=record_id,
+                    label=sat,
+                    capture_time=stamp,
+                    duration_samples=70 * 40_000,
+                    sample_rate=40_000.0,
+                )
+            )
+            assignment[record_id] = split
+    return features, assignment
+
+
+def test_vega_c_pattern_is_a_shared_timestamp_leak() -> None:
+    """The sessions are crossed with class; each split got a different pass."""
+    from iqforge.audit import _shared_timestamp
+
+    features, assignment = _vega_c_pattern()
+    finding = _shared_timestamp(features, assignment)
+    assert finding.status is Status.LEAK
+    assert finding.check == "shared timestamp"
+    assert "§6.2" in finding.detail
+    assert "Vega-C" in finding.detail
+
+
+def test_shared_air_time_is_quiet_on_the_vega_c_pattern() -> None:
+    """The two checks are not the same instrument.
+
+    Passes do not overlap, and recordings that share a stamp stayed in one
+    split, so shared air time has nothing to report. If this test failed, the
+    new check would be redundant; if the leak test above failed, shared air
+    time would be being asked to see a pattern it cannot.
+    """
+    from iqforge.audit import _split_time_overlap
+
+    features, assignment = _vega_c_pattern()
+    finding = _split_time_overlap(features, assignment)
+    assert finding.status is not Status.LEAK
+    assert "single split" in finding.detail
+
+
+def test_a_placeholder_timestamp_is_not_the_vega_c_pattern() -> None:
+    """`examples/` dates all 16 recordings 2024-01-01T00:00:00Z.
+
+    One stamp across the whole set is a generator constant. The Vega-C signal
+    is several distinct stamps each repeating in every class; collapsing that
+    to one stamp must not become a leak, or the project's own example data
+    would fail the audit.
+    """
+    from iqforge.audit import _shared_timestamp
+
+    start = dt.datetime(2024, 1, 1, tzinfo=dt.UTC)
+    features = [_timed(f"r{i}", start, label="bpsk" if i < 8 else "qpsk") for i in range(16)]
+    assignment = {f"r{i}": _VEGA_SPLITS[i % 3] for i in range(16)}
+    finding = _shared_timestamp(features, assignment)
+    assert finding.status is Status.NOT_CHECKED
+    assert "placeholder" in finding.detail
+
+
+def test_examples_folder_does_not_false_positive_shared_timestamp() -> None:
+    """Control: the bundled recordings must stay quiet on this check."""
+    from iqforge.cli import _audit_folder
+
+    examples = Path(__file__).resolve().parent.parent / "examples"
+    if not any(examples.glob("*.sigmf-meta")):
+        pytest.skip("examples/ recordings have not been generated")
+    report = _audit_folder(examples, 1024, 512, "dirname", 1)
+    finding = next(f for f in report.findings if f.check == "shared timestamp")
+    assert finding.status is Status.NOT_CHECKED
+    assert "placeholder" in finding.detail
+
+
+def test_repeated_stamps_in_one_class_are_not_the_vega_c_pattern() -> None:
+    """Several stamps, one class: sessions are not crossed with the label."""
+    from iqforge.audit import _shared_timestamp
+
+    features = []
+    assignment = {}
+    for i, stamp in enumerate(_VEGA_STAMPS):
+        record_id = f"r{i}"
+        features.append(_timed(record_id, stamp, seconds=1.0, label="only"))
+        assignment[record_id] = _VEGA_SPLITS[i]
+    finding = _shared_timestamp(features, assignment)
+    assert finding.status is Status.PASS_SAMPLE
+    assert "more than one class" in finding.detail
+
+
+def test_spreading_the_stamps_across_splits_closes_the_finding() -> None:
+    """The check must stay quiet when every split holds every session."""
+    from iqforge.audit import _shared_timestamp
+
+    features = []
+    assignment = {}
+    for sat in ("sat_a", "sat_b"):
+        for stamp in _VEGA_STAMPS:
+            for split in ("train", "test"):
+                record_id = f"{sat}/{stamp:%H_%M_%S}/{split}"
+                features.append(
+                    RecordFeatures(
+                        record_id=record_id,
+                        label=sat,
+                        capture_time=stamp,
+                        duration_samples=100,
+                        sample_rate=100.0,
+                    )
+                )
+                assignment[record_id] = split
+    finding = _shared_timestamp(features, assignment)
+    assert finding.status is Status.PASS_SAMPLE
+    assert "every split" in finding.detail
+
+
+def test_folder_mode_reports_the_crossed_pattern_as_risk_not_leak() -> None:
+    """Nothing has been split yet, so the bins do not exist to fall into."""
+    from iqforge.audit import _shared_timestamp
+
+    features, _ = _vega_c_pattern()
+    finding = _shared_timestamp(features)
+    assert finding.status is Status.RISK
+    assert "§6.2" in finding.detail
+
+
+def test_mutating_the_partition_is_what_the_leak_test_detects() -> None:
+    """A test that has never failed has not been shown to test anything.
+
+    Put every stamp in every split and the leak must vanish. If it does not,
+    the test above is matching on the crossed labels alone, which is the
+    structure of the set rather than the split.
+    """
+    from iqforge.audit import _shared_timestamp
+
+    features, assignment = _vega_c_pattern()
+    assert _shared_timestamp(features, assignment).status is Status.LEAK
+    # Same recordings, every satellite's three stamps forced into train.
+    collapsed = dict.fromkeys(assignment, "train")
+    finding = _shared_timestamp(features, collapsed)
+    assert finding.status is not Status.LEAK
 
 
 # --------------------------------------------------------------------------

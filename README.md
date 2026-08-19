@@ -270,8 +270,9 @@ iqforge audit recordings/ --dirname-level 2     # a folder, before building
 
 It checks recording disjointness, cross-split window overlap, which measurable
 axis separates your classes, how much processing gain the class separation has
-available, and — on a raw folder — whether two recordings claim the same air
-time or ship identical data.
+available, whether recordings that share a capture timestamp are crossed with
+class across splits (the Vega-C pattern), and — on a raw folder — whether two
+recordings claim the same air time or ship identical data.
 
 **It never says "clean".** That is the whole design. Statuses are `LEAK` (proven,
 with the evidence), `RISK`, `PASS/proof` (established from structure, holds for

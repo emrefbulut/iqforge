@@ -124,9 +124,9 @@ class Run:
     test_windows: int
     #: None for the SNR sweep, which leaves the tool's default stride alone.
     stride: int | None = None
-    #: Device / torch / CUDA versions this run was measured on. Rows measured on
-    #: different devices are not comparable, and a table that does not carry
-    #: this has already lost the ability to say so.
+    #: Device, torch, CUDA, and numeric-stack versions this run was measured on.
+    #: Rows measured on different environments are not comparable, and a table
+    #: that does not carry this has already lost the ability to say so.
     environment: dict[str, str] = field(default_factory=dict)
 
 
@@ -306,7 +306,7 @@ def train_once(dataset: Path, train_seed: int) -> tuple[float, float, int, int]:
 
 
 def current_environment() -> dict[str, str]:
-    """Device / torch / CUDA of the process about to run a grid."""
+    """Device, torch, CUDA, and numeric-stack versions of the process about to run a grid."""
     from iqforge.training import DEFAULT_DEVICE, describe_environment, resolve_device
 
     return describe_environment(resolve_device(DEFAULT_DEVICE))
@@ -333,9 +333,9 @@ def check_environment(runs_path: Path) -> None:
     if recorded != now:
         raise SystemExit(
             f"{runs_path.name} holds runs measured on {recorded}, but this process "
-            f"would measure on {now}. Rows from different devices are not comparable "
-            f"and the table would not show it. Move the checkpoint aside to start a "
-            f"fresh grid, or run on the original device."
+            f"would measure on {now}. Rows from different environments are not "
+            f"comparable and the table would not show it. Move the checkpoint aside "
+            f"to start a fresh grid, or run in the original environment."
         )
 
 

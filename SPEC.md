@@ -120,7 +120,8 @@ iqforge train <dataset_dir> [--epochs 10] [--batch-size 64]
               order between runs. `cuda` errors rather than falling back when
               no CUDA device is present, and warns that its numbers are not
               bit-comparable with CPU runs. TrainingResult.environment records
-              device, torch version and CUDA version.
+              device, torch version, CUDA version, and the numpy / scipy / sigmf
+              versions windowing, normalisation and reading depend on.
 
 iqforge audit <path> [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
@@ -301,7 +302,7 @@ Must be a subclass of `torch.utils.data.Dataset`, reading shards lazily with mem
 
 `audit` is a negative instrument: it can prove a problem, it can prove a small number of properties from structure, and everything else it reports as examined-and-passed or as not examined. It must never emit a statement a reader can turn into "this dataset is clean".
 
-Three rules the implementation is held to:
+Four rules the implementation is held to:
 
 **Overlap is decided from sample-index ranges, never from content similarity.** Flattening a window lays it out by position, so two windows sharing half their samples hold them at different indices and a similarity score rates real overlap like unrelated noise. Any future content-based check may support this conclusion but may not be the basis for it.
 
@@ -309,7 +310,23 @@ Three rules the implementation is held to:
 
 **Difficulty has two outcomes, `ceiling` and `unknown`.** A single scalar axis that classifies at or above 95% of recordings means a trained model will saturate, which is reportable without training. The complement is not: locating the band where a model is partly right requires a model. There is deliberately no `measurable` verdict.
 
+**Shared timestamp is the sibling of shared air time, not a restatement of it.** Shared air time looks for *intersecting* capture intervals. Shared timestamp looks for recordings that carry the *same* `core:datetime` value, when several distinct stamps each repeat in more than one class and the splits do not hold the same set of them. That is the Vega-C pattern (methodology §6.2): five satellites, three shared stamps, a recording-level split that puts a different pass in each bin. The passes do not overlap, so shared air time is quiet; the sessions are crossed with class, so the split is a distribution shift. A single stamp across the whole set is a generator placeholder (`examples/` is dated `2024-01-01T00:00:00Z`) and is `NOT CHECKED`, not a leak.
+
 The report is fixed-width ASCII (78 columns) so it can be quoted unaltered, and carries the tool version, a UTC timestamp, an input fingerprint, the status table, a summary counting NOT CHECKED separately, and the non-suppressible caveat list. `--format json` carries the same fields, `did_not_check` included.
+
+### 5.10 Leakage measurement
+
+The command that trains the paired experiment (`iqforge measure-leakage`) is not in this version. This section records a constraint it is held to when it is written, so the constraint cannot be reversed by accident.
+
+**The command is read-only.** It consumes a folder of recordings (or a built dataset) and writes a report. It does not write modified recordings. Every other user-facing command in §4 is already read-only with respect to the user's captures; measurement is not an exception.
+
+**There is no `--sweep snr`.** Adding noise to a user's recordings requires writing altered copies, and doing it correctly is dataset-specific. On DASH7 the carrier is on air 6.8% of the time and about 26 dB of processing gain sits between a wideband SNR figure and the SNR the task sees (methodology §6.4). The pilot that motivated this tool produced a silently useless grid by getting those wrong. An opt-in flag does not fix that — it would be the one place the command touches the user's data, and the one place it can fail silently.
+
+SNR injection is a **preparation recipe**, not a command flag. A script under `scripts/` produces a folder; the command measures that folder. The dataset-specific decisions (where the signal is, how much processing gain the band has, that noise is added before windowing so overlapping windows share the draw) stay visible in the script that made them.
+
+`--sweep stride` does not have this problem: it only varies how the existing samples are windowed.
+
+This is a deliberate deviation from an earlier design that listed `--sweep snr` as an opt-in. The objection is not that it is opt-in; it is that it breaks read-only-ness.
 
 ---
 

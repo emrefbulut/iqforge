@@ -11,7 +11,32 @@ can tell whether the format it is looking at is one it understands.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `TrainingResult.environment` now also records the **numpy, scipy and sigmf**
+  versions. Windowing and normalisation run on numpy, the spectrogram on scipy,
+  the reader on sigmf; none of those were in the environment dict, so two tables
+  measured on the same device with different numeric stacks could not be told
+  apart. The sweep scripts still refuse to extend a checkpoint whose environment
+  does not match, and that comparison now covers the new fields.
+- `docs/methodology.md` §6 numbers the five assessed datasets (6.1 AirID, 6.2
+  Vega-C, 6.3 DASH7 `ds_indoor`, 6.4 DASH7 `ds_indoor_cabled`, 6.5 LoRaIQ) so a
+  later command can cite `category 4` rather than a paragraph.
+- `iqforge audit` reports **shared timestamp**, the sibling of shared air time.
+  Shared air time looks for intersecting capture intervals; this looks for the
+  same `core:datetime` value repeating across classes and landing as a different
+  set in each split. That is the Vega-C pattern (methodology §6.2): five
+  satellites, three shared stamps, no interval overlap, a recording-level split
+  that puts a different pass in each bin. A single stamp across the whole set is
+  still a placeholder (`examples/` does not false-positive).
+
+### Changed
+
+- SPEC §5.10 records that `measure-leakage`, when written, is read-only on the
+  user's recordings and will not grow a `--sweep snr` flag. Adding noise requires
+  writing altered copies and is dataset-specific (DASH7: signal on air 6.8% of
+  the time, ~26 dB of processing gain). SNR injection stays a preparation recipe
+  in `scripts/`; the command measures the folder that recipe produces.
 
 ## [0.4.0] — 2026-08-19
 

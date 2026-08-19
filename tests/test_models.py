@@ -77,6 +77,12 @@ def test_device_defaults_to_cpu_and_is_recorded(tmp_path):
     assert env["device"] == "cpu"
     assert env["torch"]
     assert "cuda" in env
+    assert env["numpy"]
+    assert env["scipy"]
+    assert env["sigmf"]
+    assert env["numpy"] != "absent"
+    assert env["scipy"] != "absent"
+    assert env["sigmf"] != "absent"
 
 
 def test_an_unavailable_device_errors_rather_than_falling_back():
@@ -101,7 +107,7 @@ def test_an_unknown_device_name_is_rejected():
 
 
 def test_a_sweep_refuses_to_extend_a_checkpoint_from_another_device(tmp_path):
-    """Rows measured on different devices are not comparable, and no table shows it."""
+    """Rows measured on different environments are not comparable, and no table shows it."""
     import json
     import sys
 

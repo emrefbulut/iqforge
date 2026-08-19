@@ -409,6 +409,8 @@ per class — enough that a recording-level split has something to split — a
 format the reader can be trusted on, and a task that is neither trivial nor
 impossible. Format turned out to be the easy one.
 
+### 6.1 Case 1 — AirID
+
 **AirID** (GENESYS Lab, 4 UAV transmitters with deliberately distinct IQ
 imbalances). Recording count is not the problem: the sibling *hovering-uavs*
 release is 7 UAVs × 4 distances × 4 bursts × ~140 transmissions, ~13k files. The
@@ -428,6 +430,8 @@ conversion is a step where the data can be altered between the publisher and the
 measurement, which is precisely what the measurement is trying to be careful
 about.
 
+### 6.2 Case 2 — Vega-C MEO Cubesats
+
 **Vega-C MEO Cubesats** (GNU Radio SigMF collection, 5 satellites, `ci16_le`,
 CC BY 4.0). Format is ideal: `iqforge` reads it as shipped, and the byte-level
 check in §5 was done on a recording from this collection. There are 3 recordings
@@ -438,7 +442,11 @@ sessions are crossed perfectly with class. Splitting by recording therefore puts
 a different pass — different Doppler, elevation and SNR — in each split. That is
 distribution shift, and it is the failure that invalidated the first version of
 the SNR grid (§4). Measuring leakage on top of it would measure the sum of the
-two.
+two. `iqforge audit` reports this as `shared timestamp`: the three passes do not
+overlap, so shared air time is quiet, and a single placeholder stamp is not this
+pattern — several distinct stamps each repeating in every class is.
+
+### 6.3 Case 3 — DASH7 `ds_indoor`
 
 **DASH7 `ds_indoor`** (Zenodo 10961311, `ci16_le`, CC BY 4.0, USRP B210). This
 one passed the count and still failed, which is the instructive case.
@@ -462,6 +470,8 @@ location, which is the Vega-C situation again. And the three differ only by
 channel, which is a carrier offset within one captured band: every file declares
 `core:frequency: 866500000.0`, so the distinction that separates the three units
 is **not in the metadata at all** and `--balance-by` cannot see it.
+
+### 6.4 Case 4 — DASH7 `ds_indoor_cabled`
 
 **DASH7 `ds_indoor_cabled`** (Zenodo 10961311, 1.9 GB, `ci16_le`, CC BY 4.0,
 USRP B210). The cabled companion to the set above: same three Lo-Rate channels,
@@ -606,7 +616,7 @@ the search criteria are four, not three: real hardware, documented independence,
 a readable format, and **a task whose difficulty is graded**. Only the first
 three can be checked before downloading anything.
 
-### A fifth dataset that changes the claim
+### 6.5 Case 5 — LoRaIQ
 
 **LoRaIQ** (Zenodo 20341802, CC BY 4.0, 71 GB, four rooftop receivers at EPFL,
 30 000+ LoRa frames) is the case the paragraphs above did not anticipate. It
