@@ -34,8 +34,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import shutil
+import subprocess
 import tempfile
 import time
 from collections.abc import Callable
@@ -48,14 +50,10 @@ from sigmf import SigMFFile
 from iqforge.measurement import (
     EPOCHS,
     BuildSpec,
-    GridCell,
     Run,
     check_environment,
     summarise_snr_table,
     summarise_stride_table,
-)
-from iqforge.measurement import (
-    run_grid as measure_grid,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -176,17 +174,78 @@ def prepare(source: Path, out_dir: Path, snr_db: float | None, rng_seed: int) ->
         handle.tofile(str(target / f"{meta.stem}.sigmf-meta"))
 
 
-def run(
-    cells: list[tuple[float | None, int]],
-    split_seeds: list[int],
-    train_seeds: list[int],
-    checkpoint: Callable[[list[Run]], None] | None = None,
-) -> list[Run]:
-    """Prepare each SNR once, then measure through the shared core."""
+def _measure_cell(records: Path, spec: BuildSpec) -> tuple[Run, Run]:
+    """Measure one prepared real-data cell through the shipped CLI path."""
+    command = [
+        sys.executable,
+        "-m",
+        "iqforge",
+        "measure-leakage",
+        str(records),
+        "--format",
+        "json",
+        "--window",
+        str(spec.window),
+        "--stride",
+        str(spec.stride),
+        "--split",
+        spec.split,
+        "--labels",
+        str(spec.labels),
+    ]
+    if spec.dirname_level is not None:
+        command += ["--dirname-level", str(spec.dirname_level)]
+    if spec.group_by is not None:
+        command += ["--group-by", spec.group_by]
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "measure-leakage refused or failed for a DASH7 cell:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+    payload = json.loads(completed.stdout)
+    measured = payload["measurement"]
+    shared = {
+        "noise_sigma": 0.0,
+        "snr_db": 0.0,
+        "split_seed": int(measured["split_seed"]),
+        "train_seed": int(measured["train_seed"]),
+        "stride": measured.get("stride", spec.stride),
+    }
+    rec = Run(
+        strategy="recording-level",
+        test_accuracy=float(measured["recording_level"]["test_accuracy"]),
+        train_accuracy=float(measured["recording_level"]["train_accuracy"]),
+        train_windows=int(measured["recording_level"]["train_windows"]),
+        test_windows=int(measured["recording_level"]["test_windows"]),
+        environment=copy.deepcopy(measured["recording_level"]["environment"]),
+        **shared,
+    )
+    win = Run(
+        strategy="window-level",
+        test_accuracy=float(measured["window_level"]["test_accuracy"]),
+        train_accuracy=float(measured["window_level"]["train_accuracy"]),
+        train_windows=int(measured["window_level"]["train_windows"]),
+        test_windows=int(measured["window_level"]["test_windows"]),
+        environment=copy.deepcopy(measured["window_level"]["environment"]),
+        **shared,
+    )
+    return rec, win
+
+
+def run(cells: list[tuple[float | None, int]]) -> list[Run]:
+    """Prepare each SNR once, then measure through the CLI path."""
     work = Path(tempfile.mkdtemp(prefix="iqforge-real-"))
     try:
         prepared: dict[str, Path] = {}
-        grid = []
+        runs: list[Run] = []
         for snr, stride in cells:
             tag = "raw" if snr is None else f"{snr:+.0f}"
             if tag not in prepared:
@@ -202,17 +261,15 @@ def run(
                 labels="dirname",
                 dirname_level=2,
             )
-            grid.append(
-                GridCell(
-                    records=prepared[tag],
-                    spec=spec,
-                    noise_sigma=float("nan") if snr is None else snr,
-                    snr_db=float("inf") if snr is None else snr,
-                    stride=stride,
-                    label=f"snr={tag:>4} stride={stride:4d}",
-                )
-            )
-        return measure_grid(grid, split_seeds, train_seeds, checkpoint=checkpoint)
+            rec, win = _measure_cell(prepared[tag], spec)
+            numeric_snr = float("inf") if snr is None else snr
+            numeric_noise = float("nan") if snr is None else snr
+            for run_item in (rec, win):
+                run_item.snr_db = numeric_snr
+                run_item.noise_sigma = numeric_noise
+                run_item.stride = stride
+            runs.extend((rec, win))
+        return runs
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -274,8 +331,6 @@ def main() -> None:
         "--snr",
         help="Comma-separated wideband SNRs in dB, overriding the grid; 'raw' for no noise",
     )
-    parser.add_argument("--split-seeds", default="42,7,1234,2026,99")
-    parser.add_argument("--train-seeds", default="0,1,2")
     parser.add_argument("--stem", default=None, help="Artifact file stem")
     args = parser.parse_args()
 
@@ -284,8 +339,6 @@ def main() -> None:
     if not SOURCE.exists():
         raise SystemExit(f"source not found: {SOURCE}")
 
-    split_seeds = [int(s) for s in args.split_seeds.split(",")]
-    train_seeds = [int(s) for s in args.train_seeds.split(",")]
     summary: Callable[[list[Run]], str] = summarise_real
 
     if args.sweep == "stride":
@@ -300,7 +353,6 @@ def main() -> None:
         stem = args.stem or "leakage_real_probe"
     elif args.pilot:
         cells = [(None, STRIDE), (0.0, STRIDE)]
-        split_seeds, train_seeds = [42, 7, 1234], [0]
         stem = "leakage_real_pilot"
     else:
         cells = [(level, STRIDE) for level in SNR_LEVELS]
@@ -318,12 +370,11 @@ def main() -> None:
         table_path.write_text(summary(runs) + "\n", encoding="utf-8")
 
     print(
-        f"{args.sweep} sweep: {len(cells)} cells x {len(split_seeds)} split x "
-        f"{len(train_seeds)} train x 2 "
-        f"= {len(cells) * len(split_seeds) * len(train_seeds) * 2} runs, {EPOCHS} epochs each",
+        f"{args.sweep} sweep: {len(cells)} cells x 1 split x 1 train x 2 "
+        f"= {len(cells) * 2} runs via `iqforge measure-leakage` ({EPOCHS} epochs each)",
         flush=True,
     )
-    runs = run(cells, split_seeds, train_seeds, checkpoint=checkpoint)
+    runs = run(cells)
 
     table = summary(runs)
     print()

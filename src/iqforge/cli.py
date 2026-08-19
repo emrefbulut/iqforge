@@ -1049,6 +1049,13 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
             "--group-by", help="Hold related recordings together: path:<re> or csv:<file>"
         ),
     ] = None,
+    balance_by: Annotated[
+        str | None,
+        typer.Option(
+            "--balance-by",
+            help="Spread nuisance keys across splits during build, e.g. core:freq_lower_edge",
+        ),
+    ] = None,
     split: Annotated[
         str, typer.Option("--split", help="train,val,test ratios a later measurement would use")
     ] = DEFAULT_SPLIT,
@@ -1139,6 +1146,7 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         label_file=label_file,
         dirname_level=dirname_level if labels == "dirname" else None,
         group_by=group_by,
+        balance_by=balance_by,
     )
 
     if sweep == "stride":
@@ -1154,6 +1162,7 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
                     label_file=label_file,
                     dirname_level=dirname_level if labels == "dirname" else None,
                     group_by=group_by,
+                    balance_by=balance_by,
                 ),
                 stride=s,
                 label=f"stride={s}",

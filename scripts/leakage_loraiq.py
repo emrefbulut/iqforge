@@ -38,6 +38,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import shutil
@@ -45,7 +46,6 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -55,13 +55,9 @@ from sigmf import SigMFFile
 from iqforge.measurement import (
     EPOCHS,
     BuildSpec,
-    GridCell,
     Run,
     check_environment,
     summarise_stride_table,
-)
-from iqforge.measurement import (
-    run_grid as measure_grid,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -147,35 +143,79 @@ def prepare(source: Path, out_dir: Path, offsets: dict[str, int]) -> int:
     return written
 
 
-def run(
-    records: Path,
-    strides: tuple[int, ...],
-    split_seeds: list[int],
-    train_seeds: list[int],
-    labels: Path,
-    groups: Path,
-    checkpoint: Callable[[list[Run]], None] | None = None,
-) -> list[Run]:
-    """Sweep the stride, holding everything else fixed."""
-    grid = [
-        GridCell(
-            records=records,
-            spec=BuildSpec(
-                window=WINDOW,
-                stride=stride,
-                split=SPLIT_RATIOS,
-                labels="csv",
-                label_file=labels,
-                group_by=f"csv:{groups}",
-            ),
-            noise_sigma=0.0,
-            snr_db=float("nan"),
-            stride=stride,
-            label=f"stride={stride:4d}",
-        )
-        for stride in strides
+def _measure_stride(records: Path, labels: Path, groups: Path, stride: int) -> tuple[Run, Run]:
+    """Measure one prepared LoRaIQ stride through the shipped CLI path."""
+    command = [
+        sys.executable,
+        "-m",
+        "iqforge",
+        "measure-leakage",
+        str(records),
+        "--format",
+        "json",
+        "--window",
+        str(WINDOW),
+        "--stride",
+        str(stride),
+        "--split",
+        SPLIT_RATIOS,
+        "--labels",
+        "csv",
+        "--label-file",
+        str(labels),
+        "--group-by",
+        f"csv:{groups}",
     ]
-    return measure_grid(grid, split_seeds, train_seeds, checkpoint=checkpoint)
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"measure-leakage refused or failed for stride={stride}:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+    payload = json.loads(completed.stdout)
+    measured = payload["measurement"]
+    shared = {
+        "noise_sigma": 0.0,
+        "snr_db": float("nan"),
+        "split_seed": int(measured["split_seed"]),
+        "train_seed": int(measured["train_seed"]),
+        "stride": int(measured.get("stride", stride)),
+    }
+    rec = Run(
+        strategy="recording-level",
+        test_accuracy=float(measured["recording_level"]["test_accuracy"]),
+        train_accuracy=float(measured["recording_level"]["train_accuracy"]),
+        train_windows=int(measured["recording_level"]["train_windows"]),
+        test_windows=int(measured["recording_level"]["test_windows"]),
+        environment=copy.deepcopy(measured["recording_level"]["environment"]),
+        **shared,
+    )
+    win = Run(
+        strategy="window-level",
+        test_accuracy=float(measured["window_level"]["test_accuracy"]),
+        train_accuracy=float(measured["window_level"]["train_accuracy"]),
+        train_windows=int(measured["window_level"]["train_windows"]),
+        test_windows=int(measured["window_level"]["test_windows"]),
+        environment=copy.deepcopy(measured["window_level"]["environment"]),
+        **shared,
+    )
+    return rec, win
+
+
+def run(records: Path, strides: tuple[int, ...], labels: Path, groups: Path) -> list[Run]:
+    """Sweep the stride, holding everything else fixed."""
+    runs: list[Run] = []
+    for stride in strides:
+        rec, win = _measure_stride(records, labels, groups, stride)
+        runs.extend((rec, win))
+    return runs
 
 
 def summarise(runs: list[Run]) -> str:
@@ -220,7 +260,6 @@ def main() -> None:
         subprocess.run([sys.executable, "-m", "iqforge", "audit", str(prepared)], check=False)
         return
 
-    split_seeds, train_seeds = [42, 7, 1234, 2026, 99], [0, 1, 2]
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     runs_path = ARTIFACTS / f"{args.stem}_runs.json"
     table_path = ARTIFACTS / f"{args.stem}_table.md"
@@ -233,14 +272,12 @@ def main() -> None:
         table_path.write_text(summarise(runs) + "\n", encoding="utf-8")
 
     print(
-        f"{len(STRIDES)} strides x {len(split_seeds)} split x {len(train_seeds)} train x 2 "
-        f"= {len(STRIDES) * len(split_seeds) * len(train_seeds) * 2} runs, {EPOCHS} epochs each",
+        f"{len(STRIDES)} strides x 1 split x 1 train x 2 "
+        f"= {len(STRIDES) * 2} runs via `iqforge measure-leakage`, {EPOCHS} epochs each",
         flush=True,
     )
     try:
-        runs = run(
-            prepared, STRIDES, split_seeds, train_seeds, args.labels, args.groups, checkpoint
-        )
+        runs = run(prepared, STRIDES, args.labels, args.groups)
     finally:
         shutil.rmtree(prepared, ignore_errors=True)
 

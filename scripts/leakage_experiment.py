@@ -37,12 +37,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import math
 import shutil
+import subprocess
 import sys
 import tempfile
-from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
@@ -52,14 +53,10 @@ import make_example as gen  # noqa: E402
 
 from iqforge.measurement import (  # noqa: E402
     BuildSpec,
-    GridCell,
     Run,
     check_environment,
     summarise_snr_table,
     summarise_stride_table,
-)
-from iqforge.measurement import (
-    run_grid as measure_grid,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -123,40 +120,100 @@ def _spec(stride: int | None) -> BuildSpec:
         window=WINDOW,
         stride=stride,
         split=SPLIT_RATIOS,
+        labels="annotations",
         balance_by="core:freq_lower_edge",
         assert_offsets_shared=True,
     )
 
 
-def run_grid(
-    cells: list[tuple[float, int | None]],
-    split_seeds: list[int],
-    train_seeds: list[int],
-    checkpoint: Callable[[list[Run]], None] | None = None,
-) -> list[Run]:
-    """Prepare recordings per noise level, then measure through the shared core."""
+def _measure_cell(records: Path, spec: BuildSpec) -> tuple[Run, Run]:
+    """Measure one prepared cell through the shipped CLI path."""
+    command = [
+        sys.executable,
+        "-m",
+        "iqforge",
+        "measure-leakage",
+        str(records),
+        "--force",
+        "--format",
+        "json",
+        "--split",
+        spec.split,
+    ]
+    if spec.stride is not None:
+        command += ["--window", str(spec.window), "--stride", str(spec.stride)]
+    if spec.labels is not None:
+        command += ["--labels", spec.labels]
+    if spec.label_file is not None:
+        command += ["--label-file", str(spec.label_file)]
+    if spec.dirname_level is not None:
+        command += ["--dirname-level", str(spec.dirname_level)]
+    if spec.group_by is not None:
+        command += ["--group-by", spec.group_by]
+    if spec.balance_by is not None:
+        command += ["--balance-by", spec.balance_by]
+    completed = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "measure-leakage refused or failed for a synthetic cell:\n"
+            f"{completed.stdout}\n{completed.stderr}"
+        )
+    payload = json.loads(completed.stdout)
+    measured = payload["measurement"]
+    shared = {
+        "noise_sigma": 0.0,
+        "snr_db": 0.0,
+        "split_seed": int(measured["split_seed"]),
+        "train_seed": int(measured["train_seed"]),
+        "stride": measured.get("stride", spec.stride),
+    }
+    rec = Run(
+        strategy="recording-level",
+        test_accuracy=float(measured["recording_level"]["test_accuracy"]),
+        train_accuracy=float(measured["recording_level"]["train_accuracy"]),
+        train_windows=int(measured["recording_level"]["train_windows"]),
+        test_windows=int(measured["recording_level"]["test_windows"]),
+        environment=copy.deepcopy(measured["recording_level"]["environment"]),
+        **shared,
+    )
+    win = Run(
+        strategy="window-level",
+        test_accuracy=float(measured["window_level"]["test_accuracy"]),
+        train_accuracy=float(measured["window_level"]["train_accuracy"]),
+        train_windows=int(measured["window_level"]["train_windows"]),
+        test_windows=int(measured["window_level"]["test_windows"]),
+        environment=copy.deepcopy(measured["window_level"]["environment"]),
+        **shared,
+    )
+    return rec, win
+
+
+def run_grid(cells: list[tuple[float, int | None]]) -> list[Run]:
+    """Prepare recordings per noise level, then measure through CLI."""
     work = Path(tempfile.mkdtemp(prefix="iqforge-leakage-"))
     try:
         prepared: dict[float, Path] = {}
-        grid: list[GridCell] = []
+        runs: list[Run] = []
         for noise, stride in cells:
             if noise not in prepared:
                 records = work / f"records_{noise:.2f}"
                 generate_recordings(noise, records)
                 prepared[noise] = records
+            rec, win = _measure_cell(prepared[noise], _spec(stride))
             snr = burst_snr_db(noise)
-            label = f"snr={snr:+5.1f}dB" if stride is None else f"stride={stride:4d}"
-            grid.append(
-                GridCell(
-                    records=prepared[noise],
-                    spec=_spec(stride),
-                    noise_sigma=noise,
-                    snr_db=snr,
-                    stride=stride,
-                    label=label,
-                )
-            )
-        return measure_grid(grid, split_seeds, train_seeds, checkpoint=checkpoint)
+            for run in (rec, win):
+                run.noise_sigma = noise
+                run.snr_db = snr
+                run.stride = stride
+            runs.extend((rec, win))
+        return runs
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
@@ -201,13 +258,6 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # 15 pairs per cell. A first pass used 3 x 2 = 6 and the paired standard
-    # error came out near 6 pp against an effect around 10 pp -- the direction
-    # was clear, the magnitude was not. Seed scatter is the dominant noise
-    # source in this project, so the fix is more seeds.
-    split_seeds = [42, 7, 1234, 2026, 99]
-    train_seeds = [0, 1, 2]
-
     if args.sweep == "stride":
         cells = [(STRIDE_NOISE, s) for s in STRIDES]
         summary = summarise_strides
@@ -219,8 +269,6 @@ def main() -> None:
 
     if args.quick:
         cells = cells[:2]
-        split_seeds = [42]
-        train_seeds = [0]
 
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     suffix = "_quick" if args.quick else ""
@@ -235,12 +283,11 @@ def main() -> None:
         table_path.write_text(summary(runs) + "\n", encoding="utf-8")
 
     print(
-        f"{args.sweep} sweep: {len(cells)} cells x {len(split_seeds)} split seeds x "
-        f"{len(train_seeds)} train seeds x 2 strategies "
-        f"= {len(cells) * len(split_seeds) * len(train_seeds) * 2} runs",
+        f"{args.sweep} sweep: {len(cells)} cells x 1 split seed x 1 train seed x 2 strategies "
+        f"= {len(cells) * 2} runs (via `iqforge measure-leakage`)",
         flush=True,
     )
-    runs = run_grid(cells, split_seeds, train_seeds, checkpoint=checkpoint)
+    runs = run_grid(cells)
 
     table = summary(runs)
     print()
