@@ -536,6 +536,16 @@ Must install and run in a clean environment.
 
 ## 9. Code quality rules
 
+The engineering conventions this project is held to — never falling back
+silently, mutation-checking a test before trusting it, recording the conditions
+a number was measured under, protecting published artifacts, fixing the sample
+size before the run, reporting mistakes rather than quietly correcting them,
+proposing scope changes before making them, and committing nothing
+machine-specific — are written out with worked examples in
+[CONTRIBUTING.md](CONTRIBUTING.md), under *Engineering conventions*. They are
+not optional style preferences; several of them exist because this project
+violated them and shipped a wrong result.
+
 - Type hints on all public functions
 - Docstring: what it does + parameters (Google style)
 - Error messages should be user-facing and actionable.
