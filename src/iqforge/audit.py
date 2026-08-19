@@ -128,6 +128,10 @@ class AuditReport:
     did_not_check: list[str] = field(default_factory=list)
     verdict: str = ""
     next_step: list[str] = field(default_factory=list)
+    #: Measured axes, kept off the rendered report. `measure-leakage` uses them
+    #: to decide refuse categories that need the raw timestamps and durations,
+    #: not only the finding text.
+    features: list[RecordFeatures] = field(default_factory=list, repr=False, compare=False)
 
     @property
     def summary(self) -> dict[str, int]:
@@ -759,6 +763,7 @@ def audit_dataset(root: Path, manifest: dict[str, Any], tool_version: str) -> Au
     }
     if features:
         report.findings.append(_split_time_overlap(features, assignment))
+        report.findings.append(_shared_timestamp(features, assignment))
         report.findings.append(_collection_finding(features, assignment))
         report.findings.extend(axis_findings(features))
         report.findings.append(processing_gain_finding(features))
@@ -787,6 +792,7 @@ def audit_dataset(root: Path, manifest: dict[str, Any], tool_version: str) -> Au
     verdict, is_ceiling = difficulty_verdict(features)
     report.verdict = verdict
     report.next_step = _next_step(is_ceiling, root)
+    report.features = features
     return report
 
 
@@ -944,6 +950,7 @@ def audit_recordings(
         report.findings.append(_label_source_finding(label_source))
     report.findings.append(_predicted_overlap(features, window, stride))
     report.findings.append(_time_overlap(features))
+    report.findings.append(_shared_timestamp(features))
     report.findings.append(_duplicate_finding(meta_paths))
     report.findings.append(
         Finding(
@@ -970,6 +977,7 @@ def audit_recordings(
     verdict, is_ceiling = difficulty_verdict(features)
     report.verdict = verdict
     report.next_step = _next_step(is_ceiling, root)
+    report.features = features
     return report
 
 
@@ -1198,6 +1206,87 @@ def _split_time_overlap(features: list[RecordFeatures], assignment: dict[str, st
         Status.PASS_SAMPLE,
         "shared air time",
         f"no two of {len(timed)} recordings claim overlapping air time",
+    )
+
+
+def _shared_timestamp(
+    features: list[RecordFeatures], assignment: dict[str, str] | None = None
+) -> Finding:
+    """Do recordings that share a capture stamp land as the Vega-C pattern?
+
+    Sibling of shared air time. That check looks for *intersecting* intervals;
+    this one looks for recordings that carry the *same* `core:datetime` value.
+    The difference is the Vega-C MEO Cubesats set (methodology §6.2): five
+    satellites, the same three capture stamps, three passes that do not overlap
+    each other. Shared air time is quiet there -- nothing intersects across
+    splits, because a recording-level split puts a different pass in each bin.
+    That is distribution shift, and it is what invalidated the first SNR grid.
+
+    The placeholder guard that silences shared air time does not apply. A
+    generator constant is one stamp across the whole set (`examples/` is dated
+    2024-01-01T00:00:00Z). Here several distinct stamps each repeat in every
+    class, and that repetition is the signal.
+
+    Args:
+        assignment: Split each recording landed in. Absent in folder mode, where
+            nothing has been split yet: the crossed pattern is then a RISK
+            rather than a LEAK, because the bins do not exist to fall into.
+    """
+    timed = [f for f in features if f.capture_time is not None and f.label is not None]
+    if len(timed) < 2:
+        return Finding(
+            Status.NOT_CHECKED,
+            "shared timestamp",
+            "core:datetime missing or unparseable, so timestamps cannot be compared",
+        )
+    if _is_placeholder_time(timed):
+        return Finding(
+            Status.NOT_CHECKED,
+            "shared timestamp",
+            f"all {len(timed)} recordings declare the same core:datetime, which is a "
+            f"placeholder rather than a capture time; timestamps cannot be compared",
+        )
+
+    by_stamp: dict[dt.datetime, list[RecordFeatures]] = {}
+    for feature in timed:
+        assert feature.capture_time is not None
+        by_stamp.setdefault(feature.capture_time, []).append(feature)
+    crossed = {stamp: recs for stamp, recs in by_stamp.items() if len({f.label for f in recs}) > 1}
+    if not crossed:
+        return Finding(
+            Status.PASS_SAMPLE,
+            "shared timestamp",
+            f"no core:datetime value of {len(by_stamp)} appears in more than one class",
+        )
+
+    if assignment is None:
+        return Finding(
+            Status.RISK,
+            "shared timestamp",
+            f"{len(crossed)} distinct core:datetime value(s) each appear in more than "
+            f"one class. A recording-level split puts a different acquisition in "
+            f"each split -- the Vega-C pattern (methodology §6.2)",
+        )
+
+    stamp_sets: dict[str, set[dt.datetime]] = {}
+    for stamp, recs in crossed.items():
+        for feature in recs:
+            stamp_sets.setdefault(assignment.get(feature.record_id, "?"), set()).add(stamp)
+    partitioned = len({frozenset(stamps) for stamps in stamp_sets.values()}) > 1
+    if partitioned:
+        return Finding(
+            Status.LEAK,
+            "shared timestamp",
+            f"{len(crossed)} distinct core:datetime value(s) each appear in more than "
+            f"one class and the splits do not share the same set of them. A "
+            f"recording-level split therefore puts a different acquisition in each "
+            f"split -- the Vega-C pattern (methodology §6.2)",
+        )
+    return Finding(
+        Status.PASS_SAMPLE,
+        "shared timestamp",
+        f"{len(crossed)} timestamp(s) appear in more than one class and every split "
+        f"holds the same set of them",
     )
 
 

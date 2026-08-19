@@ -79,6 +79,7 @@ iqforge inspect examples/bpsk_01.sigmf-meta   # look at it, in your terminal
 iqforge build   examples/ -o dataset/ --balance-by core:freq_lower_edge
 iqforge stats   dataset/                      # what did I just build?
 iqforge audit   dataset/                      # what could be wrong with it?
+iqforge measure-leakage recordings/           # preflight + paired measurement (if allowed)
 ```
 
 ```python
@@ -270,8 +271,9 @@ iqforge audit recordings/ --dirname-level 2     # a folder, before building
 
 It checks recording disjointness, cross-split window overlap, which measurable
 axis separates your classes, how much processing gain the class separation has
-available, and — on a raw folder — whether two recordings claim the same air
-time or ship identical data.
+available, whether recordings that share a capture timestamp are crossed with
+class across splits (the Vega-C pattern), and — on a raw folder — whether two
+recordings claim the same air time or ship identical data.
 
 **It never says "clean".** That is the whole design. Statuses are `LEAK` (proven,
 with the evidence), `RISK`, `PASS/proof` (established from structure, holds for
@@ -310,6 +312,17 @@ matched what a 1.6-hour training grid was about to discover the hard way
 The report is fixed-width ASCII so it can be pasted into a paper or an issue
 unaltered; `--format json` gives the same content, `did_not_check` included.
 `--strict` exits non-zero on `RISK` as well as `LEAK`, for CI.
+
+`iqforge measure-leakage` runs that audit, classifies the result into the six
+categories that eliminated four public datasets and let a fifth through
+([methodology §6](docs/methodology.md)), then:
+- `REFUSED` exits non-zero
+- `WOULD MEASURE` runs the paired cell (recording-level vs window-level) at
+  split seed 42 and train seed 0
+
+`--force` overrides a refusal and keeps the overridden category in the header
+so a pasted block cannot be mistaken for a clean run. `--sweep stride` runs the
+fixed overlap ladder; there is intentionally no `--sweep snr`.
 
 ## Known limitations
 
@@ -362,6 +375,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
       real capture
 - [x] Real SigMF verification with public captures
 - [x] `iqforge audit` — leakage risk and measurability, without training
+- [x] `iqforge measure-leakage` — preflight + paired measurement (`--sweep stride` only)
 - [ ] Verification with own hardware capture
 
 **Not planned for 0.x** — out of scope rather than pending:

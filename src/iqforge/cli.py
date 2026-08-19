@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import json
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +47,17 @@ from iqforge.labeling import (
     load_label_csv,
     resolve_exclude_labels,
 )
+from iqforge.measurement import (
+    DEFAULT_SPLIT,
+    BuildSpec,
+    GridCell,
+    measure_pair,
+    run_grid,
+    summarise_stride_table,
+)
+from iqforge.preflight import DecisionStatus, decide
+from iqforge.preflight import render_json as render_measure_json
+from iqforge.preflight import render_text as render_measure_text
 from iqforge.splitting import (
     SPLIT_NAMES,
     SplitPlan,
@@ -1011,6 +1023,232 @@ def audit(
     summary = report.summary
     if summary["leaks"] or (strict and summary["risk"]):
         raise typer.Exit(code=1)
+
+
+@app.command("measure-leakage")
+def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --group-by
+    path: Annotated[
+        Path, typer.Argument(help="A dataset built by iqforge, or a folder of recordings")
+    ],
+    window: Annotated[int, typer.Option("--window", help="Window length, folder mode only")] = 1024,
+    stride: Annotated[
+        int, typer.Option("--stride", help="Step between windows, folder mode")
+    ] = 512,
+    labels: Annotated[
+        str, typer.Option("--labels", help=f"Label source, folder mode: {', '.join(LABEL_SOURCES)}")
+    ] = "dirname",
+    label_file: Annotated[
+        Path | None, typer.Option("--label-file", help="CSV path for --labels csv")
+    ] = None,
+    dirname_level: Annotated[
+        int, typer.Option("--dirname-level", help="Ancestor directory to read as the class")
+    ] = 1,
+    group_by: Annotated[
+        str | None,
+        typer.Option(
+            "--group-by", help="Hold related recordings together: path:<re> or csv:<file>"
+        ),
+    ] = None,
+    balance_by: Annotated[
+        str | None,
+        typer.Option(
+            "--balance-by",
+            help="Spread nuisance keys across splits during build, e.g. core:freq_lower_edge",
+        ),
+    ] = None,
+    split: Annotated[
+        str, typer.Option("--split", help="train,val,test ratios a later measurement would use")
+    ] = DEFAULT_SPLIT,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Measure anyway; the overridden category stays in the header"),
+    ] = False,
+    output_format: Annotated[str, typer.Option("--format", help="text or json")] = "text",
+    sweep: Annotated[
+        str | None,
+        typer.Option("--sweep", help="Optional sweep mode. Only 'stride' is supported."),
+    ] = None,
+) -> None:
+    """Measure leakage inflation after running the refuse-path gate.
+
+    Runs `audit`, classifies the result into the six categories in
+    `docs/methodology.md` §6, then:
+    - `REFUSED` exits non-zero
+    - `WOULD MEASURE` trains both arms (recording-level vs window-level)
+
+    Default mode runs one operating point (`split_seed=42`, `train_seed=0`) at
+    the selected stride. `--sweep stride` runs the fixed overlap ladder.
+    """
+    if output_format not in ("text", "json"):
+        raise _fail(IQForgeError(f"--format must be text or json, got '{output_format}'."))
+    if sweep not in (None, "stride"):
+        raise _fail(IQForgeError(f"--sweep must be 'stride' when set, got '{sweep}'."))
+
+    unreadable_error: str | None = None
+    report: AuditReport | None
+    try:
+        if (path / MANIFEST_NAME).exists():
+            report = audit_dataset(path, read_manifest(path), __version__)
+        else:
+            report = _audit_folder(path, window, stride, labels, dirname_level, label_file)
+    except IQForgeError as exc:
+        message = str(exc)
+        if "could not be read" in message or "Unsupported datatype" in message:
+            report = None
+            unreadable_error = message
+        else:
+            raise _fail(exc) from exc
+
+    group_keys: dict[str, str] | None = None
+    if group_by is not None and report is not None and report.features:
+        try:
+            group_keys = resolve_group_keys(
+                [f.record_id for f in report.features],
+                group_by,
+                collections={f.record_id: f.collection for f in report.features},
+            )
+        except IQForgeError as exc:
+            raise _fail(exc) from exc
+
+    decision = decide(
+        report,
+        force=force,
+        split=split,
+        window=window,
+        stride=stride,
+        group_keys=group_keys,
+        unreadable_error=unreadable_error,
+    )
+    printed = (
+        render_measure_json(decision) if output_format == "json" else render_measure_text(decision)
+    )
+    should_print_preflight_now = output_format == "text" or (
+        output_format == "json" and decision.status is not DecisionStatus.WOULD_MEASURE
+    )
+    if should_print_preflight_now:
+        print(printed, flush=True)
+    if decision.status is not DecisionStatus.WOULD_MEASURE:
+        raise typer.Exit(code=1)
+
+    if not path.is_dir():
+        raise _fail(
+            IQForgeError(
+                "measurement mode needs a recording folder path. A built dataset is "
+                "supported for refuse-path classification only."
+            )
+        )
+
+    spec = BuildSpec(
+        window=window,
+        stride=stride,
+        split=split,
+        labels=labels,
+        label_file=label_file,
+        dirname_level=dirname_level if labels == "dirname" else None,
+        group_by=group_by,
+        balance_by=balance_by,
+    )
+
+    if sweep == "stride":
+        strides = (1024, 768, 512, 256, 128)
+        cells = [
+            GridCell(
+                records=path,
+                spec=BuildSpec(
+                    window=window,
+                    stride=s,
+                    split=split,
+                    labels=labels,
+                    label_file=label_file,
+                    dirname_level=dirname_level if labels == "dirname" else None,
+                    group_by=group_by,
+                    balance_by=balance_by,
+                ),
+                stride=s,
+                label=f"stride={s}",
+            )
+            for s in strides
+        ]
+        runs = run_grid(cells, [42], [0], verbose=False)
+        caption = (
+            "Single-seed stride sweep (split_seed=42, train_seed=0). "
+            "Inflation is window-level minus recording-level."
+        )
+        table = summarise_stride_table(runs, window=window, caption=caption)
+        if output_format == "json":
+            payload = {
+                "preflight": json.loads(render_measure_json(decision)),
+                "measurement": {
+                    "mode": "sweep_stride",
+                    "split_seed": 42,
+                    "train_seed": 0,
+                    "strides": list(strides),
+                    "table": table,
+                    "rows": [
+                        {
+                            "stride": run.stride,
+                            "strategy": run.strategy,
+                            "split_seed": run.split_seed,
+                            "train_seed": run.train_seed,
+                            "test_accuracy": run.test_accuracy,
+                            "train_accuracy": run.train_accuracy,
+                            "train_windows": run.train_windows,
+                            "test_windows": run.test_windows,
+                            "environment": run.environment,
+                        }
+                        for run in runs
+                    ],
+                },
+            }
+            print(json.dumps(payload, indent=2, ensure_ascii=True))
+        else:
+            print()
+            print(table)
+        return
+
+    rec, win = measure_pair(path, spec, split_seed=42, train_seed=0, verbose=False)
+    inflation_pp = (win.test_accuracy - rec.test_accuracy) * 100.0
+    if output_format == "json":
+        payload = {
+            "preflight": json.loads(render_measure_json(decision)),
+            "measurement": {
+                "mode": "single",
+                "split_seed": 42,
+                "train_seed": 0,
+                "stride": stride,
+                "recording_level": {
+                    "test_accuracy": rec.test_accuracy,
+                    "train_accuracy": rec.train_accuracy,
+                    "train_windows": rec.train_windows,
+                    "test_windows": rec.test_windows,
+                    "environment": rec.environment,
+                },
+                "window_level": {
+                    "test_accuracy": win.test_accuracy,
+                    "train_accuracy": win.train_accuracy,
+                    "train_windows": win.train_windows,
+                    "test_windows": win.test_windows,
+                    "environment": win.environment,
+                },
+                "inflation_pp": inflation_pp,
+            },
+        }
+        print(json.dumps(payload, indent=2, ensure_ascii=True))
+    else:
+        print()
+        console.print("[bold]MEASUREMENT[/]")
+        console.print(
+            f"stride={stride}  split_seed=42  train_seed=0  "
+            f"inflation={inflation_pp:+.1f} pp"
+        )
+        console.print(
+            f"recording-level: test {rec.test_accuracy:.2%}, train {rec.train_accuracy:.2%}, "
+            f"windows {rec.train_windows}/{rec.test_windows}"
+        )
+        console.print(
+            f"window-level:    test {win.test_accuracy:.2%}, train {win.train_accuracy:.2%}, "
+            f"windows {win.train_windows}/{win.test_windows}"
+        )
 
 
 def _audit_folder(

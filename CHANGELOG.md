@@ -11,7 +11,59 @@ can tell whether the format it is looking at is one it understands.
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- `iqforge measure-leakage` now accepts `--balance-by`, so the command path can
+  run the same nuisance-balancing setup that the published synthetic measurement
+  tables used.
+- `TrainingResult.environment` now also records the **numpy, scipy and sigmf**
+  versions. Windowing and normalisation run on numpy, the spectrogram on scipy,
+  the reader on sigmf; none of those were in the environment dict, so two tables
+  measured on the same device with different numeric stacks could not be told
+  apart. The sweep scripts still refuse to extend a checkpoint whose environment
+  does not match, and that comparison now covers the new fields.
+- `docs/methodology.md` §6 numbers the five assessed datasets (6.1 AirID, 6.2
+  Vega-C, 6.3 DASH7 `ds_indoor`, 6.4 DASH7 `ds_indoor_cabled`, 6.5 LoRaIQ) so a
+  later command can cite `category 4` rather than a paragraph.
+- `iqforge audit` reports **shared timestamp**, the sibling of shared air time.
+  Shared air time looks for intersecting capture intervals; this looks for the
+  same `core:datetime` value repeating across classes and landing as a different
+  set in each split. That is the Vega-C pattern (methodology §6.2): five
+  satellites, three shared stamps, no interval overlap, a recording-level split
+  that puts a different pass in each bin. A single stamp across the whole set is
+  still a placeholder (`examples/` does not false-positive).
+- `iqforge.measurement` is the paired leakage-measurement core: one `BuildSpec`,
+  recording-level build, window-level re-deal, paired training, paired
+  statistics. No training CLI yet. The three experiment scripts now call it;
+  dataset-specific `prepare` stays in `scripts/`. The LoRaIQ bit-exact cell
+  (stride 1024 / split 42 / train 0) is the acceptance gate and is skipped in
+  CI when the recordings are not present; published tables are reproduced from
+  the recorded run files.
+- `iqforge measure-leakage` is the refuse path: it runs `audit`, classifies the
+  result into six categories (methodology §6.1–§6.4 plus remaining leaks and
+  unsplittable sets), estimates the work a paired cell would do, and stops.
+  This version does not train. `--force` overrides a refusal and puts the
+  overridden category in the header (`FORCED PAST audit VERDICT 'ceiling'`).
+  LoRaIQ-like simultaneous receptions are not refused when `--group-by` holds
+  them together.
+
+### Changed
+
+- The three leakage scripts (`scripts/leakage_experiment.py`,
+  `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`) now execute measured
+  cells through `iqforge measure-leakage --format json` instead of keeping a
+  second direct measurement path. Dataset-specific preparation remains in
+  scripts; pairing/training stays in the command path.
+- Migration safety gate added: published-table sample cells are compared exactly
+  (test/train accuracy and train/test window counts) before retiring duplicate
+  paths. The synthetic gate runs forced preflight intentionally because its
+  annotation labels are not visible to folder-audit's single-window probe.
+- SPEC §5.10 now describes the refuse path that shipped, not a constraint on a
+  command that did not exist. The command is read-only on the user's recordings
+  and will not grow a `--sweep snr` flag. Adding noise requires writing altered
+  copies and is dataset-specific (DASH7: signal on air 6.8% of the time, ~26 dB
+  of processing gain). SNR injection stays a preparation recipe in `scripts/`;
+  the command measures the folder that recipe produces.
 
 ## [0.4.0] — 2026-08-19
 

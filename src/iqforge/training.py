@@ -12,6 +12,7 @@ from __future__ import annotations
 import random
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 import numpy as np
@@ -50,10 +51,12 @@ class TrainingResult:
         test_per_class: Per-class accuracy on the test split.
         classes: Label names, in integer order.
         environment: What produced the numbers -- device, torch version, CUDA
-            version. Accuracy figures are only comparable across runs that share
-            these, and a table that does not carry them has already lost the
-            information: nothing in a results file otherwise records whether two
-            rows were measured on the same hardware.
+            version, and the numpy / scipy / sigmf versions windowing,
+            normalisation and reading depend on. Accuracy figures are only
+            comparable across runs that share these, and a table that does not
+            carry them has already lost the information: nothing in a results
+            file otherwise records whether two rows were measured on the same
+            hardware, or with the same numeric stack.
     """
 
     parameters: int
@@ -103,12 +106,29 @@ def resolve_device(choice: str = DEFAULT_DEVICE) -> torch.device:
     return torch.device(choice)
 
 
+def _package_version(name: str) -> str:
+    """Installed version of a distribution, or `absent` if it is not there.
+
+    Windowing and normalisation run on numpy; the spectrogram on scipy; the
+    reader on sigmf. None of those are torch, and until they were recorded a
+    results file could not tell two tables apart that used different numeric
+    stacks on the same device.
+    """
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return "absent"
+
+
 def describe_environment(device: torch.device) -> dict[str, str]:
     """What produced a result, recorded so a table can be compared honestly."""
     environment = {
         "device": device.type,
         "torch": torch.__version__,
         "cuda": torch.version.cuda or "none",
+        "numpy": _package_version("numpy"),
+        "scipy": _package_version("scipy"),
+        "sigmf": _package_version("sigmf"),
     }
     if device.type == "cuda":
         environment["device_name"] = torch.cuda.get_device_name(device)
