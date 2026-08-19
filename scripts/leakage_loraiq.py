@@ -38,7 +38,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import copy
 import csv
 import json
 import shutil
@@ -53,9 +52,14 @@ import numpy as np
 from sigmf import SigMFFile
 
 from iqforge.measurement import (
+    DEFAULT_SPLIT_SEEDS,
+    DEFAULT_TRAIN_SEEDS,
     EPOCHS,
+    BuildSpec,
     Run,
     check_environment,
+    guard_artifact_rows,
+    measure_cell_via_cli,
     summarise_stride_table,
 )
 
@@ -70,6 +74,9 @@ DEFAULT_SOURCE = SCRATCH / "loraiq"
 DEFAULT_INDEX = SCRATCH / "loraiq.csv"
 DEFAULT_LABELS = SCRATCH / "loraiq_labels.csv"
 DEFAULT_GROUPS = SCRATCH / "loraiq_groups.csv"
+
+SPLIT_SEEDS = DEFAULT_SPLIT_SEEDS
+TRAIN_SEEDS = DEFAULT_TRAIN_SEEDS
 
 WINDOW = 1024
 SPLIT_RATIOS = "0.6,0.2,0.2"
@@ -142,78 +149,26 @@ def prepare(source: Path, out_dir: Path, offsets: dict[str, int]) -> int:
     return written
 
 
-def _measure_stride(records: Path, labels: Path, groups: Path, stride: int) -> tuple[Run, Run]:
-    """Measure one prepared LoRaIQ stride through the shipped CLI path."""
-    command = [
-        sys.executable,
-        "-m",
-        "iqforge",
-        "measure-leakage",
-        str(records),
-        "--format",
-        "json",
-        "--window",
-        str(WINDOW),
-        "--stride",
-        str(stride),
-        "--split",
-        SPLIT_RATIOS,
-        "--labels",
-        "csv",
-        "--label-file",
-        str(labels),
-        "--group-by",
-        f"csv:{groups}",
-    ]
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            f"measure-leakage refused or failed for stride={stride}:\n"
-            f"{completed.stdout}\n{completed.stderr}"
-        )
-    payload = json.loads(completed.stdout)
-    measured = payload["measurement"]
-    shared = {
-        "noise_sigma": 0.0,
-        "snr_db": float("nan"),
-        "split_seed": int(measured["split_seed"]),
-        "train_seed": int(measured["train_seed"]),
-        "stride": int(measured.get("stride", stride)),
-    }
-    rec = Run(
-        strategy="recording-level",
-        test_accuracy=float(measured["recording_level"]["test_accuracy"]),
-        train_accuracy=float(measured["recording_level"]["train_accuracy"]),
-        train_windows=int(measured["recording_level"]["train_windows"]),
-        test_windows=int(measured["recording_level"]["test_windows"]),
-        environment=copy.deepcopy(measured["recording_level"]["environment"]),
-        **shared,
-    )
-    win = Run(
-        strategy="window-level",
-        test_accuracy=float(measured["window_level"]["test_accuracy"]),
-        train_accuracy=float(measured["window_level"]["train_accuracy"]),
-        train_windows=int(measured["window_level"]["train_windows"]),
-        test_windows=int(measured["window_level"]["test_windows"]),
-        environment=copy.deepcopy(measured["window_level"]["environment"]),
-        **shared,
-    )
-    return rec, win
+def _cell_runs(records: Path, spec: BuildSpec) -> list[Run]:
+    """Every run for one prepared cell, through the shipped command."""
+    return measure_cell_via_cli(records, spec, split_seeds=SPLIT_SEEDS, train_seeds=TRAIN_SEEDS)
 
 
 def run(records: Path, strides: tuple[int, ...], labels: Path, groups: Path) -> list[Run]:
     """Sweep the stride, holding everything else fixed."""
     runs: list[Run] = []
     for stride in strides:
-        rec, win = _measure_stride(records, labels, groups, stride)
-        runs.extend((rec, win))
+        spec = BuildSpec(
+            window=WINDOW,
+            stride=stride,
+            split=SPLIT_RATIOS,
+            labels="csv",
+            label_file=labels,
+            group_by=f"csv:{groups}",
+        )
+        for run_item in _cell_runs(records, spec):
+            run_item.stride = stride
+            runs.append(run_item)
     return runs
 
 
@@ -263,12 +218,21 @@ def main() -> None:
     runs_path = ARTIFACTS / f"{args.stem}_runs.json"
     table_path = ARTIFACTS / f"{args.stem}_table.md"
 
+    pairs = len(SPLIT_SEEDS.split(",")) * len(TRAIN_SEEDS.split(","))
+    planned = len(STRIDES) * pairs * 2
+
     check_environment(runs_path)
+    # Checked against the plan, before anything is trained: a grid that
+    # would shrink a published artifact must not start.
+    guard_artifact_rows(runs_path, planned)
+
+    # Progress goes to a sibling file. Writing partial results straight
+    # over a published artifact is how an interrupted run truncates one.
+    partial_path = runs_path.with_suffix(".partial.json")
 
     def checkpoint(runs: list[Run]) -> None:
         """Persist after every run so an interruption keeps what it earned."""
-        runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
-        table_path.write_text(summarise(runs) + "\n", encoding="utf-8")
+        partial_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
 
     print(
         f"{len(STRIDES)} strides x 1 split x 1 train x 2 "
@@ -283,7 +247,10 @@ def main() -> None:
     table = summarise(runs)
     print()
     print(table)
-    checkpoint(runs)
+    guard_artifact_rows(runs_path, len(runs))
+    runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
+    table_path.write_text(table + "\n", encoding="utf-8")
+    partial_path.unlink(missing_ok=True)
     print(f"\nwrote {runs_path.name} and {table_path.name}")
 
 

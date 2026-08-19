@@ -34,11 +34,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import shutil
-import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -49,10 +46,14 @@ import numpy as np
 from sigmf import SigMFFile
 
 from iqforge.measurement import (
+    DEFAULT_SPLIT_SEEDS,
+    DEFAULT_TRAIN_SEEDS,
     EPOCHS,
     BuildSpec,
     Run,
     check_environment,
+    guard_artifact_rows,
+    measure_cell_via_cli,
     summarise_snr_table,
     summarise_stride_table,
 )
@@ -65,6 +66,9 @@ DEFAULT_SOURCE = Path(
     "C:/Users/Emre/AppData/Local/Temp/claude/C--Users-Emre-Desktop-project/"
     "0edfda65-7ea5-4ec7-85c8-a30cc5d9358b/scratchpad/dash7/extracted/cabled"
 )
+
+SPLIT_SEEDS = DEFAULT_SPLIT_SEEDS
+TRAIN_SEEDS = DEFAULT_TRAIN_SEEDS
 
 WINDOW, STRIDE = 1024, 512
 SPLIT_RATIOS = "0.6,0.2,0.2"
@@ -175,70 +179,9 @@ def prepare(source: Path, out_dir: Path, snr_db: float | None, rng_seed: int) ->
         handle.tofile(str(target / f"{meta.stem}.sigmf-meta"))
 
 
-def _measure_cell(records: Path, spec: BuildSpec) -> tuple[Run, Run]:
-    """Measure one prepared real-data cell through the shipped CLI path."""
-    command = [
-        sys.executable,
-        "-m",
-        "iqforge",
-        "measure-leakage",
-        str(records),
-        "--format",
-        "json",
-        "--window",
-        str(spec.window),
-        "--stride",
-        str(spec.stride),
-        "--split",
-        spec.split,
-        "--labels",
-        str(spec.labels),
-    ]
-    if spec.dirname_level is not None:
-        command += ["--dirname-level", str(spec.dirname_level)]
-    if spec.group_by is not None:
-        command += ["--group-by", spec.group_by]
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "measure-leakage refused or failed for a DASH7 cell:\n"
-            f"{completed.stdout}\n{completed.stderr}"
-        )
-    payload = json.loads(completed.stdout)
-    measured = payload["measurement"]
-    shared = {
-        "noise_sigma": 0.0,
-        "snr_db": 0.0,
-        "split_seed": int(measured["split_seed"]),
-        "train_seed": int(measured["train_seed"]),
-        "stride": measured.get("stride", spec.stride),
-    }
-    rec = Run(
-        strategy="recording-level",
-        test_accuracy=float(measured["recording_level"]["test_accuracy"]),
-        train_accuracy=float(measured["recording_level"]["train_accuracy"]),
-        train_windows=int(measured["recording_level"]["train_windows"]),
-        test_windows=int(measured["recording_level"]["test_windows"]),
-        environment=copy.deepcopy(measured["recording_level"]["environment"]),
-        **shared,
-    )
-    win = Run(
-        strategy="window-level",
-        test_accuracy=float(measured["window_level"]["test_accuracy"]),
-        train_accuracy=float(measured["window_level"]["train_accuracy"]),
-        train_windows=int(measured["window_level"]["train_windows"]),
-        test_windows=int(measured["window_level"]["test_windows"]),
-        environment=copy.deepcopy(measured["window_level"]["environment"]),
-        **shared,
-    )
-    return rec, win
+def _cell_runs(records: Path, spec: BuildSpec) -> list[Run]:
+    """Every run for one prepared cell, through the shipped command."""
+    return measure_cell_via_cli(records, spec, split_seeds=SPLIT_SEEDS, train_seeds=TRAIN_SEEDS)
 
 
 def run(cells: list[tuple[float | None, int]]) -> list[Run]:
@@ -262,14 +205,13 @@ def run(cells: list[tuple[float | None, int]]) -> list[Run]:
                 labels="dirname",
                 dirname_level=2,
             )
-            rec, win = _measure_cell(prepared[tag], spec)
             numeric_snr = float("inf") if snr is None else snr
             numeric_noise = float("nan") if snr is None else snr
-            for run_item in (rec, win):
+            for run_item in _cell_runs(prepared[tag], spec):
                 run_item.snr_db = numeric_snr
                 run_item.noise_sigma = numeric_noise
                 run_item.stride = stride
-            runs.extend((rec, win))
+                runs.append(run_item)
         return runs
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -363,12 +305,21 @@ def main() -> None:
     runs_path = ARTIFACTS / f"{stem}_runs.json"
     table_path = ARTIFACTS / f"{stem}_table.md"
 
+    pairs = len(SPLIT_SEEDS.split(",")) * len(TRAIN_SEEDS.split(","))
+    planned = len(cells) * pairs * 2
+
     check_environment(runs_path)
+    # Checked against the plan, before anything is trained: a grid that
+    # would shrink a published artifact must not start.
+    guard_artifact_rows(runs_path, planned)
+
+    # Progress goes to a sibling file. Writing partial results straight
+    # over a published artifact is how an interrupted run truncates one.
+    partial_path = runs_path.with_suffix(".partial.json")
 
     def checkpoint(runs: list[Run]) -> None:
         """Persist after every run so an interruption keeps what it earned."""
-        runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
-        table_path.write_text(summary(runs) + "\n", encoding="utf-8")
+        partial_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
 
     print(
         f"{args.sweep} sweep: {len(cells)} cells x 1 split x 1 train x 2 "
@@ -380,7 +331,10 @@ def main() -> None:
     table = summary(runs)
     print()
     print(table)
-    checkpoint(runs)
+    guard_artifact_rows(runs_path, len(runs))
+    runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
+    table_path.write_text(table + "\n", encoding="utf-8")
+    partial_path.unlink(missing_ok=True)
     print(f"\nwrote {runs_path.name} and {table_path.name}")
 
 

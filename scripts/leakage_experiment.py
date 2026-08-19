@@ -37,11 +37,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import math
 import shutil
-import subprocess
 import sys
 import tempfile
 from dataclasses import asdict
@@ -51,10 +49,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import make_example as gen  # noqa: E402
 
-from iqforge.measurement import (  # noqa: E402
+from iqforge.measurement import (
+    DEFAULT_SPLIT_SEEDS,
+    DEFAULT_TRAIN_SEEDS,
     BuildSpec,
     Run,
     check_environment,
+    guard_artifact_rows,
+    measure_cell_via_cli,  # noqa: E402
     summarise_snr_table,
     summarise_stride_table,
 )
@@ -85,6 +87,12 @@ RECORDS_PER_CELL = 6
 
 #: Window length held fixed for the stride sweep, so overlap is the only thing
 #: that moves.
+#: The published grids' seed lists. Fixed before the run and written into the
+#: table, so the sample size is a stated choice rather than whatever the code
+#: happened to default to.
+SPLIT_SEEDS = DEFAULT_SPLIT_SEEDS
+TRAIN_SEEDS = DEFAULT_TRAIN_SEEDS
+
 WINDOW = 1024
 
 #: Strides to sweep, at a fixed SNR. Overlap is the actual MECHANISM of the
@@ -126,77 +134,31 @@ def _spec(stride: int | None) -> BuildSpec:
     )
 
 
-def _measure_cell(records: Path, spec: BuildSpec) -> tuple[Run, Run]:
-    """Measure one prepared cell through the shipped CLI path."""
-    command = [
-        sys.executable,
-        "-m",
-        "iqforge",
-        "measure-leakage",
-        str(records),
-        "--force",
-        "--format",
-        "json",
-        "--split",
-        spec.split,
-    ]
-    if spec.stride is not None:
-        command += ["--window", str(spec.window), "--stride", str(spec.stride)]
-    if spec.labels is not None:
-        command += ["--labels", spec.labels]
-    if spec.label_file is not None:
-        command += ["--label-file", str(spec.label_file)]
-    if spec.dirname_level is not None:
-        command += ["--dirname-level", str(spec.dirname_level)]
-    if spec.group_by is not None:
-        command += ["--group-by", spec.group_by]
-    if spec.balance_by is not None:
-        command += ["--balance-by", spec.balance_by]
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+def _cell_runs(records: Path, spec: BuildSpec) -> list[Run]:
+    """Every run for one synthetic cell, through the shipped command.
+
+    `--force` is required here and nowhere else in these scripts. The synthetic
+    recordings carry no SigMF annotations that the audit can turn into class
+    axes, so the refuse path classifies them as category 6 ("cannot split") on
+    the audit's view even though `build` splits them correctly with
+    `--labels annotations`. The override is safe for this generator and this
+    generator only; it is not a pattern to copy to real captures.
+    """
+    return measure_cell_via_cli(
+        records,
+        spec,
+        split_seeds=SPLIT_SEEDS,
+        train_seeds=TRAIN_SEEDS,
+        force=True,
+        force_reason=(
+            "synthetic fixtures have no audit-visible class axis; build splits them "
+            "correctly with --labels annotations"
+        ),
     )
-    if completed.returncode != 0:
-        raise RuntimeError(
-            "measure-leakage refused or failed for a synthetic cell:\n"
-            f"{completed.stdout}\n{completed.stderr}"
-        )
-    payload = json.loads(completed.stdout)
-    measured = payload["measurement"]
-    shared = {
-        "noise_sigma": 0.0,
-        "snr_db": 0.0,
-        "split_seed": int(measured["split_seed"]),
-        "train_seed": int(measured["train_seed"]),
-        "stride": measured.get("stride", spec.stride),
-    }
-    rec = Run(
-        strategy="recording-level",
-        test_accuracy=float(measured["recording_level"]["test_accuracy"]),
-        train_accuracy=float(measured["recording_level"]["train_accuracy"]),
-        train_windows=int(measured["recording_level"]["train_windows"]),
-        test_windows=int(measured["recording_level"]["test_windows"]),
-        environment=copy.deepcopy(measured["recording_level"]["environment"]),
-        **shared,
-    )
-    win = Run(
-        strategy="window-level",
-        test_accuracy=float(measured["window_level"]["test_accuracy"]),
-        train_accuracy=float(measured["window_level"]["train_accuracy"]),
-        train_windows=int(measured["window_level"]["train_windows"]),
-        test_windows=int(measured["window_level"]["test_windows"]),
-        environment=copy.deepcopy(measured["window_level"]["environment"]),
-        **shared,
-    )
-    return rec, win
 
 
 def run_grid(cells: list[tuple[float, int | None]]) -> list[Run]:
-    """Prepare recordings per noise level, then measure through CLI."""
+    """Prepare recordings per noise level, then measure through the CLI."""
     work = Path(tempfile.mkdtemp(prefix="iqforge-leakage-"))
     try:
         prepared: dict[float, Path] = {}
@@ -206,13 +168,12 @@ def run_grid(cells: list[tuple[float, int | None]]) -> list[Run]:
                 records = work / f"records_{noise:.2f}"
                 generate_recordings(noise, records)
                 prepared[noise] = records
-            rec, win = _measure_cell(prepared[noise], _spec(stride))
             snr = burst_snr_db(noise)
-            for run in (rec, win):
+            for run in _cell_runs(prepared[noise], _spec(stride)):
                 run.noise_sigma = noise
                 run.snr_db = snr
                 run.stride = stride
-            runs.extend((rec, win))
+                runs.append(run)
         return runs
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -275,16 +236,18 @@ def main() -> None:
     runs_path = ARTIFACTS / f"{stem}_runs{suffix}.json"
     table_path = ARTIFACTS / f"{stem}_table{suffix}.md"
 
-    check_environment(runs_path)
+    pairs = len(SPLIT_SEEDS.split(",")) * len(TRAIN_SEEDS.split(","))
+    planned = len(cells) * pairs * 2
 
-    def checkpoint(runs: list[Run]) -> None:
-        """Persist after every run so an interruption keeps what it earned."""
-        runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
-        table_path.write_text(summary(runs) + "\n", encoding="utf-8")
+    check_environment(runs_path)
+    # Checked against the plan, before anything is trained. Guarding inside a
+    # per-run checkpoint would fire on the first partial write instead, and
+    # guarding after the grid would waste the whole run before saying so.
+    guard_artifact_rows(runs_path, planned)
 
     print(
-        f"{args.sweep} sweep: {len(cells)} cells x 1 split seed x 1 train seed x 2 strategies "
-        f"= {len(cells) * 2} runs (via `iqforge measure-leakage`)",
+        f"{args.sweep} sweep: {len(cells)} cells x {pairs} seed pairs x 2 strategies "
+        f"= {planned} runs (via `iqforge measure-leakage`)",
         flush=True,
     )
     runs = run_grid(cells)
@@ -292,7 +255,10 @@ def main() -> None:
     table = summary(runs)
     print()
     print(table)
-    checkpoint(runs)
+    guard_artifact_rows(runs_path, len(runs))
+    guard_artifact_rows(runs_path, len(runs))
+    runs_path.write_text(json.dumps([asdict(r) for r in runs], indent=2), encoding="utf-8")
+    table_path.write_text(table + "\n", encoding="utf-8")
     print(f"\nwrote {runs_path.name} and {table_path.name}")
 
 

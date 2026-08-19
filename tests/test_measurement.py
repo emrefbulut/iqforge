@@ -22,6 +22,9 @@ from iqforge.measurement import (
     build_recording_level,
     build_window_level,
     cell_stats,
+    check_environment,
+    current_environment,
+    guard_artifact_rows,
     paired_differences,
     split_counts,
     summarise_snr_table,
@@ -231,3 +234,65 @@ def test_loraiq_cell_reproduces_the_recorded_number(tmp_path: Path) -> None:
     assert win.test_windows == expect_win["test_windows"]
     assert rec.test_accuracy == expect_rec["test_accuracy"]
     assert win.test_accuracy == expect_win["test_accuracy"]
+
+
+# --------------------------------------------------------------------------
+# Guards that protect the published grids
+# --------------------------------------------------------------------------
+
+
+def test_check_environment_stops_on_a_checkpoint_that_records_nothing(tmp_path):
+    """The published grids carry `environment: null` and were waved through.
+
+    They were written before environment stamping existed, so the guard's
+    early return applied to exactly the files it most needed to protect.
+    "I cannot tell whether these are comparable" is a reason to stop.
+    """
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps([{"environment": None} for _ in range(180)]), encoding="utf-8")
+    with pytest.raises(SystemExit, match="record no environment"):
+        check_environment(path)
+
+
+def test_check_environment_continues_when_the_environment_matches(tmp_path):
+    path = tmp_path / "ok.json"
+    path.write_text(json.dumps([{"environment": current_environment()}]), encoding="utf-8")
+    check_environment(path)
+
+
+def test_guard_refuses_to_shrink_a_published_grid(tmp_path):
+    """15 seed pairs to 1 reproduces the first pair and loses the measurement."""
+    path = tmp_path / "grid.json"
+    path.write_text(json.dumps([{} for _ in range(180)]), encoding="utf-8")
+    with pytest.raises(SystemExit, match="must not lose sample size"):
+        guard_artifact_rows(path, 12)
+
+
+def test_guard_allows_the_same_size_or_larger(tmp_path):
+    path = tmp_path / "grid.json"
+    path.write_text(json.dumps([{} for _ in range(180)]), encoding="utf-8")
+    guard_artifact_rows(path, 180)
+    guard_artifact_rows(path, 300)
+    guard_artifact_rows(tmp_path / "absent.json", 1)
+
+
+def test_the_scripts_plan_the_published_grid_sizes():
+    """A regression on the exact failure: seeds collapsing to one pair.
+
+    Checked as arithmetic rather than by running the grids, which take hours.
+    If a future change hardcodes seeds again, these products stop matching the
+    row counts the tables in docs/methodology.md report.
+    """
+    import sys
+
+    sys.path.insert(0, "scripts")
+    import leakage_experiment as synthetic
+    import leakage_loraiq as loraiq
+    import leakage_real as real
+
+    pairs = len(synthetic.SPLIT_SEEDS.split(",")) * len(synthetic.TRAIN_SEEDS.split(","))
+    assert pairs == 15
+    assert len(synthetic.NOISE_LEVELS) * pairs * 2 == 180
+    assert len(synthetic.STRIDES) * pairs * 2 == 150
+    assert len(real.STRIDES) * pairs * 2 == 150
+    assert len(loraiq.STRIDES) * pairs * 2 == 150

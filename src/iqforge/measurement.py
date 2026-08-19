@@ -64,6 +64,17 @@ class Run:
     environment: dict[str, str] = field(default_factory=dict)
 
 
+MEASUREMENT_SCHEMA = 1
+
+#: Split seeds the published grids used. Exposed as a default rather than
+#: hardcoded so a run's sample size is a stated choice, not an accident.
+DEFAULT_SPLIT_SEEDS = "42,7,1234,2026,99"
+
+#: Training seeds the published grids used. Five split seeds times these three
+#: is the 15 pairs every table in docs/methodology.md reports.
+DEFAULT_TRAIN_SEEDS = "0,1,2"
+
+
 @dataclass(frozen=True)
 class BuildSpec:
     """How to build the honest, recording-level arm.
@@ -284,16 +295,29 @@ def current_environment() -> dict[str, str]:
 
 
 def check_environment(runs_path: Path) -> None:
-    """Refuse to extend a checkpoint that was measured on another environment."""
+    """Refuse to extend a checkpoint that was measured on another environment.
+
+    An existing checkpoint that records no environment at all is refused too.
+    Returning quietly in that case is what left the published grids unguarded:
+    they were written before environment stamping existed, so every one of them
+    carries `environment: null`, and the guard waved them through. "I cannot
+    tell whether these are comparable" is a reason to stop, not to continue.
+    """
     if not runs_path.exists():
         return
     try:
         existing = json.loads(runs_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return
+    if not existing:
+        return
     recorded = next((r.get("environment") for r in existing if r.get("environment")), None)
     if not recorded:
-        return
+        raise SystemExit(
+            f"{runs_path.name} holds {len(existing)} run(s) that record no environment, "
+            f"so there is no way to tell whether they are comparable with this process "
+            f"({current_environment()}). Move the checkpoint aside to start a fresh grid."
+        )
     now = current_environment()
     if recorded != now:
         raise SystemExit(
@@ -301,6 +325,133 @@ def check_environment(runs_path: Path) -> None:
             f"would measure on {now}. Rows from different environments are not "
             f"comparable and the table would not show it. Move the checkpoint aside "
             f"to start a fresh grid, or run in the original environment."
+        )
+
+
+def measure_cell_via_cli(
+    records: Path,
+    spec: BuildSpec,
+    *,
+    split_seeds: str = DEFAULT_SPLIT_SEEDS,
+    train_seeds: str = DEFAULT_TRAIN_SEEDS,
+    force: bool = False,
+    force_reason: str = "",
+) -> list[Run]:
+    """Measure one cell by invoking the shipped command, and return every run.
+
+    The experiment scripts go through the CLI rather than calling `run_grid`
+    directly, so the numbers in `artifacts/` come from the same path a user
+    gets. This adapter is the single copy of that call: three near-identical
+    versions of it existed, and one of them silently dropped the seed lists.
+
+    Returns every `Run` the command produced, not the first pair. Returning a
+    pair is what reduced the published grids from 15 seed pairs to 1 while
+    still reproducing the first pair exactly.
+
+    Args:
+        force: Pass `--force`. Requires `force_reason`, because an unexplained
+            override of the refuse path is the one flag that must never be
+            copied without understanding it.
+    """
+    if force and not force_reason:
+        raise ValueError("measure_cell_via_cli(force=True) requires force_reason")
+    command = [
+        sys.executable, "-m", "iqforge", "measure-leakage", str(records),
+        "--format", "json",
+        "--split", spec.split,
+        "--split-seeds", split_seeds,
+        "--train-seeds", train_seeds,
+    ]  # fmt: skip
+    if force:
+        command.append("--force")
+    if spec.stride is not None:
+        command += ["--window", str(spec.window), "--stride", str(spec.stride)]
+    if spec.labels is not None:
+        command += ["--labels", spec.labels]
+    if spec.label_file is not None:
+        command += ["--label-file", str(spec.label_file)]
+    if spec.dirname_level is not None:
+        command += ["--dirname-level", str(spec.dirname_level)]
+    if spec.group_by is not None:
+        command += ["--group-by", spec.group_by]
+    if spec.balance_by is not None:
+        command += ["--balance-by", spec.balance_by]
+
+    completed = subprocess.run(
+        command, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            "measure-leakage refused or failed for "
+            f"{records}:\n{completed.stdout}\n{completed.stderr}"
+        )
+    return runs_from_payload(json.loads(completed.stdout), fallback_stride=spec.stride)
+
+
+def runs_from_payload(payload: dict[str, Any], *, fallback_stride: int | None = None) -> list[Run]:
+    """Rebuild `Run` objects from a `measure-leakage --format json` payload.
+
+    One parser instead of three hand-written dictionary walks. It checks
+    `measurement_schema` for the same reason `read_manifest` checks
+    `manifest_schema`: a reader that guesses at a shape it does not recognise
+    produces a plausible wrong answer.
+    """
+    measured = payload["measurement"]
+    schema = measured.get("measurement_schema")
+    if schema is not None and schema > MEASUREMENT_SCHEMA:
+        raise RuntimeError(
+            f"measurement payload declares schema {schema}, this build understands "
+            f"{MEASUREMENT_SCHEMA}. Upgrade iqforge or regenerate with a matching build."
+        )
+    rows = measured.get("rows")
+    if rows is None:
+        raise RuntimeError(
+            "measurement payload carries no 'rows'. A payload without every run cannot "
+            "be aggregated, and taking the first pair is how sample size gets lost."
+        )
+    return [
+        Run(
+            noise_sigma=0.0,
+            snr_db=float("nan"),
+            strategy=str(row["strategy"]),
+            split_seed=int(row["split_seed"]),
+            train_seed=int(row["train_seed"]),
+            test_accuracy=float(row["test_accuracy"]),
+            train_accuracy=float(row["train_accuracy"]),
+            train_windows=int(row["train_windows"]),
+            test_windows=int(row["test_windows"]),
+            stride=row.get("stride", fallback_stride),
+            environment=dict(row.get("environment") or {}),
+        )
+        for row in rows
+    ]
+
+
+def guard_artifact_rows(runs_path: Path, new_rows: int) -> None:
+    """Refuse to replace a published grid with a smaller one.
+
+    `artifacts/` is quoted by `docs/methodology.md` and `README.md`, and the
+    scripts write their checkpoints straight over those files. A migration that
+    reduced the seed grid from 15 pairs to 1 would have rewritten a 180-run
+    table as a 12-run one, reproducing the first pair exactly and reporting a
+    standard error of zero. Value equality is not enough; the shape has to hold.
+
+    Raises:
+        SystemExit: If the file exists and holds more runs than are about to
+            replace it.
+    """
+    if not runs_path.exists():
+        return
+    try:
+        existing = json.loads(runs_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if isinstance(existing, list) and len(existing) > new_rows:
+        raise SystemExit(
+            f"{runs_path.name} holds {len(existing)} runs and this grid would write "
+            f"{new_rows}. A published artifact must not lose sample size: the tables in "
+            f"docs/methodology.md and README.md quote these files. Check the seed lists, "
+            f"or move the file aside deliberately if the smaller grid is what you want."
         )
 
 

@@ -18,6 +18,7 @@ from rich.table import Table
 
 from iqforge import TORCH_REQUIRED, __version__
 from iqforge.audit import (
+    WIDTH,
     AuditReport,
     RecordFeatures,
     audit_dataset,
@@ -49,9 +50,13 @@ from iqforge.labeling import (
 )
 from iqforge.measurement import (
     DEFAULT_SPLIT,
+    DEFAULT_SPLIT_SEEDS,
+    DEFAULT_TRAIN_SEEDS,
+    MEASUREMENT_SCHEMA,
     BuildSpec,
     GridCell,
-    measure_pair,
+    cell_stats,
+    guard_artifact_rows,  # noqa: F401 - re-exported for scripts
     run_grid,
     summarise_stride_table,
 )
@@ -81,6 +86,72 @@ from iqforge.windowing import (
     validate_window_params,
     window_starts,
 )
+
+
+def _parse_seed_list(text: str, flag: str) -> list[int]:
+    """Parse a comma-separated seed list, refusing anything ambiguous."""
+    parts = [piece.strip() for piece in text.split(",") if piece.strip()]
+    if not parts:
+        raise IQForgeError(f"{flag} needs at least one integer, got '{text}'.")
+    try:
+        seeds = [int(piece) for piece in parts]
+    except ValueError as exc:
+        raise IQForgeError(f"{flag} must be integers separated by commas, got '{text}'.") from exc
+    if len(set(seeds)) != len(seeds):
+        raise IQForgeError(f"{flag} repeats a seed: '{text}'. Each pair must be distinct.")
+    return seeds
+
+
+def _run_row(run: Any) -> dict[str, Any]:
+    """One `Run` as JSON. Every row carries its own environment."""
+    return {
+        "stride": run.stride,
+        "strategy": run.strategy,
+        "split_seed": run.split_seed,
+        "train_seed": run.train_seed,
+        "test_accuracy": run.test_accuracy,
+        "train_accuracy": run.train_accuracy,
+        "train_windows": run.train_windows,
+        "test_windows": run.test_windows,
+        "environment": run.environment,
+    }
+
+
+def _uncertainty(stats: Any) -> str:
+    """Interval text, or an explicit refusal to invent one.
+
+    A single pair has no spread to estimate, and printing the standard error
+    of one sample as "+/- 0.0" reads as maximum confidence when it means the
+    opposite. Say so instead.
+    """
+    if stats.n < 2:
+        return "(uncertainty not estimated, n=1)"
+    return f"+/- {stats.stderr * 100.0:.1f} (standard error, n={stats.n})"
+
+
+def _environment_lines(runs: list[Any]) -> list[str]:
+    """The conditions the runs were measured under, wrapped to the block width.
+
+    Wrapped rather than emitted as one string: the report is 78 columns of
+    ASCII so it can be pasted unaltered, and five library versions on one line
+    overflow that. The width test caught this the first time it was written.
+    """
+    env = next((run.environment for run in runs if run.environment), {})
+    if not env:
+        return ["environment: not recorded"]
+    keys = ("device", "torch", "numpy", "scipy", "sigmf", "cuda")
+    parts = [f"{key} {env[key]}" for key in keys if key in env]
+    lines: list[str] = []
+    current = "environment:"
+    for part in parts:
+        candidate = f"{current} {part}" if current.endswith(":") else f"{current} | {part}"
+        if len(candidate) > WIDTH:
+            lines.append(current)
+            current = f"             {part}"
+        else:
+            current = candidate
+    lines.append(current)
+    return lines
 
 
 def _torch_available() -> bool:
@@ -1082,6 +1153,12 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         str | None,
         typer.Option("--sweep", help="Optional sweep mode. Only 'stride' is supported."),
     ] = None,
+    split_seeds: Annotated[
+        str, typer.Option("--split-seeds", help="Comma-separated split seeds")
+    ] = DEFAULT_SPLIT_SEEDS,
+    train_seeds: Annotated[
+        str, typer.Option("--train-seeds", help="Comma-separated training seeds")
+    ] = DEFAULT_TRAIN_SEEDS,
 ) -> None:
     """Measure leakage inflation after running the refuse-path gate.
 
@@ -1090,13 +1167,24 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
     - `REFUSED` exits non-zero
     - `WOULD MEASURE` trains both arms (recording-level vs window-level)
 
-    Default mode runs one operating point (`split_seed=42`, `train_seed=0`) at
-    the selected stride. `--sweep stride` runs the fixed overlap ladder.
+    Default mode runs one operating point at the selected stride, over every
+    seed pair. `--sweep stride` runs the fixed overlap ladder at the same pairs.
+
+    The seed lists default to the five split seeds and three training seeds the
+    published tables used -- 15 pairs. They are flags rather than constants so a
+    run can be made cheaper deliberately and visibly, and the count is printed
+    with the result: a measurement whose sample size is not on the page cannot
+    be read.
     """
     if output_format not in ("text", "json"):
         raise _fail(IQForgeError(f"--format must be text or json, got '{output_format}'."))
     if sweep not in (None, "stride"):
         raise _fail(IQForgeError(f"--sweep must be 'stride' when set, got '{sweep}'."))
+    try:
+        split_seed_list = _parse_seed_list(split_seeds, "--split-seeds")
+        train_seed_list = _parse_seed_list(train_seeds, "--train-seeds")
+    except IQForgeError as exc:
+        raise _fail(exc) from exc
 
     unreadable_error: str | None = None
     report: AuditReport | None
@@ -1188,10 +1276,14 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
             )
             for s in strides
         ]
-        runs = run_grid(cells, [42], [0], verbose=False)
+        runs = run_grid(cells, split_seed_list, train_seed_list, verbose=False)
+        pairs = len(split_seed_list) * len(train_seed_list)
         caption = (
-            "Single-seed stride sweep (split_seed=42, train_seed=0). "
-            "Inflation is window-level minus recording-level."
+            f"Stride sweep over {pairs} seed pair(s) "
+            f"(split {','.join(map(str, split_seed_list))} x "
+            f"train {','.join(map(str, train_seed_list))}). "
+            "Inflation is the mean paired difference, window-level minus "
+            "recording-level."
         )
         table = summarise_stride_table(runs, window=window, caption=caption)
         if output_format == "json":
@@ -1199,8 +1291,9 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
                 "preflight": json.loads(render_measure_json(decision)),
                 "measurement": {
                     "mode": "sweep_stride",
-                    "split_seed": 42,
-                    "train_seed": 0,
+                    "split_seeds": split_seed_list,
+                    "train_seeds": train_seed_list,
+                    "seed_pairs": pairs,
                     "strides": list(strides),
                     "table": table,
                     "rows": [
@@ -1225,48 +1318,47 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
             print(table)
         return
 
-    rec, win = measure_pair(path, spec, split_seed=42, train_seed=0, verbose=False)
-    inflation_pp = (win.test_accuracy - rec.test_accuracy) * 100.0
+    cell = GridCell(records=path, spec=spec, stride=stride, label=f"stride={stride}")
+    runs = run_grid([cell], split_seed_list, train_seed_list, verbose=False)
+    pairs = len(split_seed_list) * len(train_seed_list)
+    stats = cell_stats(runs)
+    if stats is None:
+        raise _fail(IQForgeError("no seed pair produced both arms; nothing to report."))
+    inflation_pp = stats.mean_diff * 100.0
+    forced_prefix = "FORCED " if decision.forced else ""
+
     if output_format == "json":
         payload = {
             "preflight": json.loads(render_measure_json(decision)),
             "measurement": {
+                "measurement_schema": MEASUREMENT_SCHEMA,
                 "mode": "single",
-                "split_seed": 42,
-                "train_seed": 0,
+                "forced": decision.forced,
+                "split_seeds": split_seed_list,
+                "train_seeds": train_seed_list,
+                "seed_pairs": pairs,
                 "stride": stride,
-                "recording_level": {
-                    "test_accuracy": rec.test_accuracy,
-                    "train_accuracy": rec.train_accuracy,
-                    "train_windows": rec.train_windows,
-                    "test_windows": rec.test_windows,
-                    "environment": rec.environment,
-                },
-                "window_level": {
-                    "test_accuracy": win.test_accuracy,
-                    "train_accuracy": win.train_accuracy,
-                    "train_windows": win.train_windows,
-                    "test_windows": win.test_windows,
-                    "environment": win.environment,
-                },
                 "inflation_pp": inflation_pp,
+                "stderr_pp": stats.stderr * 100.0 if stats.n > 1 else None,
+                "n": stats.n,
+                "rows": [_run_row(run) for run in runs],
             },
         }
         print(json.dumps(payload, indent=2, ensure_ascii=True))
     else:
         print()
-        console.print("[bold]MEASUREMENT[/]")
+        console.print(f"[bold]{forced_prefix}MEASUREMENT[/]")
         console.print(
-            f"stride={stride}  split_seed=42  train_seed=0  inflation={inflation_pp:+.1f} pp"
+            f"stride={stride}  seed pairs={stats.n}  "
+            f"split={','.join(map(str, split_seed_list))}  "
+            f"train={','.join(map(str, train_seed_list))}"
         )
+        console.print(f"inflation={inflation_pp:+.1f} pp {_uncertainty(stats)}")
         console.print(
-            f"recording-level: test {rec.test_accuracy:.2%}, train {rec.train_accuracy:.2%}, "
-            f"windows {rec.train_windows}/{rec.test_windows}"
+            f"recording-level: test {stats.rec_mean:.2%}, window-level: test {stats.win_mean:.2%}"
         )
-        console.print(
-            f"window-level:    test {win.test_accuracy:.2%}, train {win.train_accuracy:.2%}, "
-            f"windows {win.train_windows}/{win.test_windows}"
-        )
+        for line in _environment_lines(runs):
+            console.print(line)
 
 
 def _audit_folder(

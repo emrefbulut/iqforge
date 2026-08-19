@@ -318,7 +318,7 @@ def test_the_report_is_78_columns_of_ascii(tmp_path: Path) -> None:
     assert WIDTH == 78
     block_lines: list[str] = []
     for line in text.splitlines():
-        if line.strip() == "MEASUREMENT":
+        if line.strip().endswith("MEASUREMENT"):
             break
         block_lines.append(line)
     for line in block_lines:
