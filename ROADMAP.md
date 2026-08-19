@@ -126,6 +126,28 @@ After Now is done — still reliability-first:
       `grouping` return zero results, `training` returns one unrelated hit, and
       the nearest open item is #146, asking for `capture_tags` because "there is
       currently no way to track why a segment exists".
+
+      **The other half of that precedent is now measured, and it is
+      encouraging.** The `core:version` report
+      ([sigmf-python#159](https://github.com/sigmf/sigmf-python/issues/159))
+      went from filed to code in **seven days**: it was discussed at SigMF's
+      monthly call, [#160](https://github.com/sigmf/sigmf-python/pull/160) was
+      opened against it, two maintainers approved, and **both** suggested fixes
+      were taken rather than just the preferred one — deepcopy in `__init__`
+      *and* an `__original_version` preserving the declared value.
+
+      So #233 is not evidence that maintainers are hostile to outside proposals.
+      It is evidence about what a proposal has to carry. #159 shipped a runnable
+      reproduction, the exact versions and platforms it was seen on, a statement
+      of why it mattered, and two concrete alternatives; `rfml` shipped a
+      namespace with no examples and datasets that were never released. The
+      difference in reception tracks the difference in evidence, not the
+      difference in ambition.
+
+      The read for the grouping proposal: write it, but write it the way #159
+      was written. Reproduction first, real datasets named, the limitation
+      measured rather than asserted, and a concrete alternative or two rather
+      than a single preferred design.
 - [x] **`iqforge audit`** — leakage risk and measurability, without training.
       Reports what it checked, what it found and what it could not check, and
       has no "clean" status: `NOT CHECKED` is counted separately from passes so

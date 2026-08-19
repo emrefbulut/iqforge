@@ -7,6 +7,40 @@ Kept as the local record of what was reported. The text below is what was
 submitted; the live discussion is upstream, so edit the issue there rather than
 this file.
 
+## Outcome
+
+**Accepted, fixed upstream, awaiting release.**
+
+- The report was discussed at SigMF's monthly call and turned into code within
+  **seven days**.
+- **Both** suggested fixes below were taken, not just the preferred one:
+  [sigmf-python#160](https://github.com/sigmf/sigmf-python/pull/160)
+  deep-copies the metadata in `__init__` *and* preserves the declared value in
+  `__original_version`. It also removes the errant `self.version` attribute in
+  favour of reading it from the metadata, and closes #159 explicitly.
+- Two maintainers approved it. It targets **v1.13.0** and is not merged as of
+  this writing.
+
+**The bug is still present in the latest release.** `sigmf 1.12.0` shipped after
+the report and still mutates the caller's dict — verified, not assumed, by the
+tripwire in `tests/test_io.py`, which fired on the version bump and was
+rechecked by hand.
+
+**How long the workaround is needed.** Until `1.13.0` is released *and* the
+floor in `pyproject.toml` is raised past it — and even then removing it is
+optional rather than forced. `load()` reads `core:version` out of the parsed
+JSON before the dict is handed to `SigMFFile`, which is correct whether or not
+the library would have overwritten it, so the fix landing makes the workaround
+*redundant* rather than *wrong*. `tests/test_io.py` distinguishes the two cases
+and will say which one has happened.
+
+One thing measured while preparing for it, worth knowing before deleting
+anything: a deepcopy **alone** does not change what `get_global_info()` returns
+— the library still normalises `core:version` inside its own copy. It is
+`__original_version`, the second half of #160, that would change what a reader
+sees. So `iqforge info` may keep showing both values after 1.13.0, and that is
+correct rather than a leftover.
+
 ---
 
 **Title:** `SigMFFile(metadata=...)` mutates the caller's dict and overwrites the declared `core:version`
@@ -125,8 +159,10 @@ Either of, in order of preference:
 - sigmf 1.11.1 (latest on PyPI at the time of writing)
 - Python 3.11 and 3.12
 - Reproduced on Windows 11 and on Linux (ubuntu-latest, GitHub Actions)
+- Re-verified unchanged on sigmf 1.12.0
 
 ---
 
 Worked around downstream by reading `core:version` out of the parsed JSON before
-the dict is handed to `SigMFFile`.
+the dict is handed to `SigMFFile`. Both suggested fixes were accepted upstream
+in #160; see **Outcome** at the top.

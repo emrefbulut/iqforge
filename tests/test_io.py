@@ -313,29 +313,36 @@ def test_annotation_ending_exactly_at_the_end_is_not_flagged(tmp_path: Path) -> 
     assert load(meta_path).annotations_beyond_end == []
 
 
-#: sigmf releases whose dict-mutating behaviour has actually been verified.
-#: A version outside this set fails the test below on purpose -- see its
-#: docstring for why the tripwire is worth its cost.
-CHECKED_SIGMF_VERSIONS = frozenset({"1.11.1", "1.12.0"})
+#: sigmf releases verified to MUTATE the caller's dict -- the behaviour this
+#: project works around. Reported upstream as sigmf/sigmf-python#159.
+MUTATING_SIGMF_VERSIONS = frozenset({"1.11.1", "1.12.0"})
+
+#: sigmf releases verified NOT to mutate it. The fix is sigmf-python#160
+#: (deepcopy in `__init__`, `__original_version` preserving the declared value),
+#: approved and slated for v1.13.0 but not merged when this was written -- so
+#: the set is empty rather than speculatively filled with a version that does
+#: not exist yet.
+FIXED_SIGMF_VERSIONS: frozenset[str] = frozenset()
 
 
 def test_sigmf_library_overwrites_the_declared_version() -> None:
-    """Pin the upstream behaviour that `declared_version` exists to work around.
+    """Report which upstream behaviour is installed, and name it correctly.
 
-    `SigMFFile(metadata=d)` mutates `d` in place and replaces `core:version`
-    with the spec version the installed library implements. This test asserts
-    the bug, not the fix: if sigmf-python ever stops doing it, this fails and
-    the workaround in `load()` can be reconsidered.
+    `SigMFFile(metadata=d)` mutates `d` in place, replacing `core:version` with
+    the spec version the installed library implements; `declared_version` exists
+    to work around that.
 
-    Reported upstream in docs/sigmf-python-issue-draft.md. Runs on Linux in CI,
-    which is what backs the claim that the behaviour is not platform specific.
+    This is a tripwire rather than a compatibility bound. `uv.lock` is not
+    committed, so CI resolves dependencies fresh and a new sigmf release reaches
+    it before it reaches any developer machine -- which is exactly how 1.12.0
+    was noticed. It fires once per upstream release and costs one recheck.
 
-    The version assertion is a tripwire, not a compatibility bound: `uv.lock` is
-    not committed, so CI resolves dependencies fresh and a new sigmf release
-    reaches it before it reaches any developer machine. It fires once per
-    upstream release and costs one recheck, which is the price of noticing the
-    day the workaround becomes unnecessary. Verified still mutating in **1.11.1
-    and 1.12.0**.
+    The two outcomes are deliberately distinguishable, because they call for
+    opposite actions. An unknown version that still mutates is routine: record
+    it and move on. An unknown version that does NOT mutate means the fix
+    landed, #159 is resolved, and the workaround becomes removable. A single
+    equality assertion could not tell those apart, and would have reported the
+    good news as a failure indistinguishable from the boring one.
     """
     metadata = {
         "global": {"core:datatype": "cf32_le", "core:version": "1.0.0"},
@@ -344,12 +351,62 @@ def test_sigmf_library_overwrites_the_declared_version() -> None:
     }
 
     handle = SigMFFile(metadata=metadata)
+    mutated = metadata["global"]["core:version"] != "1.0.0"
 
-    assert metadata["global"]["core:version"] != "1.0.0", "caller's dict was not mutated"
-    assert handle.get_global_info()["core:version"] == metadata["global"]["core:version"]
-    assert sigmf.__version__ in CHECKED_SIGMF_VERSIONS, (
-        f"sigmf {sigmf.__version__} has not been checked against this behaviour. "
-        f"Run the snippet in docs/sigmf-python-issue-draft.md: if the caller's dict "
-        f"is still mutated, add the version here; if it is not, the workaround in "
-        f"load() and Recording.declared_version can be reconsidered."
-    )
+    if mutated:
+        assert handle.get_global_info()["core:version"] == metadata["global"]["core:version"]
+        assert sigmf.__version__ in MUTATING_SIGMF_VERSIONS, (
+            f"sigmf {sigmf.__version__} is new and STILL MUTATES the caller's dict. "
+            f"Behaviour unchanged, workaround still required -- add the version to "
+            f"MUTATING_SIGMF_VERSIONS and carry on."
+        )
+    else:
+        assert sigmf.__version__ in FIXED_SIGMF_VERSIONS, (
+            f"sigmf {sigmf.__version__} NO LONGER MUTATES the caller's dict. The "
+            f"behaviour CHANGED: sigmf-python#160 or equivalent has landed and "
+            f"sigmf/sigmf-python#159 is resolved. Add the version to "
+            f"FIXED_SIGMF_VERSIONS, then consider whether declared_version and "
+            f"_version_cell are still worth their weight. Nothing is broken -- "
+            f"reading the version before handing the dict over is correct under "
+            f"both behaviours -- so this is a simplification, not a fire."
+        )
+
+
+def test_load_reports_the_declared_version_under_a_non_mutating_library(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forward-compatibility with sigmf-python#160, before it ships.
+
+    The fix deepcopies the metadata in `__init__`, so the caller's dict keeps
+    its declared `core:version`. `load()` reads that field before handing the
+    dict over, which is correct under both behaviours -- but "correct by
+    inspection" is how the original bug survived, so it is exercised instead
+    against a stand-in that copies rather than mutates.
+
+    The stand-in models only the deepcopy half of #160. Running it showed that
+    a deepcopy alone does NOT change what `get_global_info()` reports -- the
+    library still normalises `core:version` inside its own copy, so the handle
+    still says 1.2.6. The other half of the PR, `__original_version`, is what
+    would change that, and this test deliberately asserts nothing about it:
+    predicting the exact post-fix return value of an unmerged PR would be
+    inventing upstream behaviour rather than testing ours. What is asserted is
+    the property `iqforge` actually depends on.
+    """
+    import copy
+
+    import iqforge.io as io_module
+
+    class NonMutatingSigMFFile(io_module.SigMFFile):  # type: ignore[misc,name-defined]
+        def __init__(self, metadata=None, **kwargs):  # noqa: ANN001, ANN003
+            super().__init__(metadata=copy.deepcopy(metadata), **kwargs)
+
+    monkeypatch.setattr(io_module, "SigMFFile", NonMutatingSigMFFile)
+
+    meta_path = write_record(tmp_path, np.zeros(1024, dtype=np.complex64), name="future")
+    raw = json.loads(meta_path.read_text(encoding="utf-8"))
+    raw["global"]["core:version"] = "1.0.0"
+    meta_path.write_text(json.dumps(raw), encoding="utf-8")
+
+    rec = load(meta_path)
+    assert rec.declared_version == "1.0.0"
+    assert raw["global"]["core:version"] == "1.0.0", "the file on disk is untouched"
