@@ -40,9 +40,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import math
 import shutil
-import statistics
 import subprocess
 import sys
 import tempfile
@@ -54,16 +52,16 @@ from pathlib import Path
 import numpy as np
 from sigmf import SigMFFile
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from leakage_experiment import (  # noqa: E402
+from iqforge.measurement import (
     EPOCHS,
+    BuildSpec,
+    GridCell,
     Run,
-    build_window_level,
     check_environment,
-    current_environment,
-    paired_differences,
-    train_once,
+    summarise_stride_table,
+)
+from iqforge.measurement import (
+    run_grid as measure_grid,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -149,52 +147,6 @@ def prepare(source: Path, out_dir: Path, offsets: dict[str, int]) -> int:
     return written
 
 
-def build_recording_level(
-    records: Path, out: Path, seed: int, stride: int, labels: Path, groups: Path
-) -> None:
-    """Build the honest split through the CLI, and refuse to proceed on a warning.
-
-    The grouping is not optional here. Without it the split separates recordings
-    that are the same instant of radio, which is a leak this experiment would
-    otherwise be measuring on top of the one it is trying to isolate.
-    """
-    if out.exists():
-        shutil.rmtree(out)
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "iqforge",
-            "build",
-            str(records),
-            "-o",
-            str(out),
-            "--labels",
-            "csv",
-            "--label-file",
-            str(labels),
-            "--group-by",
-            f"csv:{groups}",
-            "--window",
-            str(WINDOW),
-            "--stride",
-            str(stride),
-            "--split",
-            SPLIT_RATIOS,
-            "--seed",
-            str(seed),
-        ],  # fmt: skip
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    output = (completed.stdout or "") + (completed.stderr or "")
-    if "warning" in output.lower():
-        raise RuntimeError(f"iqforge warned while building (seed {seed}):\n{output.strip()}")
-
-
 def run(
     records: Path,
     strides: tuple[int, ...],
@@ -205,93 +157,42 @@ def run(
     checkpoint: Callable[[list[Run]], None] | None = None,
 ) -> list[Run]:
     """Sweep the stride, holding everything else fixed."""
-    runs: list[Run] = []
-    environment = current_environment()
-    work = Path(tempfile.mkdtemp(prefix="iqforge-loraiq-"))
-    total = len(strides) * len(split_seeds) * len(train_seeds) * 2
-    done = 0
-    started = time.time()
-    try:
-        for stride in strides:
-            for split_seed in split_seeds:
-                cell = f"{stride}_{split_seed}"
-                rec_ds, win_ds = work / f"r_{cell}", work / f"w_{cell}"
-                build_recording_level(records, rec_ds, split_seed, stride, labels, groups)
-                build_window_level(rec_ds, win_ds, split_seed)
-                for strategy, dataset in (("recording-level", rec_ds), ("window-level", win_ds)):
-                    for train_seed in train_seeds:
-                        t0 = time.time()
-                        acc, train_acc, n_train, n_test = train_once(dataset, train_seed)
-                        done += 1
-                        runs.append(
-                            Run(
-                                noise_sigma=0.0,
-                                snr_db=float("nan"),
-                                strategy=strategy,
-                                split_seed=split_seed,
-                                train_seed=train_seed,
-                                test_accuracy=acc,
-                                train_accuracy=train_acc,
-                                train_windows=n_train,
-                                test_windows=n_test,
-                                stride=stride,
-                                environment=environment,
-                            )
-                        )
-                        if checkpoint is not None:
-                            checkpoint(runs)
-                        rate = (time.time() - started) / done
-                        print(
-                            f"  [{done:3d}/{total}] stride={stride:4d} {strategy:15s} "
-                            f"split={split_seed} train={train_seed}  test={acc:6.2%} "
-                            f"train={train_acc:6.2%}  ({time.time() - t0:.0f}s/run, "
-                            f"{n_train}/{n_test} windows, "
-                            f"~{rate * (total - done) / 60:.0f} min left)",
-                            flush=True,
-                        )
-                shutil.rmtree(rec_ds, ignore_errors=True)
-                shutil.rmtree(win_ds, ignore_errors=True)
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
-    print(f"\ntotal wall time {(time.time() - started) / 60:.1f} min for {done} runs")
-    return runs
-
-
-def _sd(values: list[float]) -> float:
-    return statistics.stdev(values) if len(values) > 1 else 0.0
+    grid = [
+        GridCell(
+            records=records,
+            spec=BuildSpec(
+                window=WINDOW,
+                stride=stride,
+                split=SPLIT_RATIOS,
+                labels="csv",
+                label_file=labels,
+                group_by=f"csv:{groups}",
+            ),
+            noise_sigma=0.0,
+            snr_db=float("nan"),
+            stride=stride,
+            label=f"stride={stride:4d}",
+        )
+        for stride in strides
+    ]
+    return measure_grid(grid, split_seeds, train_seeds, checkpoint=checkpoint)
 
 
 def summarise(runs: list[Run]) -> str:
     """Stride-sweep table. Stride 1024 is the row that carries the claim."""
-    lines = [
-        "| stride | overlap | windows/rec | recording-level | window-level | inflation (paired) | n |",  # noqa: E501
-        "|---|---|---|---|---|---|---|",
-    ]
-    for stride in sorted({r.stride for r in runs if r.stride is not None}, reverse=True):
-        at = [r for r in runs if r.stride == stride]
-        rec = [r.test_accuracy for r in at if r.strategy == "recording-level"]
-        win = [r.test_accuracy for r in at if r.strategy == "window-level"]
-        diffs = paired_differences(at)
-        if not rec or not win:
-            continue
-        mean_diff = statistics.mean(diffs) if diffs else float("nan")
-        stderr = (statistics.stdev(diffs) / math.sqrt(len(diffs))) if len(diffs) > 1 else 0.0
-        lines.append(
-            f"| {stride} | {1.0 - stride / WINDOW:.0%} | {(SEGMENT - WINDOW) // stride + 1} | "
-            f"{statistics.mean(rec):.1%} ± {_sd(rec):.1%} | "
-            f"{statistics.mean(win):.1%} ± {_sd(win):.1%} | "
-            f"**{mean_diff * 100:+.1f} pp** ± {stderr * 100:.1f} | {len(diffs)} |"
-        )
-    lines.append("")
-    lines.append(
-        f"LoRaIQ, class = propagation environment (drone_los, drone_nlos, "
-        f"pedestrian_partial_los, pedestrian_nlos, indoor), 312 recordings over 13 "
-        f"capture sessions, grouped by transmission id so simultaneous receptions stay "
-        f"in one split. Window fixed at {WINDOW} samples over a {SEGMENT}-sample segment "
-        f"centred on each frame; no noise added. Overlap is the only thing that moves "
-        f"between rows. Inflation is the mean paired difference ± its standard error."
+    return summarise_stride_table(
+        runs,
+        window=WINDOW,
+        segment=SEGMENT,
+        caption=(
+            f"LoRaIQ, class = propagation environment (drone_los, drone_nlos, "
+            f"pedestrian_partial_los, pedestrian_nlos, indoor), 312 recordings over 13 "
+            f"capture sessions, grouped by transmission id so simultaneous receptions stay "
+            f"in one split. Window fixed at {WINDOW} samples over a {SEGMENT}-sample segment "
+            f"centred on each frame; no noise added. Overlap is the only thing that moves "
+            f"between rows. Inflation is the mean paired difference ± its standard error."
+        ),
     )
-    return "\n".join(lines)
 
 
 def main() -> None:

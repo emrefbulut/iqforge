@@ -35,11 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import shutil
-import statistics
-import subprocess
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -49,16 +45,17 @@ from pathlib import Path
 import numpy as np
 from sigmf import SigMFFile
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from leakage_experiment import (  # noqa: E402
+from iqforge.measurement import (
     EPOCHS,
+    BuildSpec,
+    GridCell,
     Run,
-    build_window_level,
     check_environment,
-    current_environment,
-    paired_differences,
-    train_once,
+    summarise_snr_table,
+    summarise_stride_table,
+)
+from iqforge.measurement import (
+    run_grid as measure_grid,
 )
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -179,76 +176,17 @@ def prepare(source: Path, out_dir: Path, snr_db: float | None, rng_seed: int) ->
         handle.tofile(str(target / f"{meta.stem}.sigmf-meta"))
 
 
-def build_recording_level(records: Path, out: Path, seed: int, stride: int = STRIDE) -> None:
-    """Build the honest split through the CLI, and refuse to proceed on a warning."""
-    if out.exists():
-        shutil.rmtree(out)
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "iqforge",
-            "build",
-            str(records),
-            "-o",
-            str(out),
-            "--labels",
-            "dirname",
-            "--dirname-level",
-            "2",
-            "--window",
-            str(WINDOW),
-            "--stride",
-            str(stride),
-            "--split",
-            SPLIT_RATIOS,
-            "--seed",
-            str(seed),
-        ],  # fmt: skip
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    output = (completed.stdout or "") + (completed.stderr or "")
-    if "warning" in output.lower():
-        raise RuntimeError(f"iqforge warned while building (seed {seed}):\n{output.strip()}")
-
-
 def run(
     cells: list[tuple[float | None, int]],
     split_seeds: list[int],
     train_seeds: list[int],
     checkpoint: Callable[[list[Run]], None] | None = None,
 ) -> list[Run]:
-    """Run the experiment over a list of `(wideband SNR, stride)` cells.
-
-    Args:
-        cells: One cell per row of the eventual table. The SNR sweep varies the
-            first element and holds the stride at the tool's default; the stride
-            sweep does the opposite. One loop serves both so the two cannot
-            drift apart in how they prepare, build or train.
-        split_seeds: Seeds for the recording-level split.
-        train_seeds: Seeds for weight init and batch order.
-        checkpoint: Called with the runs so far after every run. The stride
-            sweep takes hours; the pilot already lost a formatted table to a
-            crash that came after all twelve trainings had finished, and only
-            survived because the JSON was written first. Nothing here is worth
-            re-earning.
-
-    Noised recordings are prepared once per distinct SNR and reused across every
-    stride at that SNR, so the stride sweep varies overlap over one fixed noise
-    realisation and nothing else.
-    """
-    runs: list[Run] = []
-    environment = current_environment()
+    """Prepare each SNR once, then measure through the shared core."""
     work = Path(tempfile.mkdtemp(prefix="iqforge-real-"))
-    total = len(cells) * len(split_seeds) * len(train_seeds) * 2
-    done = 0
-    started = time.time()
-    prepared: dict[str, Path] = {}
     try:
+        prepared: dict[str, Path] = {}
+        grid = []
         for snr, stride in cells:
             tag = "raw" if snr is None else f"{snr:+.0f}"
             if tag not in prepared:
@@ -257,50 +195,26 @@ def run(
                 prepare(SOURCE, records, snr, rng_seed=1234)
                 prepared[tag] = records
                 print(f"  prepared {tag} in {time.time() - t0:.0f}s", flush=True)
-            records = prepared[tag]
-
-            for split_seed in split_seeds:
-                cell = f"{tag}_{stride}_{split_seed}"
-                rec_ds, win_ds = work / f"r_{cell}", work / f"w_{cell}"
-                build_recording_level(records, rec_ds, split_seed, stride=stride)
-                build_window_level(rec_ds, win_ds, split_seed)
-                for strategy, dataset in (("recording-level", rec_ds), ("window-level", win_ds)):
-                    for train_seed in train_seeds:
-                        t1 = time.time()
-                        acc, train_acc, n_train, n_test = train_once(dataset, train_seed)
-                        done += 1
-                        runs.append(
-                            Run(
-                                noise_sigma=float("nan") if snr is None else snr,
-                                snr_db=float("inf") if snr is None else snr,
-                                strategy=strategy,
-                                split_seed=split_seed,
-                                train_seed=train_seed,
-                                test_accuracy=acc,
-                                train_accuracy=train_acc,
-                                train_windows=n_train,
-                                test_windows=n_test,
-                                stride=stride,
-                                environment=environment,
-                            )
-                        )
-                        if checkpoint is not None:
-                            checkpoint(runs)
-                        rate = (time.time() - started) / done
-                        print(
-                            f"  [{done:3d}/{total}] snr={tag:>4} stride={stride:4d} "
-                            f"{strategy:15s} split={split_seed} train={train_seed}  "
-                            f"test={acc:6.2%} train={train_acc:6.2%}  "
-                            f"({time.time() - t1:.0f}s/run, {n_train}/{n_test} windows, "
-                            f"~{rate * (total - done) / 60:.0f} min left)",
-                            flush=True,
-                        )
-                shutil.rmtree(rec_ds, ignore_errors=True)
-                shutil.rmtree(win_ds, ignore_errors=True)
+            spec = BuildSpec(
+                window=WINDOW,
+                stride=stride,
+                split=SPLIT_RATIOS,
+                labels="dirname",
+                dirname_level=2,
+            )
+            grid.append(
+                GridCell(
+                    records=prepared[tag],
+                    spec=spec,
+                    noise_sigma=float("nan") if snr is None else snr,
+                    snr_db=float("inf") if snr is None else snr,
+                    stride=stride,
+                    label=f"snr={tag:>4} stride={stride:4d}",
+                )
+            )
+        return measure_grid(grid, split_seeds, train_seeds, checkpoint=checkpoint)
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    print(f"\ntotal wall time {(time.time() - started) / 60:.1f} min for {done} runs")
-    return runs
 
 
 #: The channels occupy 19.5 kHz of a 7.68 MHz capture, measured. Detecting one
@@ -314,98 +228,36 @@ PROCESSING_GAIN_DB = 10.0 * np.log10(SAMPLE_RATE_HZ / OCCUPIED_BW_HZ)
 
 
 def summarise_real(runs: list[Run]) -> str:
-    """Results table, grouped by SNR.
-
-    Not `leakage_experiment.summarise`: that groups by `noise_sigma`, and the
-    unnoised level has no sigma. Grouping on a NaN silently matches nothing,
-    which is how the first pilot run finished its twelve trainings and then
-    crashed formatting them.
-    """
-
-    def stats(subset: list[Run]) -> tuple[float, float]:
-        values = [r.test_accuracy for r in subset]
-        if not values:
-            return float("nan"), 0.0
-        return statistics.mean(values), (statistics.stdev(values) if len(values) > 1 else 0.0)
-
-    lines = [
-        "| wideband SNR | in-band SNR | recording-level | window-level | inflation (paired) | n |",
-        "|---|---|---|---|---|---|",
-    ]
-    for snr in sorted({r.snr_db for r in runs}, reverse=True):
-        at = [r for r in runs if r.snr_db == snr]
-        rec_mean, rec_sd = stats([r for r in at if r.strategy == "recording-level"])
-        win_mean, win_sd = stats([r for r in at if r.strategy == "window-level"])
-        diffs = paired_differences(at)
-        if diffs:
-            mean_diff = statistics.mean(diffs)
-            stderr = (statistics.stdev(diffs) / math.sqrt(len(diffs))) if len(diffs) > 1 else 0.0
-            inflation = f"**{mean_diff * 100:+.1f} pp** ± {stderr * 100:.1f}"
-        else:
-            inflation = "-"
-        wide = "raw" if math.isinf(snr) else f"{snr:+.0f} dB"
-        inband = "-" if math.isinf(snr) else f"{snr + PROCESSING_GAIN_DB:+.1f} dB"
-        lines.append(
-            f"| {wide} | {inband} | {rec_mean:.1%} ± {rec_sd:.1%} | "
-            f"{win_mean:.1%} ± {win_sd:.1%} | {inflation} | {len(diffs)} |"
-        )
-    lines.append("")
-    lines.append(
-        f"Wideband SNR is what the added noise was set to, over the full "
-        f"{SAMPLE_RATE_HZ / 1e6:.2f} MHz capture. The channels occupy "
-        f"{OCCUPIED_BW_HZ / 1e3:.1f} kHz, so the task sees about "
-        f"{PROCESSING_GAIN_DB:.0f} dB more than that -- which is why the raw recordings, "
-        f"and 0 dB wideband, are both at the ceiling."
+    """Results table, grouped by SNR."""
+    return summarise_snr_table(
+        runs,
+        in_band_gain_db=float(PROCESSING_GAIN_DB),
+        caption=(
+            f"Wideband SNR is what the added noise was set to, over the full "
+            f"{SAMPLE_RATE_HZ / 1e6:.2f} MHz capture. The channels occupy "
+            f"{OCCUPIED_BW_HZ / 1e3:.1f} kHz, so the task sees about "
+            f"{PROCESSING_GAIN_DB:.0f} dB more than that -- which is why the raw recordings, "
+            f"and 0 dB wideband, are both at the ceiling."
+        ),
     )
-    return "\n".join(lines)
 
 
 def summarise_real_strides(runs: list[Run]) -> str:
-    """Stride-sweep table: inflation against overlap, at one fixed SNR.
-
-    The row that carries the argument is stride 1024. There the windows are
-    disjoint, so a window-level split separates samples that were never shared
-    and the inflation has to be zero. If it is not, the effect measured in the
-    other rows is something other than overlap.
-    """
-    lines = [
-        "| stride | overlap | windows/rec | recording-level | window-level | inflation (paired) | n |",  # noqa: E501
-        "|---|---|---|---|---|---|---|",
-    ]
-    for stride in sorted({r.stride for r in runs if r.stride is not None}, reverse=True):
-        at = [r for r in runs if r.stride == stride]
-        rec = [r.test_accuracy for r in at if r.strategy == "recording-level"]
-        win = [r.test_accuracy for r in at if r.strategy == "window-level"]
-        diffs = paired_differences(at)
-        if not rec or not win:
-            # Checkpointing writes this table mid-cell, before the second arm has
-            # run. Leave the row out until both sides exist.
-            continue
-        mean_diff = statistics.mean(diffs) if diffs else float("nan")
-        stderr = (statistics.stdev(diffs) / math.sqrt(len(diffs))) if len(diffs) > 1 else 0.0
-        per_rec = (SEGMENT - WINDOW) // stride + 1
-        lines.append(
-            f"| {stride} | {1.0 - stride / WINDOW:.0%} | {per_rec} | "
-            f"{statistics.mean(rec):.1%} ± {_sd(rec):.1%} | "
-            f"{statistics.mean(win):.1%} ± {_sd(win):.1%} | "
-            f"**{mean_diff * 100:+.1f} pp** ± {stderr * 100:.1f} | {len(diffs)} |"
-        )
-    lines.append("")
-    lines.append(
-        f"DASH7 cabled, class = Lo-Rate channel, 10 independent recorder runs each. "
-        f"Window fixed at {WINDOW} samples; added noise fixed at {STRIDE_SNR_DB:+.0f} dB "
-        f"wideband ({STRIDE_SNR_DB + PROCESSING_GAIN_DB:+.0f} dB in-band), the one probed "
-        f"point where the honest arm sits stably between the 33.3% chance line and the "
-        f"ceiling. Overlap is the only thing that moves between rows: the noise realisation "
-        f"is identical, because the recordings are noised once and re-windowed per stride. "
-        f"Inflation is the mean paired difference ± its standard error."
+    """Stride-sweep table: inflation against overlap, at one fixed SNR."""
+    return summarise_stride_table(
+        runs,
+        window=WINDOW,
+        segment=SEGMENT,
+        caption=(
+            f"DASH7 cabled, class = Lo-Rate channel, 10 independent recorder runs each. "
+            f"Window fixed at {WINDOW} samples; added noise fixed at {STRIDE_SNR_DB:+.0f} dB "
+            f"wideband ({STRIDE_SNR_DB + PROCESSING_GAIN_DB:+.0f} dB in-band), the one probed "
+            f"point where the honest arm sits stably between the 33.3% chance line and the "
+            f"ceiling. Overlap is the only thing that moves between rows: the noise realisation "
+            f"is identical, because the recordings are noised once and re-windowed per stride. "
+            f"Inflation is the mean paired difference ± its standard error."
+        ),
     )
-    return "\n".join(lines)
-
-
-def _sd(values: list[float]) -> float:
-    """Standard deviation, 0 for a single sample."""
-    return statistics.stdev(values) if len(values) > 1 else 0.0
 
 
 def main() -> None:

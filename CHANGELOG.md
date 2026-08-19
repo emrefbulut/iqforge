@@ -29,6 +29,12 @@ can tell whether the format it is looking at is one it understands.
   satellites, three shared stamps, no interval overlap, a recording-level split
   that puts a different pass in each bin. A single stamp across the whole set is
   still a placeholder (`examples/` does not false-positive).
+- `iqforge.measurement` is the paired leakage-measurement core: one `BuildSpec`,
+  recording-level build, window-level re-deal, paired training, paired
+  statistics. No CLI. The three experiment scripts now call it; dataset-specific
+  `prepare` stays in `scripts/`. The LoRaIQ bit-exact cell (stride 1024 / split
+  42 / train 0) is the acceptance gate and is skipped in CI when the recordings
+  are not present; published tables are reproduced from the recorded run files.
 
 ### Changed
 

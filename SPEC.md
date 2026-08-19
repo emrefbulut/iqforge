@@ -318,6 +318,8 @@ The report is fixed-width ASCII (78 columns) so it can be quoted unaltered, and 
 
 The command that trains the paired experiment (`iqforge measure-leakage`) is not in this version. This section records a constraint it is held to when it is written, so the constraint cannot be reversed by accident.
 
+**The paired measurement already lives in `src/iqforge/measurement.py`.** It is a library, not a command: two arms (recording-level build, then the same windows re-dealt at the window level), paired training, paired statistics. Dataset-specific preparation stays in `scripts/`. There is one `BuildSpec` rather than three copies of `build_recording_level`.
+
 **The command is read-only.** It consumes a folder of recordings (or a built dataset) and writes a report. It does not write modified recordings. Every other user-facing command in §4 is already read-only with respect to the user's captures; measurement is not an exception.
 
 **There is no `--sweep snr`.** Adding noise to a user's recordings requires writing altered copies, and doing it correctly is dataset-specific. On DASH7 the carrier is on air 6.8% of the time and about 26 dB of processing gain sits between a wideband SNR figure and the SNR the task sees (methodology §6.4). The pilot that motivated this tool produced a silently useless grid by getting those wrong. An opt-in flag does not fix that — it would be the one place the command touches the user's data, and the one place it can fail silently.
@@ -367,6 +369,7 @@ iqforge/
     grouping.py                 --group-by key resolution (path: / csv:)
     splitting.py                stratified recording-based split, leakage warnings
     audit.py                    leakage-risk and measurability audit (5.9)
+    measurement.py              paired leakage measurement (library, 5.10)
     storage.py                  shard write/read, manifest
     dataset.py                  IQForgeDataset (torch)
     training.py                 baseline training loop (torch)
@@ -382,6 +385,7 @@ iqforge/
     test_grouping.py
     test_storage.py
     test_audit.py
+    test_measurement.py         (LoRaIQ bit-exact gate skipped without the data)
     test_display.py
     test_dataset.py             (skipped if torch absent)
     test_models.py              (skipped if torch absent)

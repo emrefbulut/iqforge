@@ -109,10 +109,8 @@ def test_an_unknown_device_name_is_rejected():
 def test_a_sweep_refuses_to_extend_a_checkpoint_from_another_device(tmp_path):
     """Rows measured on different environments are not comparable, and no table shows it."""
     import json
-    import sys
 
-    sys.path.insert(0, "scripts")
-    from leakage_experiment import check_environment, current_environment
+    from iqforge.measurement import check_environment, current_environment
 
     same = tmp_path / "same.json"
     same.write_text(json.dumps([{"environment": current_environment()}]), encoding="utf-8")
