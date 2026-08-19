@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import fields
 from pathlib import Path
 
@@ -296,3 +297,30 @@ def test_the_scripts_plan_the_published_grid_sizes():
     assert len(synthetic.STRIDES) * pairs * 2 == 150
     assert len(real.STRIDES) * pairs * 2 == 150
     assert len(loraiq.STRIDES) * pairs * 2 == 150
+
+
+def test_current_environment_degrades_without_torch(monkeypatch):
+    """The comparability guards must work in a torch-free install.
+
+    `audit` and the refuse path both run there, and asking whether two sets of
+    runs are comparable does not need a training backend. numpy and scipy are
+    still reported, because windowing and normalisation depend on them either
+    way.
+    """
+    import builtins
+
+    real_import = builtins.__import__
+
+    def blocked(name, *args, **kwargs):
+        if name == "torch" or name.startswith("torch."):
+            raise ModuleNotFoundError("No module named 'torch'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", blocked)
+    for module in [m for m in list(sys.modules) if m.startswith(("torch", "iqforge.training"))]:
+        monkeypatch.delitem(sys.modules, module, raising=False)
+
+    env = current_environment()
+    assert "numpy" in env
+    assert "scipy" in env
+    assert "torch" not in env

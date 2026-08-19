@@ -288,9 +288,27 @@ def train_once(
 
 
 def current_environment() -> dict[str, str]:
-    """Device, torch, CUDA, and numeric-stack versions of this process."""
-    from iqforge.training import DEFAULT_DEVICE, describe_environment, resolve_device
+    """Device, torch, CUDA, and numeric-stack versions of this process.
 
+    Degrades rather than raising when torch is absent. The guards that use this
+    are about whether two sets of runs are comparable, and that question is
+    still worth answering in a torch-free install -- `audit` and the refuse
+    path both run there. Windowing and normalisation are numpy and scipy work
+    regardless, so those versions are reported either way.
+    """
+    import numpy
+    import scipy
+    import sigmf
+
+    base = {
+        "numpy": numpy.__version__,
+        "scipy": scipy.__version__,
+        "sigmf": sigmf.__version__,
+    }
+    try:
+        from iqforge.training import DEFAULT_DEVICE, describe_environment, resolve_device
+    except ModuleNotFoundError:
+        return {"device": "none (torch not installed)", **base}
     return describe_environment(resolve_device(DEFAULT_DEVICE))
 
 
