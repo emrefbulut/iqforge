@@ -313,6 +313,12 @@ def test_annotation_ending_exactly_at_the_end_is_not_flagged(tmp_path: Path) -> 
     assert load(meta_path).annotations_beyond_end == []
 
 
+#: sigmf releases whose dict-mutating behaviour has actually been verified.
+#: A version outside this set fails the test below on purpose -- see its
+#: docstring for why the tripwire is worth its cost.
+CHECKED_SIGMF_VERSIONS = frozenset({"1.11.1", "1.12.0"})
+
+
 def test_sigmf_library_overwrites_the_declared_version() -> None:
     """Pin the upstream behaviour that `declared_version` exists to work around.
 
@@ -323,6 +329,13 @@ def test_sigmf_library_overwrites_the_declared_version() -> None:
 
     Reported upstream in docs/sigmf-python-issue-draft.md. Runs on Linux in CI,
     which is what backs the claim that the behaviour is not platform specific.
+
+    The version assertion is a tripwire, not a compatibility bound: `uv.lock` is
+    not committed, so CI resolves dependencies fresh and a new sigmf release
+    reaches it before it reaches any developer machine. It fires once per
+    upstream release and costs one recheck, which is the price of noticing the
+    day the workaround becomes unnecessary. Verified still mutating in **1.11.1
+    and 1.12.0**.
     """
     metadata = {
         "global": {"core:datatype": "cf32_le", "core:version": "1.0.0"},
@@ -334,4 +347,9 @@ def test_sigmf_library_overwrites_the_declared_version() -> None:
 
     assert metadata["global"]["core:version"] != "1.0.0", "caller's dict was not mutated"
     assert handle.get_global_info()["core:version"] == metadata["global"]["core:version"]
-    assert sigmf.__version__ == "1.11.1", "sigmf version changed; recheck the upstream report"
+    assert sigmf.__version__ in CHECKED_SIGMF_VERSIONS, (
+        f"sigmf {sigmf.__version__} has not been checked against this behaviour. "
+        f"Run the snippet in docs/sigmf-python-issue-draft.md: if the caller's dict "
+        f"is still mutated, add the version here; if it is not, the workaround in "
+        f"load() and Recording.declared_version can be reconsidered."
+    )
