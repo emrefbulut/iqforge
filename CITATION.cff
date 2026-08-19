@@ -20,7 +20,7 @@ version: "0.4.0"
 # the tag, so the tagged tree always shipped a citation with no date, and 0.2.0
 # went two days that way before anyone noticed. Pre-filling is the lesser
 # problem: if the tag slips, correct this line before pushing it.
-date-released: "2026-08-15"
+date-released: "2026-08-19"
 keywords:
   - software-defined-radio
   - sigmf

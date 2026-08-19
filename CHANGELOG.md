@@ -13,7 +13,7 @@ can tell whether the format it is looking at is one it understands.
 
 Nothing yet.
 
-## [0.4.0] — 2026-08-15
+## [0.4.0] — 2026-08-19
 
 ### Fixed
 
@@ -124,6 +124,25 @@ Nothing yet.
   a disqualification that is a property of a dataset *paired with a class
   definition* rather than of the data, and an acquisition method that was
   technically correct per file and invalid in aggregate.
+
+### Changed
+
+- **`sigmf` floor raised to `>=1.11.1`**, from `>=1.2.1`. The old floor claimed
+  compatibility with releases nobody here had run: `uv.lock` is not committed,
+  so CI resolves fresh and therefore tests exactly one version — the newest.
+  1.11.1 and 1.12.0 are the two that have actually been exercised. No upper
+  bound is added: capping a library's dependency propagates into every
+  environment that installs it, and the compensating control is a test that
+  reports a behaviour change rather than a pin that blocks users.
+- The upstream `core:version` report
+  ([sigmf-python#159](https://github.com/sigmf/sigmf-python/issues/159)) was
+  accepted and fixed in [#160](https://github.com/sigmf/sigmf-python/pull/160),
+  approved and slated for `v1.13.0`. `sigmf 1.12.0` still mutates, so the
+  workaround stays; `load()` reads `core:version` before handing the dict over
+  and is correct either way. The test that watches for this now distinguishes
+  "new version, behaviour unchanged" from "new version, behaviour changed", and
+  a stand-in for the fixed library is exercised so the forward path is tested
+  rather than assumed.
 
 ## [0.3.0] — 2026-08-12
 
