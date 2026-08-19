@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import shutil
 import subprocess
 import sys
@@ -12,9 +11,9 @@ ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS = ROOT / "artifacts"
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import leakage_experiment as synthetic
-import leakage_loraiq as loraiq
-import leakage_real as real
+import leakage_experiment as synthetic  # noqa: E402
+import leakage_loraiq as loraiq  # noqa: E402
+import leakage_real as real  # noqa: E402
 
 
 def _first_pair(path: Path) -> tuple[dict, dict]:
@@ -25,7 +24,16 @@ def _first_pair(path: Path) -> tuple[dict, dict]:
 
 
 def _measure(path: Path, extra: list[str]) -> dict:
-    cmd = [sys.executable, "-m", "iqforge", "measure-leakage", str(path), "--format", "json", *extra]
+    cmd = [
+        sys.executable,
+        "-m",
+        "iqforge",
+        "measure-leakage",
+        str(path),
+        "--format",
+        "json",
+        *extra,
+    ]
     done = subprocess.run(
         cmd, check=False, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
@@ -43,8 +51,7 @@ def _cmp(name: str, got: dict, expect: dict) -> None:
     }
     for key, ok in checks.items():
         print(
-            f"{name} {key}: got={got[key]} expected={expect[key]} "
-            f"{'MATCH' if ok else 'MISMATCH'}"
+            f"{name} {key}: got={got[key]} expected={expect[key]} {'MATCH' if ok else 'MISMATCH'}"
         )
     if not all(checks.values()):
         raise SystemExit(f"{name} comparison failed")
@@ -130,7 +137,12 @@ def main() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
     # 4) LoRaIQ table sample: stride=1024
-    for path in (loraiq.DEFAULT_SOURCE, loraiq.DEFAULT_INDEX, loraiq.DEFAULT_LABELS, loraiq.DEFAULT_GROUPS):
+    for path in (
+        loraiq.DEFAULT_SOURCE,
+        loraiq.DEFAULT_INDEX,
+        loraiq.DEFAULT_LABELS,
+        loraiq.DEFAULT_GROUPS,
+    ):
         if not path.exists():
             raise SystemExit(f"LoRaIQ input not found: {path}")
     exp_rec, exp_win = _first_pair(ARTIFACTS / "leakage_loraiq_runs.json")

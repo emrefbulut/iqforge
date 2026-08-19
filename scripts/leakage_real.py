@@ -38,6 +38,7 @@ import copy
 import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from collections.abc import Callable

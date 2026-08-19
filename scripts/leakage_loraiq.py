@@ -54,7 +54,6 @@ from sigmf import SigMFFile
 
 from iqforge.measurement import (
     EPOCHS,
-    BuildSpec,
     Run,
     check_environment,
     summarise_stride_table,

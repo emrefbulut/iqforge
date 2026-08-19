@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import sys
 import json
+import sys
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -1238,8 +1238,7 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         print()
         console.print("[bold]MEASUREMENT[/]")
         console.print(
-            f"stride={stride}  split_seed=42  train_seed=0  "
-            f"inflation={inflation_pp:+.1f} pp"
+            f"stride={stride}  split_seed=42  train_seed=0  inflation={inflation_pp:+.1f} pp"
         )
         console.print(
             f"recording-level: test {rec.test_accuracy:.2%}, train {rec.train_accuracy:.2%}, "
