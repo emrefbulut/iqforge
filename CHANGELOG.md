@@ -11,6 +11,10 @@ can tell whether the format it is looking at is one it understands.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.4.0] — 2026-08-15
+
 ### Fixed
 
 - **Correctness: `--labels csv` and `--group-by csv:` identified recordings by
@@ -226,7 +230,8 @@ First release.
   `info`, `inspect`, `build` and `stats` work without it.
 - 16 example recordings, so the whole pipeline runs without hardware.
 
-[Unreleased]: https://github.com/emrefbulut/iqforge/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/emrefbulut/iqforge/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/emrefbulut/iqforge/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/emrefbulut/iqforge/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/emrefbulut/iqforge/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/emrefbulut/iqforge/releases/tag/v0.1.0

@@ -14,7 +14,7 @@
 
 ---
 
-> **Status: `0.3.0`.** On PyPI, tagged, CI green. The capture → dataset pipeline
+> **Status: `0.4.0`.** On PyPI, tagged, CI green. The capture → dataset pipeline
 > works end to end and is covered by tests. Interfaces may still change within
 > `0.x` — see the [Roadmap](#roadmap) for what is planned and what is
 > deliberately out of scope.
@@ -211,6 +211,19 @@ constant for your data. Reproduce with
 [`scripts/leakage_experiment.py`](scripts/leakage_experiment.py); full runs in
 [`artifacts/leakage_table.md`](artifacts/leakage_table.md).
 
+**The same sweep on real captures.** It was repeated on two public datasets, and
+the part that carries the claim reproduces on both. At zero overlap the
+inflation is indistinguishable from zero three times over — **+0.2 pp**
+synthetic, **−3.7 pp** on DASH7, **+1.5 pp** on LoRaIQ. And on LoRaIQ at 7/8
+overlap the inflation is **+9.6 pp ± 2.7 (t = 3.5)**, the first individually
+significant real-data result here.
+
+What is *not* established is the shape of the curve in between: the
+intermediate overlaps disagree across all three datasets, and 15 seed pairs per
+point resolve only the largest effect. Overlap is the mechanism; how the damage
+grows with it is not measured. [methodology §3](docs/methodology.md) has both
+tables and the reasoning.
+
 [**docs/methodology.md**](docs/methodology.md) documents how both measurements
 were designed, what was validated against real captures, the silent bugs found
 along the way, and what the numbers do not cover.
@@ -231,6 +244,22 @@ When that isn't structurally possible, you get a warning rather than an error �
 the split is still valid, you just need to know what's left. `iqforge stats` prints
 the carrier offset of every recording and a per-split summary, so the skew is
 visible whether or not you asked for balancing.
+
+**`--group-by` is the opposite operation.** Balancing spreads a variable across
+splits; grouping holds recordings *together*, for recordings that are not
+independent of each other — four receivers hearing one transmission, or two runs
+of the same emitter seconds apart. Three schemes:
+
+```bash
+iqforge build data/ -o ds/ --group-by 'path:(loc\d+)/gw_(\d+)_'   # from the path
+iqforge build data/ -o ds/ --group-by csv:units.csv                # from a table
+iqforge build data/ -o ds/ --group-by collection                   # core:collection
+```
+
+Recordings sharing a key become one indivisible unit, and the unit replaces the
+recording as the thing allocated. `collection` reads SigMF's own
+`core:collection` field — treat it as a hint rather than a guarantee, since the
+format says a Collection's members are *related*, not that they are dependent.
 
 ## Auditing a dataset
 
@@ -328,7 +357,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] Windowing, labelling, recording-level splitting, sharded storage
 - [x] `torch.utils.data.Dataset` + baseline classifier
 - [x] Packaging (wheel + sdist), GitHub Actions CI
-- [x] PyPI releases (`0.1.0`, `0.2.0`, `0.3.0`)
+- [x] PyPI releases (`0.1.0`, `0.2.0`, `0.3.0`, `0.4.0`)
 - [x] Leakage measurement (recording-level vs window-level), synthetic and on a
       real capture
 - [x] Real SigMF verification with public captures

@@ -13,14 +13,14 @@ authors:
 repository-code: "https://github.com/emrefbulut/iqforge"
 url: "https://github.com/emrefbulut/iqforge"
 license: MIT
-version: "0.3.0"
+version: "0.4.0"
 # Carries the date the version above is intended to be tagged. It was once left
 # absent until the tag existed, on the reasoning that the file should never date
 # a release nobody can fetch -- but that put the correct value in a commit AFTER
 # the tag, so the tagged tree always shipped a citation with no date, and 0.2.0
 # went two days that way before anyone noticed. Pre-filling is the lesser
 # problem: if the tag slips, correct this line before pushing it.
-date-released: "2026-08-12"
+date-released: "2026-08-15"
 keywords:
   - software-defined-radio
   - sigmf
