@@ -46,6 +46,10 @@ from iqforge.labeling import (
     load_label_csv,
     resolve_exclude_labels,
 )
+from iqforge.measurement import DEFAULT_SPLIT
+from iqforge.preflight import DecisionStatus, decide
+from iqforge.preflight import render_json as render_measure_json
+from iqforge.preflight import render_text as render_measure_text
 from iqforge.splitting import (
     SPLIT_NAMES,
     SplitPlan,
@@ -1010,6 +1014,91 @@ def audit(
     print(render_json(report) if output_format == "json" else render_text(report))
     summary = report.summary
     if summary["leaks"] or (strict and summary["risk"]):
+        raise typer.Exit(code=1)
+
+
+@app.command("measure-leakage")
+def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --group-by
+    path: Annotated[
+        Path, typer.Argument(help="A dataset built by iqforge, or a folder of recordings")
+    ],
+    window: Annotated[int, typer.Option("--window", help="Window length, folder mode only")] = 1024,
+    stride: Annotated[
+        int, typer.Option("--stride", help="Step between windows, folder mode")
+    ] = 512,
+    labels: Annotated[
+        str, typer.Option("--labels", help=f"Label source, folder mode: {', '.join(LABEL_SOURCES)}")
+    ] = "dirname",
+    label_file: Annotated[
+        Path | None, typer.Option("--label-file", help="CSV path for --labels csv")
+    ] = None,
+    dirname_level: Annotated[
+        int, typer.Option("--dirname-level", help="Ancestor directory to read as the class")
+    ] = 1,
+    group_by: Annotated[
+        str | None,
+        typer.Option(
+            "--group-by", help="Hold related recordings together: path:<re> or csv:<file>"
+        ),
+    ] = None,
+    split: Annotated[
+        str, typer.Option("--split", help="train,val,test ratios a later measurement would use")
+    ] = DEFAULT_SPLIT,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Measure anyway; the overridden category stays in the header"),
+    ] = False,
+    output_format: Annotated[str, typer.Option("--format", help="text or json")] = "text",
+) -> None:
+    """Decide whether a leakage measurement would mean anything. Does not train.
+
+    Runs `audit`, classifies the result into the six categories in
+    `docs/methodology.md` §6, and stops. `REFUSED` means measuring would report
+    the wrong thing; `WOULD MEASURE` means a later version would train.
+    """
+    if output_format not in ("text", "json"):
+        raise _fail(IQForgeError(f"--format must be text or json, got '{output_format}'."))
+
+    unreadable_error: str | None = None
+    report: AuditReport | None
+    try:
+        if (path / MANIFEST_NAME).exists():
+            report = audit_dataset(path, read_manifest(path), __version__)
+        else:
+            report = _audit_folder(path, window, stride, labels, dirname_level, label_file)
+    except IQForgeError as exc:
+        message = str(exc)
+        if "could not be read" in message or "Unsupported datatype" in message:
+            report = None
+            unreadable_error = message
+        else:
+            raise _fail(exc) from exc
+
+    group_keys: dict[str, str] | None = None
+    if group_by is not None and report is not None and report.features:
+        try:
+            group_keys = resolve_group_keys(
+                [f.record_id for f in report.features],
+                group_by,
+                collections={f.record_id: f.collection for f in report.features},
+            )
+        except IQForgeError as exc:
+            raise _fail(exc) from exc
+
+    decision = decide(
+        report,
+        force=force,
+        split=split,
+        window=window,
+        stride=stride,
+        group_keys=group_keys,
+        unreadable_error=unreadable_error,
+    )
+    printed = (
+        render_measure_json(decision) if output_format == "json" else render_measure_text(decision)
+    )
+    print(printed)
+    if decision.status is not DecisionStatus.WOULD_MEASURE:
         raise typer.Exit(code=1)
 
 

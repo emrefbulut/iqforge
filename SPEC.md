@@ -136,6 +136,19 @@ iqforge audit <path> [--window 1024] [--stride 512]
     NOT CHECKED is counted separately from passes in the summary.
     Exit code 1 on LEAK; --strict makes RISK exit 1 as well.
     Trains nothing. See 5.9.
+
+iqforge measure-leakage <path> [--window 1024] [--stride 512]
+              [--labels {annotations,dirname,csv}] [--label-file <path>]
+              [--dirname-level 1] [--group-by {path:<re>,csv:<file>,collection}]
+              [--split 0.6,0.2,0.2] [--force] [--format {text,json}]
+    Decide whether a leakage measurement would mean anything. Runs `audit`,
+    classifies the result into the six categories in methodology §6, estimates
+    the work a paired cell would do, and stops. This version does not train.
+    REFUSED: a category fired (exit 1). INCONCLUSIVE: the sources the
+    categories need are missing (exit 1). WOULD MEASURE: nothing fired; a
+    later version would train (exit 0). --force overrides a refusal and puts
+    the overridden category in the header so a pasted block cannot be mistaken
+    for a clean run. There is no SNR-injection flag; see 5.10.
 ```
 
 ---
@@ -316,9 +329,22 @@ The report is fixed-width ASCII (78 columns) so it can be quoted unaltered, and 
 
 ### 5.10 Leakage measurement
 
-The command that trains the paired experiment (`iqforge measure-leakage`) is not in this version. This section records a constraint it is held to when it is written, so the constraint cannot be reversed by accident.
+The paired measurement lives in `src/iqforge/measurement.py` (library) and the refuse path lives in `src/iqforge/preflight.py`. `iqforge measure-leakage` is the command. This version of the command does not train: it runs `audit`, classifies, estimates the work, and stops.
 
-**The paired measurement already lives in `src/iqforge/measurement.py`.** It is a library, not a command: two arms (recording-level build, then the same windows re-dealt at the window level), paired training, paired statistics. Dataset-specific preparation stays in `scripts/`. There is one `BuildSpec` rather than three copies of `build_recording_level`.
+**Six refuse categories**, numbered as methodology §6 numbers the datasets, so the report can cite `category 4` rather than a paragraph. Category 5 is any remaining proven leak `audit` already names; category 6 is a split `build` would refuse. There is no category for LoRaIQ — that is the case that is not refused (§6.5).
+
+| # | name | trigger | cites |
+|---|---|---|---|
+| 1 | unreadable format | the reader cannot open the set (`cf16_le`, …) | §6.1 AirID |
+| 2 | shared timestamp | sessions crossed with class | §6.2 Vega-C |
+| 3 | physical independence | long same-class captures ≤ 120 s apart | §6.3 DASH7 `ds_indoor` |
+| 4 | ceiling | a scalar axis saturates the task | §6.4 DASH7 cabled |
+| 5 | structural leak | remaining `audit` LEAK (time overlap, duplicates, disjointness) | audit finding |
+| 6 | cannot split | too few units per class, or a group that spans classes | SPEC §5.6 |
+
+Overlapping air time that `--group-by` already holds together is not category 5: that is the LoRaIQ fix. Short frame snippets (under 1 s) are not category 3: that is consecutive LoRa transmissions, not a repeated indoor channel.
+
+`--force` does not hide the category. The header becomes `iqforge leakage measurement -- FORCED PAST audit VERDICT 'ceiling'` (or `category N 'name'`), ASCII `--` not a typographic dash, so a pasted block cannot be mistaken for a clean run.
 
 **The command is read-only.** It consumes a folder of recordings (or a built dataset) and writes a report. It does not write modified recordings. Every other user-facing command in §4 is already read-only with respect to the user's captures; measurement is not an exception.
 
@@ -326,7 +352,7 @@ The command that trains the paired experiment (`iqforge measure-leakage`) is not
 
 SNR injection is a **preparation recipe**, not a command flag. A script under `scripts/` produces a folder; the command measures that folder. The dataset-specific decisions (where the signal is, how much processing gain the band has, that noise is added before windowing so overlapping windows share the draw) stay visible in the script that made them.
 
-`--sweep stride` does not have this problem: it only varies how the existing samples are windowed.
+`--sweep stride` does not have this problem: it only varies how the existing samples are windowed. It is not in this version of the command, because this version does not train.
 
 This is a deliberate deviation from an earlier design that listed `--sweep snr` as an opt-in. The objection is not that it is opt-in; it is that it breaks read-only-ness.
 
@@ -362,7 +388,7 @@ iqforge/
     ISSUE_TEMPLATE/bug_report.yml
   src/iqforge/
     __init__.py                 exports load() and (lazy) IQForgeDataset
-    cli.py                      typer app: info/inspect/build/stats/train/audit
+    cli.py                      typer app: info/inspect/build/stats/train/audit/measure-leakage
     io.py                       SigMF reading, data type conversion
     windowing.py                windowing, normalization, representations
     labeling.py                 three label sources, --balance-by field reading
@@ -370,6 +396,7 @@ iqforge/
     splitting.py                stratified recording-based split, leakage warnings
     audit.py                    leakage-risk and measurability audit (5.9)
     measurement.py              paired leakage measurement (library, 5.10)
+    preflight.py                refuse path for measure-leakage (5.10)
     storage.py                  shard write/read, manifest
     dataset.py                  IQForgeDataset (torch)
     training.py                 baseline training loop (torch)

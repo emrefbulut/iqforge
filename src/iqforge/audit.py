@@ -128,6 +128,10 @@ class AuditReport:
     did_not_check: list[str] = field(default_factory=list)
     verdict: str = ""
     next_step: list[str] = field(default_factory=list)
+    #: Measured axes, kept off the rendered report. `measure-leakage` uses them
+    #: to decide refuse categories that need the raw timestamps and durations,
+    #: not only the finding text.
+    features: list[RecordFeatures] = field(default_factory=list, repr=False, compare=False)
 
     @property
     def summary(self) -> dict[str, int]:
@@ -788,6 +792,7 @@ def audit_dataset(root: Path, manifest: dict[str, Any], tool_version: str) -> Au
     verdict, is_ceiling = difficulty_verdict(features)
     report.verdict = verdict
     report.next_step = _next_step(is_ceiling, root)
+    report.features = features
     return report
 
 
@@ -972,6 +977,7 @@ def audit_recordings(
     verdict, is_ceiling = difficulty_verdict(features)
     report.verdict = verdict
     report.next_step = _next_step(is_ceiling, root)
+    report.features = features
     return report
 
 

@@ -79,6 +79,7 @@ iqforge inspect examples/bpsk_01.sigmf-meta   # look at it, in your terminal
 iqforge build   examples/ -o dataset/ --balance-by core:freq_lower_edge
 iqforge stats   dataset/                      # what did I just build?
 iqforge audit   dataset/                      # what could be wrong with it?
+iqforge measure-leakage recordings/           # would a measurement mean anything?
 ```
 
 ```python
@@ -312,6 +313,12 @@ The report is fixed-width ASCII so it can be pasted into a paper or an issue
 unaltered; `--format json` gives the same content, `did_not_check` included.
 `--strict` exits non-zero on `RISK` as well as `LEAK`, for CI.
 
+`iqforge measure-leakage` runs that audit, classifies the result into the six
+categories that eliminated four public datasets and let a fifth through
+([methodology §6](docs/methodology.md)), and stops. This version does not train.
+`--force` overrides a refusal and puts the reason in the header so a pasted
+block cannot be mistaken for a clean run.
+
 ## Known limitations
 
 Both of these are measured, and both are consequences of decisions made on
@@ -363,6 +370,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
       real capture
 - [x] Real SigMF verification with public captures
 - [x] `iqforge audit` — leakage risk and measurability, without training
+- [x] `iqforge measure-leakage` — refuse path: six categories, no training yet
 - [ ] Verification with own hardware capture
 
 **Not planned for 0.x** — out of scope rather than pending:

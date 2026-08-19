@@ -31,18 +31,27 @@ can tell whether the format it is looking at is one it understands.
   still a placeholder (`examples/` does not false-positive).
 - `iqforge.measurement` is the paired leakage-measurement core: one `BuildSpec`,
   recording-level build, window-level re-deal, paired training, paired
-  statistics. No CLI. The three experiment scripts now call it; dataset-specific
-  `prepare` stays in `scripts/`. The LoRaIQ bit-exact cell (stride 1024 / split
-  42 / train 0) is the acceptance gate and is skipped in CI when the recordings
-  are not present; published tables are reproduced from the recorded run files.
+  statistics. No training CLI yet. The three experiment scripts now call it;
+  dataset-specific `prepare` stays in `scripts/`. The LoRaIQ bit-exact cell
+  (stride 1024 / split 42 / train 0) is the acceptance gate and is skipped in
+  CI when the recordings are not present; published tables are reproduced from
+  the recorded run files.
+- `iqforge measure-leakage` is the refuse path: it runs `audit`, classifies the
+  result into six categories (methodology §6.1–§6.4 plus remaining leaks and
+  unsplittable sets), estimates the work a paired cell would do, and stops.
+  This version does not train. `--force` overrides a refusal and puts the
+  overridden category in the header (`FORCED PAST audit VERDICT 'ceiling'`).
+  LoRaIQ-like simultaneous receptions are not refused when `--group-by` holds
+  them together.
 
 ### Changed
 
-- SPEC §5.10 records that `measure-leakage`, when written, is read-only on the
-  user's recordings and will not grow a `--sweep snr` flag. Adding noise requires
-  writing altered copies and is dataset-specific (DASH7: signal on air 6.8% of
-  the time, ~26 dB of processing gain). SNR injection stays a preparation recipe
-  in `scripts/`; the command measures the folder that recipe produces.
+- SPEC §5.10 now describes the refuse path that shipped, not a constraint on a
+  command that did not exist. The command is read-only on the user's recordings
+  and will not grow a `--sweep snr` flag. Adding noise requires writing altered
+  copies and is dataset-specific (DASH7: signal on air 6.8% of the time, ~26 dB
+  of processing gain). SNR injection stays a preparation recipe in `scripts/`;
+  the command measures the folder that recipe produces.
 
 ## [0.4.0] — 2026-08-19
 
