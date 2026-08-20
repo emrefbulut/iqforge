@@ -31,6 +31,24 @@ without the extra should still be fully green.
 Every module has a matching test file. Tests use synthetic data and never touch
 the network.
 
+## Contribution flow
+
+`main` is protected: it takes no direct pushes, and a pull request merges only
+once the five CI jobs (`lint`, `test (3.11)`, `test (3.12)`, `test-torch`,
+`build`) are green. Approving review is deliberately not required — this is a
+one-maintainer project, and a required review would leave nothing mergeable.
+
+```bash
+git switch -c fix/short-name
+uv run pytest && uv run ruff check . && uv run ruff format --check .
+git commit -am "Say what the change does, not which files it moved"
+git push -u origin fix/short-name
+gh pr create
+```
+
+One branch per logical change, and one pull request per branch. A pull request
+that fixes three unrelated things cannot be reverted for one of them.
+
 ## Training on a GPU
 
 `iqforge train` runs on the **CPU** by default, and that default is deliberate
