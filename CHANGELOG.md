@@ -49,6 +49,20 @@ can tell whether the format it is looking at is one it understands.
 
 ### Changed
 
+- **sigmf 1.13.0 fixed the upstream bug this project works around**
+  ([sigmf-python#159](https://github.com/sigmf/sigmf-python/issues/159), fixed
+  by [#160](https://github.com/sigmf/sigmf-python/pull/160)): constructing a
+  `SigMFFile` no longer rewrites the caller's metadata dict. The tripwire in
+  `tests/test_io.py` fired on the release and now records 1.13.0 as verified
+  non-mutating, measured rather than assumed -- the accessor the fix added is
+  called `declared_version`, not the `__original_version` the pull request
+  described. Nothing in `iqforge` changes: `load()` reads `core:version` out of
+  the parsed JSON before handing the dict over, which is correct under both
+  behaviours, so the workaround became redundant rather than wrong. The
+  `sigmf>=1.11.1` floor deliberately stays where it is. `iqforge info` still
+  prints `1.0.0 (file); 1.2.6 (reader)`, because 1.13.0 kept normalising
+  `core:version` inside the handle's own copy -- confirmed against the three
+  public captures the upstream report cites.
 - The three leakage scripts (`scripts/leakage_experiment.py`,
   `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`) now execute measured
   cells through `iqforge measure-leakage --format json` instead of keeping a
