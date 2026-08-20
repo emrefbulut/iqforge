@@ -193,10 +193,13 @@ def load(path: str | Path) -> Recording:
             "A SigMF metadata file must be a UTF-8 encoded JSON object."
         ) from exc
 
-    # Must happen BEFORE SigMFFile: the library mutates the dict it is handed,
-    # overwriting core:version with the spec version it implements. Reading it
-    # afterwards -- from `raw` or from the handle -- returns the reader's
-    # version for every file. Verified against captures that declare 1.0.0.
+    # Must happen BEFORE SigMFFile on sigmf < 1.13.0: those releases mutate the
+    # dict they are handed, overwriting core:version with the spec version they
+    # implement, so reading it afterwards returns the reader's version for every
+    # file. 1.13.0 deep-copies instead (sigmf-python#160) and leaves `raw`
+    # alone -- but reading first is correct under both, and `pyproject.toml`
+    # still admits the older releases. Verified against captures declaring
+    # 1.0.0, on both behaviours.
     declared_version = _declared_version(raw)
 
     # Schema validation is left to the sigmf library. This module reads the
@@ -276,9 +279,11 @@ def load(path: str | Path) -> Recording:
 def _declared_version(raw: dict[str, Any]) -> str | None:
     """Read `core:version` straight from the parsed file.
 
-    Deliberately reads `raw` rather than the sigmf handle: the library
-    overwrites the field with the spec version it implements, so going through
-    it would return the reader's version for every file ever written.
+    Deliberately reads `raw` rather than the sigmf handle: the handle
+    normalises the field to the spec version the library implements, so going
+    through it would return the reader's version for every file ever written.
+    That is still true on 1.13.0, which stopped mutating the caller's dict but
+    kept normalising inside its own copy.
     """
     global_section = raw.get("global")
     if not isinstance(global_section, dict):

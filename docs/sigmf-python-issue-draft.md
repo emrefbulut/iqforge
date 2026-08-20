@@ -9,37 +9,64 @@ this file.
 
 ## Outcome
 
-**Accepted, fixed upstream, awaiting release.**
+**Accepted, fixed upstream, released in sigmf 1.13.0.**
 
 - The report was discussed at SigMF's monthly call and turned into code within
   **seven days**.
 - **Both** suggested fixes below were taken, not just the preferred one:
   [sigmf-python#160](https://github.com/sigmf/sigmf-python/pull/160)
-  deep-copies the metadata in `__init__` *and* preserves the declared value in
-  `__original_version`. It also removes the errant `self.version` attribute in
-  favour of reading it from the metadata, and closes #159 explicitly.
-- Two maintainers approved it. It targets **v1.13.0** and is not merged as of
-  this writing.
+  deep-copies the metadata in `__init__` *and* preserves the declared value.
+  It also removes the errant `self.version` attribute in favour of reading it
+  from the metadata, and closes #159 explicitly.
+- Two maintainers approved it, and it shipped in **v1.13.0**.
 
-**The bug is still present in the latest release.** `sigmf 1.12.0` shipped after
-the report and still mutates the caller's dict — verified, not assumed, by the
-tripwire in `tests/test_io.py`, which fired on the version bump and was
-rechecked by hand.
+**Verified on the released version, not on the pull request.** CI resolves
+dependencies fresh (`uv.lock` is not committed), so 1.13.0 reached CI before it
+reached any developer machine and the tripwire in `tests/test_io.py` fired the
+morning after publication — with the "behaviour CHANGED" message rather than
+the routine one, which is the distinction that test exists to make. What was
+then measured against an installed 1.13.0:
 
-**How long the workaround is needed.** Until `1.13.0` is released *and* the
-floor in `pyproject.toml` is raised past it — and even then removing it is
-optional rather than forced. `load()` reads `core:version` out of the parsed
+| | 1.12.0 | 1.13.0 |
+|---|---|---|
+| caller's dict after `SigMFFile(metadata=d)` | rewritten to `1.2.6` | **untouched, still `1.0.0`** |
+| declared value recoverable from the handle | no | **yes, `handle.declared_version`** |
+| `handle.get_global_info()["core:version"]` | `1.2.6` | `1.2.6` (unchanged) |
+
+Two details worth recording, because both differ from what the pull request
+description suggested:
+
+1. The accessor shipped as a public **`declared_version`** property (backed by
+   `_declared_version`), not as `__original_version`. Reading the diff would
+   have given the wrong name; measuring the release gave the right one.
+2. `get_global_info()` **still returns the library's spec version**. The
+   deepcopy moved the normalisation into the handle's own copy rather than
+   removing it. This was predicted from a stand-in before 1.13.0 existed and is
+   now confirmed against the real thing — so `iqforge info` continues to print
+   `1.0.0 (file); 1.2.6 (reader)`, and that display is correct rather than a
+   leftover.
+
+**Checked against the three real captures this report cites.** Their metadata
+was re-fetched and read under 1.13.0; all three declare `core:version: 1.0.0`,
+and on all three the caller's dict survives intact, `declared_version` returns
+`1.0.0`, and the handle still reports `1.2.6`. Nothing regressed:
+
+| capture | datatype | in file | after `SigMFFile` | `declared_version` | `get_global_info()` |
+|---|---|---|---|---|---|
+| `cellular_downlink_880MHz` | `ci16_le` | 1.0.0 | 1.0.0 | 1.0.0 | 1.2.6 |
+| `space/GNSS L1 E1 band recording` | `ci8` | 1.0.0 | 1.0.0 | 1.0.0 | 1.2.6 |
+| `estevez/Vega-C MEO Cubesats/ASTROBIO_2022-07-24T19_25_49` | `ci16_le` | 1.0.0 | 1.0.0 | 1.0.0 | 1.2.6 |
+
+**How long the workaround is needed.** Not needed on 1.13.0, and kept anyway.
+`pyproject.toml` still admits 1.11.1 and 1.12.0, which do mutate, and the floor
+was deliberately not raised: `load()` reads `core:version` out of the parsed
 JSON before the dict is handed to `SigMFFile`, which is correct whether or not
-the library would have overwritten it, so the fix landing makes the workaround
-*redundant* rather than *wrong*. `tests/test_io.py` distinguishes the two cases
-and will say which one has happened.
+the library would have overwritten it, so the fix makes the workaround
+*redundant* rather than *wrong*. Forcing an upgrade on users for a bug this
+package does not expose them to would be a cost with no benefit.
 
-One thing measured while preparing for it, worth knowing before deleting
-anything: a deepcopy **alone** does not change what `get_global_info()` returns
-— the library still normalises `core:version` inside its own copy. It is
-`__original_version`, the second half of #160, that would change what a reader
-sees. So `iqforge info` may keep showing both values after 1.13.0, and that is
-correct rather than a leftover.
+Whether `declared_version` opens a cleaner route once the floor does move is
+tracked separately rather than decided here.
 
 ---
 
@@ -159,7 +186,7 @@ Either of, in order of preference:
 - sigmf 1.11.1 (latest on PyPI at the time of writing)
 - Python 3.11 and 3.12
 - Reproduced on Windows 11 and on Linux (ubuntu-latest, GitHub Actions)
-- Re-verified unchanged on sigmf 1.12.0
+- Re-verified unchanged on sigmf 1.12.0; fixed in sigmf 1.13.0
 
 ---
 

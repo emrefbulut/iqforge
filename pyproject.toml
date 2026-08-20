@@ -31,7 +31,15 @@ dependencies = [
     # Floor raised from >=1.2.1 to the oldest release actually exercised.
     # The old floor was a claim about versions nobody here had ever run: CI
     # resolves fresh (uv.lock is not committed) and therefore tests exactly one
-    # version, the newest. 1.11.1 and 1.12.0 are the two that have been.
+    # version, the newest. 1.11.1, 1.12.0 and 1.13.0 are the three that have
+    # been.
+    #
+    # The floor stays at 1.11.1 even though 1.13.0 fixed sigmf-python#159. The
+    # workaround reads core:version out of the parsed JSON before the dict is
+    # handed over, which is correct whether or not the library would have
+    # overwritten it, so the fix makes the workaround redundant rather than
+    # required. Raising the floor would force an upgrade on users for a bug
+    # this package does not expose them to.
     #
     # No upper bound, deliberately. Capping a library's dependency propagates
     # into every environment that installs it and can make a resolution
@@ -40,7 +48,8 @@ dependencies = [
     # get_captures, get_annotations -- all long-stable. The compensating control
     # is a test rather than a pin: tests/test_io.py fires on any unrecognised
     # sigmf release and reports whether the behaviour changed, which tells us
-    # instead of silently blocking users. That is how 1.12.0 was caught.
+    # instead of silently blocking users. That is how 1.12.0 was caught, and
+    # how 1.13.0's fix was noticed the morning after it was published.
     "sigmf>=1.11.1",
     "numpy>=1.26",
     "scipy>=1.11",
