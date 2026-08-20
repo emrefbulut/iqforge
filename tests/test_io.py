@@ -317,12 +317,13 @@ def test_annotation_ending_exactly_at_the_end_is_not_flagged(tmp_path: Path) -> 
 #: project works around. Reported upstream as sigmf/sigmf-python#159.
 MUTATING_SIGMF_VERSIONS = frozenset({"1.11.1", "1.12.0"})
 
-#: sigmf releases verified NOT to mutate it. The fix is sigmf-python#160
-#: (deepcopy in `__init__`, `__original_version` preserving the declared value),
-#: approved and slated for v1.13.0 but not merged when this was written -- so
-#: the set is empty rather than speculatively filled with a version that does
-#: not exist yet.
-FIXED_SIGMF_VERSIONS: frozenset[str] = frozenset()
+#: sigmf releases verified NOT to mutate it. The fix is sigmf-python#160,
+#: released in 1.13.0: `__init__` deep-copies the metadata, and the value the
+#: file declared is kept on a public `declared_version` property. The pull
+#: request called that attribute `__original_version`; it shipped under a
+#: different name, which is why membership here is earned by measuring an
+#: installed release rather than by reading an upstream diff.
+FIXED_SIGMF_VERSIONS: frozenset[str] = frozenset({"1.13.0"})
 
 
 def test_sigmf_library_overwrites_the_declared_version() -> None:
@@ -370,27 +371,39 @@ def test_sigmf_library_overwrites_the_declared_version() -> None:
             f"reading the version before handing the dict over is correct under "
             f"both behaviours -- so this is a simplification, not a fire."
         )
+        # Measured on 1.13.0, not inferred from #160: the deepcopy leaves the
+        # caller's dict alone, but the handle still normalises `core:version`
+        # inside its own copy, so a reader still sees the library's spec
+        # version. That is why `_version_cell` prints both values, and why the
+        # two-value display is not a leftover to be simplified away.
+        assert handle.get_global_info()["core:version"] != metadata["global"]["core:version"], (
+            f"sigmf {sigmf.__version__} now reports the DECLARED version from "
+            f"get_global_info(). That is a second behaviour change on top of the "
+            f"deepcopy, and it makes _version_cell's 'file / reader' split "
+            f"redundant. Check what the handle returns before removing anything."
+        )
 
 
 def test_load_reports_the_declared_version_under_a_non_mutating_library(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Forward-compatibility with sigmf-python#160, before it ships.
+    """`load()` reports the file's version under a non-mutating library.
 
-    The fix deepcopies the metadata in `__init__`, so the caller's dict keeps
-    its declared `core:version`. `load()` reads that field before handing the
-    dict over, which is correct under both behaviours -- but "correct by
-    inspection" is how the original bug survived, so it is exercised instead
-    against a stand-in that copies rather than mutates.
+    sigmf 1.13.0 shipped #160 and no longer mutates the caller's dict, so on a
+    current install the real class already behaves this way. The stand-in stays
+    because `pyproject.toml` still admits 1.11.1 and 1.12.0, which do mutate:
+    this test is what keeps the non-mutating half covered on a machine that
+    resolves an older release.
 
-    The stand-in models only the deepcopy half of #160. Running it showed that
-    a deepcopy alone does NOT change what `get_global_info()` reports -- the
-    library still normalises `core:version` inside its own copy, so the handle
-    still says 1.2.6. The other half of the PR, `__original_version`, is what
-    would change that, and this test deliberately asserts nothing about it:
-    predicting the exact post-fix return value of an unmerged PR would be
-    inventing upstream behaviour rather than testing ours. What is asserted is
-    the property `iqforge` actually depends on.
+    The stand-in models only the deepcopy half of #160, and that turned out to
+    be the half that matters. Measured against the real 1.13.0: the deepcopy
+    leaves the caller's dict alone, but `get_global_info()` still returns the
+    library's spec version, because the normalisation happens inside the
+    handle's own copy. `declared_version` -- the property #160 added, under a
+    different name than the PR described -- is where the file's own value now
+    lives. `iqforge` does not read it: `load()` takes the version out of the
+    parsed JSON before the dict is handed over, which is correct under both
+    behaviours. That property is what is asserted here.
     """
     import copy
 
