@@ -49,6 +49,14 @@ can tell whether the format it is looking at is one it understands.
 
 ### Changed
 
+- **A result measured once no longer prints an uncertainty.** A standard error
+  over one seed pair is zero by definition, and `inflation=+53.8 pp +/- 0.0`
+  states the strongest possible confidence exactly where the evidence is
+  weakest. `measure-leakage` now prints `(uncertainty not estimated, n=1)`
+  instead, the JSON payload carries `stderr_pp: null` rather than `0.0`, and
+  the markdown tables leave the `±` off a single-pair row and label its
+  inflation `(not estimated)`. Rows with a real sample are unchanged, so every
+  published table under `artifacts/` renders exactly as before.
 - **sigmf 1.13.0 fixed the upstream bug this project works around**
   ([sigmf-python#159](https://github.com/sigmf/sigmf-python/issues/159), fixed
   by [#160](https://github.com/sigmf/sigmf-python/pull/160)): constructing a
