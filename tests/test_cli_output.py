@@ -19,8 +19,9 @@ from typer.testing import CliRunner
 
 from helpers import write_record
 from iqforge import TORCH_REQUIRED
-from iqforge.cli import _render_annotations, _render_overview, app
+from iqforge.cli import _render_annotations, _render_overview, _uncertainty, app
 from iqforge.io import load
+from iqforge.measurement import CellStats
 
 runner = CliRunner()
 
@@ -264,3 +265,24 @@ def test_build_accepts_the_same_table_written_as_relative_paths(tmp_path):
     assert result.exit_code == 0, result.output
     manifest = json.loads((tmp_path / "ds" / "manifest.json").read_text(encoding="utf-8"))
     assert set(manifest["label_map"]) == {"alpha", "beta"}
+
+
+def _stats(*, stderr: float, n: int) -> CellStats:
+    return CellStats(
+        rec_mean=0.50, rec_sd=0.0, win_mean=0.60, win_sd=0.0,
+        mean_diff=0.10, stderr=stderr, n=n,
+    )  # fmt: skip
+
+
+def test_a_single_pair_reports_that_it_estimated_nothing() -> None:
+    """`inflation=+10.0 pp +/- 0.0` claims the opposite of what it means.
+
+    A standard error over one pair is zero by definition, and a reader who
+    skims the interval rather than the sample size comes away believing the
+    number is pinned. Refuse to print an interval instead.
+    """
+    assert _uncertainty(_stats(stderr=0.0, n=1)) == "(uncertainty not estimated, n=1)"
+
+
+def test_a_measured_grid_reports_its_standard_error_and_sample_size() -> None:
+    assert _uncertainty(_stats(stderr=0.019, n=15)) == "+/- 1.9 (standard error, n=15)"

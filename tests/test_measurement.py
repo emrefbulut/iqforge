@@ -117,6 +117,62 @@ def test_cell_stats_wait_for_both_arms() -> None:
     assert stats.mean_diff == pytest.approx(0.10)
 
 
+def test_a_single_pair_prints_no_spread() -> None:
+    """One seed pair has nothing to estimate, and must not look like it does.
+
+    A standard deviation over one sample is 0, and "± 0.0" in a results table
+    is the strongest claim the format can make -- printed exactly where the
+    evidence is weakest.
+    """
+    runs = [
+        Run(0, 0, "recording-level", 42, 0, 0.50, 0.9, 10, 4, stride=1024),
+        Run(0, 0, "window-level", 42, 0, 0.60, 0.9, 10, 4, stride=1024),
+    ]
+    stats = cell_stats(runs)
+    assert stats is not None
+    assert stats.n == 1
+    assert not stats.has_spread
+
+    cells = stats.accuracy_cells()
+    assert "±" not in cells, cells
+    assert "(not estimated)" in cells, cells
+    assert cells.endswith("| 1 |"), cells
+
+
+def test_a_repeated_cell_still_prints_its_spread() -> None:
+    """The n = 1 wording must not leak into rows that do have a sample."""
+    runs = [
+        Run(0, 0, "recording-level", 42, 0, 0.50, 0.9, 10, 4, stride=1024),
+        Run(0, 0, "window-level", 42, 0, 0.60, 0.9, 10, 4, stride=1024),
+        Run(0, 0, "recording-level", 7, 1, 0.55, 0.9, 10, 4, stride=1024),
+        Run(0, 0, "window-level", 7, 1, 0.70, 0.9, 10, 4, stride=1024),
+    ]
+    stats = cell_stats(runs)
+    assert stats is not None
+    assert stats.n == 2
+    assert stats.has_spread
+
+    cells = stats.accuracy_cells()
+    assert cells.count("±") == 3, cells
+    assert "(not estimated)" not in cells, cells
+
+
+def test_a_half_measured_row_does_not_invent_a_spread() -> None:
+    """Checkpointing writes the table mid-cell, before the second arm exists.
+
+    That row cannot report an inflation, which `cell_stats` already refuses.
+    What it must also not do is print the one accuracy it does have as though
+    it had been repeated.
+    """
+    table = summarise_snr_table(
+        [Run(0.08, 5.0, "recording-level", 42, 0, 0.50, 0.9, 10, 4)],
+        caption="one arm measured so far",
+    )
+    assert "± 0.0%" not in table, table
+    assert "nan" not in table, table
+    assert "50.0%" in table, table
+
+
 def test_window_level_split_is_deterministic(tmp_path: Path) -> None:
     """Same seed, same window pool, same deal -- twice."""
     if not any(EXAMPLES.glob("*.sigmf-meta")):

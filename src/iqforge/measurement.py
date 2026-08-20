@@ -599,13 +599,39 @@ def paired_differences(runs: Sequence[Run]) -> list[float]:
 
 
 def _sd(values: list[float]) -> float:
-    """Standard deviation, 0 for a single sample (a smoke grid)."""
+    """Standard deviation, 0 for a single sample (a smoke grid).
+
+    The zero is a placeholder, not a measurement: one sample has no spread to
+    estimate. Nothing may render it as "± 0.0" -- use `_mean_cell`, which
+    leaves the spread off instead.
+    """
     return statistics.stdev(values) if len(values) > 1 else 0.0
+
+
+def _mean_cell(values: Sequence[float]) -> str:
+    """A `mean ± sd` table cell, or the mean alone when there is one sample.
+
+    "± 0.0%" is what a spread of one sample formats to, and it reads as a
+    quantity that did not move rather than one that was not repeated -- the
+    strongest possible claim printed exactly where the weakest evidence is.
+    The row's `n` column already carries the sample size, so at n = 1 the
+    spread is simply absent.
+    """
+    if not values:
+        return "-"
+    mean = statistics.mean(values)
+    if len(values) < 2:
+        return f"{mean:.1%}"
+    return f"{mean:.1%} ± {statistics.stdev(values):.1%}"
 
 
 @dataclass(frozen=True)
 class CellStats:
-    """Accuracy means and the paired inflation for one table row."""
+    """Accuracy means and the paired inflation for one table row.
+
+    `rec_sd`, `win_sd` and `stderr` are 0.0 when `n` is 1, because a single
+    sample has no spread. Read `n` before reading any of them.
+    """
 
     rec_mean: float
     rec_sd: float
@@ -615,8 +641,23 @@ class CellStats:
     stderr: float
     n: int
 
+    @property
+    def has_spread(self) -> bool:
+        """Whether `rec_sd`, `win_sd` and `stderr` estimate anything."""
+        return self.n > 1
+
     def accuracy_cells(self) -> str:
-        """The four right-hand columns shared by every published table."""
+        """The four right-hand columns shared by every published table.
+
+        At n = 1 no spread is printed and the inflation column says so in
+        words. A reader scanning the column should not have to notice that a
+        "±" is missing to learn that nothing was repeated.
+        """
+        if not self.has_spread:
+            return (
+                f"{self.rec_mean:.1%} | {self.win_mean:.1%} | "
+                f"**{self.mean_diff * 100:+.1f} pp** (not estimated) | {self.n} |"
+            )
         return (
             f"{self.rec_mean:.1%} ± {self.rec_sd:.1%} | "
             f"{self.win_mean:.1%} ± {self.win_sd:.1%} | "
@@ -699,8 +740,7 @@ def summarise_snr_table(
             if stats is None:
                 rec = [r.test_accuracy for r in at if r.strategy == "recording-level"]
                 win = [r.test_accuracy for r in at if r.strategy == "window-level"]
-                rec_s = f"{statistics.mean(rec):.1%} ± {_sd(rec):.1%}" if rec else "nan ± 0.0%"
-                win_s = f"{statistics.mean(win):.1%} ± {_sd(win):.1%}" if win else "nan ± 0.0%"
+                rec_s, win_s = _mean_cell(rec), _mean_cell(win)
                 inflation = f"{rec_s} | {win_s} | - | 0 |"
             lines.append(f"| {at[0].snr_db:+.1f} dB | {inflation}")
     else:
@@ -717,8 +757,7 @@ def summarise_snr_table(
             if stats is None:
                 rec = [r.test_accuracy for r in at if r.strategy == "recording-level"]
                 win = [r.test_accuracy for r in at if r.strategy == "window-level"]
-                rec_s = f"{statistics.mean(rec):.1%} ± {_sd(rec):.1%}" if rec else "nan ± 0.0%"
-                win_s = f"{statistics.mean(win):.1%} ± {_sd(win):.1%}" if win else "nan ± 0.0%"
+                rec_s, win_s = _mean_cell(rec), _mean_cell(win)
                 inflation = f"{rec_s} | {win_s} | - | {0} |"
             else:
                 inflation = stats.accuracy_cells()
