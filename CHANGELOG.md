@@ -49,6 +49,20 @@ can tell whether the format it is looking at is one it understands.
 
 ### Changed
 
+- **`audit` reports the Vega-C pattern as RISK rather than LEAK.** The status
+  was wrong about what kind of failure it names. Every other LEAK in this tool
+  means the same material is on both sides of a split -- overlapping air time,
+  identical data, one recording in two bins. The Vega-C pattern is the
+  opposite: a *different* pass, with its own Doppler, elevation and SNR, in
+  each split. That is distribution shift, which is what `docs/methodology.md`
+  §6.2 already called it, and the two failures move a score in opposite
+  directions -- leakage inflates it, shift depresses it. Filing one under the
+  other costs `LEAK` its meaning, and the value of these statuses is that they
+  mean something precise.
+  Consequence is unchanged where it matters: `measure-leakage` still refuses
+  the set as category 2, and `audit --strict` still exits non-zero. What
+  changes is that `audit` without `--strict` no longer exits 1 on it, which is
+  correct -- nothing there is proven to leak.
 - **A result measured once no longer prints an uncertainty.** A standard error
   over one seed pair is zero by definition, and `inflation=+53.8 pp +/- 0.0`
   states the strongest possible confidence exactly where the evidence is

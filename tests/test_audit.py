@@ -584,16 +584,53 @@ def _vega_c_pattern() -> tuple[list[RecordFeatures], dict[str, str]]:
     return features, assignment
 
 
-def test_vega_c_pattern_is_a_shared_timestamp_leak() -> None:
-    """The sessions are crossed with class; each split got a different pass."""
+def test_vega_c_pattern_is_reported_as_risk_not_leak() -> None:
+    """The sessions are crossed with class; each split got a different pass.
+
+    RISK rather than LEAK on purpose. Every LEAK in this tool means the same
+    material is on both sides of a split. Here the splits hold *different*
+    material -- a different pass, with its own Doppler and SNR, in each bin.
+    That is distribution shift (methodology §6.2), and the two failures push a
+    score in opposite directions. Filing this as LEAK would cost that status
+    its meaning.
+    """
     from iqforge.audit import _shared_timestamp
 
     features, assignment = _vega_c_pattern()
     finding = _shared_timestamp(features, assignment)
-    assert finding.status is Status.LEAK
+    assert finding.status is Status.RISK
+    assert finding.status is not Status.LEAK
     assert finding.check == "shared timestamp"
     assert "§6.2" in finding.detail
     assert "Vega-C" in finding.detail
+    assert "distribution shift" in finding.detail
+
+
+def test_vega_c_is_still_refused_by_measure_leakage() -> None:
+    """RISK must not weaken the refusal; only the audit's exit code moves.
+
+    The point of the status change is vocabulary, not consequence. If this
+    fires, the rename let a dataset through that methodology §6.2 eliminated.
+    """
+    from iqforge.audit import _shared_timestamp
+    from iqforge.preflight import Category, DecisionStatus, decide
+
+    features, assignment = _vega_c_pattern()
+    finding = _shared_timestamp(features, assignment)
+    report = AuditReport(
+        tool_version="test",
+        generated="",
+        mode="folder of recordings",
+        input_path="vega",
+        input_lines=[],
+        fingerprint="",
+        findings=[finding],
+        features=features,
+    )
+    decision = decide(report, seconds_per_window_epoch=None)
+
+    assert decision.status is DecisionStatus.REFUSED
+    assert decision.category is Category.SHARED_TIMESTAMP
 
 
 def test_shared_air_time_is_quiet_on_the_vega_c_pattern() -> None:
@@ -693,21 +730,26 @@ def test_folder_mode_reports_the_crossed_pattern_as_risk_not_leak() -> None:
     assert "§6.2" in finding.detail
 
 
-def test_mutating_the_partition_is_what_the_leak_test_detects() -> None:
+def test_mutating_the_partition_is_what_the_shared_timestamp_check_detects() -> None:
     """A test that has never failed has not been shown to test anything.
 
-    Put every stamp in every split and the leak must vanish. If it does not,
-    the test above is matching on the crossed labels alone, which is the
-    structure of the set rather than the split.
+    Put every stamp in every split and the finding must go quiet. If it does
+    not, the test above is matching on the crossed labels alone -- the
+    structure of the set -- rather than on how the split fell.
+
+    The quiet outcome is asserted as PASS/sample rather than as "not RISK".
+    `is not RISK` would also be satisfied by NOT CHECKED, so it would pass if
+    the check silently stopped looking.
     """
     from iqforge.audit import _shared_timestamp
 
     features, assignment = _vega_c_pattern()
-    assert _shared_timestamp(features, assignment).status is Status.LEAK
+    assert _shared_timestamp(features, assignment).status is Status.RISK
     # Same recordings, every satellite's three stamps forced into train.
     collapsed = dict.fromkeys(assignment, "train")
     finding = _shared_timestamp(features, collapsed)
-    assert finding.status is not Status.LEAK
+    assert finding.status is Status.PASS_SAMPLE
+    assert "every split holds the same set of them" in finding.detail
 
 
 # --------------------------------------------------------------------------

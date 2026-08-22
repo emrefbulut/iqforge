@@ -267,6 +267,11 @@ def _leaks_not_held(
     held_overlap = bool(group_keys) or not _ungrouped_overlap_pairs(features, group_keys)
     leaks: list[Finding] = []
     for finding in report.findings:
+        # `shared timestamp` is category 2 and is matched before this runs, so
+        # it must never also arrive as category 5. It reports RISK rather than
+        # LEAK now, which filters it here anyway; the name stays so that
+        # raising it back to LEAK cannot silently give one dataset two
+        # categories.
         if finding.status is not Status.LEAK or finding.check == "shared timestamp":
             continue
         if finding.check in {"recording time overlap", "shared air time"} and held_overlap:

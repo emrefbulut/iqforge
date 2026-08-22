@@ -1227,10 +1227,28 @@ def _shared_timestamp(
     2024-01-01T00:00:00Z). Here several distinct stamps each repeat in every
     class, and that repetition is the signal.
 
+    Reported as RISK, never LEAK, and the distinction is not a severity dial.
+    Every other LEAK in this tool means *the same material is on both sides* --
+    overlapping air time, identical data, a recording split across bins. The
+    Vega-C pattern is the opposite: *different material on each side*, a
+    different pass with its own Doppler, elevation and SNR in every split.
+    That is distribution shift, which is what methodology §6.2 calls it. Both
+    invalidate a measurement, and they invalidate it in opposite directions --
+    leakage inflates the score, shift depresses it. Filing one under the other
+    costs the word "LEAK" its meaning, and this tool's value is that its
+    statuses mean something precise.
+
+    RISK is not a downgrade in consequence. `measure-leakage` refuses the set
+    either way (category 2, `preflight.decide` accepts LEAK and RISK alike),
+    and `audit --strict` still exits non-zero. What changes is that `audit`
+    without `--strict` no longer exits 1 on it, which is correct: nothing here
+    is proven to leak.
+
     Args:
         assignment: Split each recording landed in. Absent in folder mode, where
-            nothing has been split yet: the crossed pattern is then a RISK
-            rather than a LEAK, because the bins do not exist to fall into.
+            nothing has been split yet. Without it the pattern is reported
+            without reference to splits, because the bins do not exist to fall
+            into.
     """
     timed = [f for f in features if f.capture_time is not None and f.label is not None]
     if len(timed) < 2:
@@ -1275,12 +1293,14 @@ def _shared_timestamp(
     partitioned = len({frozenset(stamps) for stamps in stamp_sets.values()}) > 1
     if partitioned:
         return Finding(
-            Status.LEAK,
+            Status.RISK,
             "shared timestamp",
             f"{len(crossed)} distinct core:datetime value(s) each appear in more than "
             f"one class and the splits do not share the same set of them. A "
             f"recording-level split therefore puts a different acquisition in each "
-            f"split -- the Vega-C pattern (methodology §6.2)",
+            f"split -- the Vega-C pattern (methodology §6.2). This is distribution "
+            f"shift, not leakage: the splits hold different material rather than "
+            f"the same material twice",
         )
     return Finding(
         Status.PASS_SAMPLE,
