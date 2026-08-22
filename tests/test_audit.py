@@ -283,7 +283,8 @@ def test_every_line_fits_the_quotable_width() -> None:
             Finding(Status.NOT_CHECKED, "in-band SNR", "why " * 40),
         ]
     )
-    report.input_path = "C:/a-very/deep/path/" * 8
+    # Synthetic overflow, not a real location: not-a-machine-path
+    report.input_path = "C:/a-very/deep/path/" * 8  # noqa: E501 - not-a-machine-path
     report.next_step = ["iqforge measure-leakage " + "x/" * 60, "because " * 30]
     for line in render_text(report).splitlines():
         assert len(line) <= WIDTH, line
