@@ -1025,17 +1025,33 @@ Open questions this repository does not answer:
 git clone https://github.com/emrefbulut/iqforge && cd iqforge
 uv sync --extra torch
 
+# Sections 2 and 3, synthetic: generates its own recordings, needs nothing else.
 uv run python scripts/leakage_experiment.py                  # section 2
 uv run python scripts/leakage_experiment.py --sweep stride   # section 3
+
+# Section 3 on real captures: point these at the datasets first. They are
+# public downloads, far too large to commit, so the path is yours to supply --
+# there is no default, and the scripts stop with the variable name rather than
+# guessing at a location.
+export IQFORGE_DASH7=/path/to/dash7/extracted/cabled
+export IQFORGE_LORAIQ=/path/to/prepared/loraiq
+
 uv run python scripts/leakage_real.py --sweep stride         # section 3, real
 uv run python scripts/leakage_loraiq.py                      # section 3, LoRaIQ
 ```
 
+`IQFORGE_LORAIQ` is a directory of prepared recordings; the three CSVs
+(`loraiq.csv`, `loraiq_labels.csv`, `loraiq_groups.csv`) are looked up beside
+it, or named individually with `IQFORGE_LORAIQ_INDEX`, `_LABELS` and `_GROUPS`.
+Every path also has a command-line flag (`--source`, `--index`, …) that wins
+over the variable. The tests that use these datasets skip when the variables
+are unset, and the skip says which variable to set.
+
 All scripts write to `artifacts/` and run through the same shipped command path
 (`python -m iqforge measure-leakage`) for each measured cell; there is no second
 measurement logic path in `scripts/`. None touches `examples/`; the synthetic
-experiment generates its own recordings at each noise level, and the real one
-reads a DASH7 capture set you supply with `--source`. Results are checkpointed
+experiment generates its own recordings at each noise level, and the real ones
+read capture sets you supply. Results are checkpointed
 after every run, so an interrupted grid keeps what it has completed.
 
 `--sweep snr` is intentionally absent from `iqforge measure-leakage`. SNR

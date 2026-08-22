@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import tempfile
 import time
@@ -61,11 +62,19 @@ from iqforge.measurement import (
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS = ROOT / "artifacts"
 
-#: Where the extracted DASH7 cabled tree lives; override with --source.
-DEFAULT_SOURCE = Path(
-    "C:/Users/Emre/AppData/Local/Temp/claude/C--Users-Emre-Desktop-project/"
-    "0edfda65-7ea5-4ec7-85c8-a30cc5d9358b/scratchpad/dash7/extracted/cabled"
-)
+#: Environment variable naming the extracted DASH7 cabled tree.
+ENV_DASH7 = "IQFORGE_DASH7"
+
+#: Where that tree lives. `None` unless the variable is set; `--source`
+#: overrides either way.
+#:
+#: There is deliberately no fallback path. This used to be an absolute path
+#: into one developer's temporary directory, which resolved on exactly one
+#: machine -- so the script "worked" there and was unrunnable everywhere else,
+#: while docs/methodology.md claimed the numbers were reproducible from this
+#: repository. A path that resolves on one machine is a machine setting, not a
+#: default, and the recordings are a public download too large to check in.
+DEFAULT_SOURCE = Path(os.environ[ENV_DASH7]) if os.environ.get(ENV_DASH7) else None
 
 SPLIT_SEEDS = DEFAULT_SPLIT_SEEDS
 TRAIN_SEEDS = DEFAULT_TRAIN_SEEDS
@@ -279,6 +288,12 @@ def main() -> None:
 
     global SOURCE
     SOURCE = args.source
+    if SOURCE is None:
+        raise SystemExit(
+            f"no DASH7 source. Set {ENV_DASH7} to the extracted 'cabled' tree, or pass "
+            f"--source. The recordings are a public download and are not in this "
+            f"repository."
+        )
     if not SOURCE.exists():
         raise SystemExit(f"source not found: {SOURCE}")
 

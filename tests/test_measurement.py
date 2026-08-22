@@ -9,13 +9,13 @@ published tables from the recorded run files.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
+from helpers import loraiq_paths, loraiq_skip_reason
 from iqforge.measurement import (
     BuildSpec,
     Run,
@@ -237,25 +237,7 @@ def test_summarise_stride_rows_match_the_published_synthetic_stride_table() -> N
     assert got_rows == published_rows
 
 
-def _loraiq_paths() -> tuple[Path, Path, Path, Path] | None:
-    source = Path(os.environ["IQFORGE_LORAIQ"]) if os.environ.get("IQFORGE_LORAIQ") else None
-    if source is None:
-        fallback = Path(
-            "C:/Users/Emre/AppData/Local/Temp/claude/C--Users-Emre-Desktop-project/"
-            "0edfda65-7ea5-4ec7-85c8-a30cc5d9358b/scratchpad/scan/loraiq"
-        )
-        source = fallback if fallback.exists() else None
-    if source is None or not source.exists():
-        return None
-    index = Path(os.environ.get("IQFORGE_LORAIQ_INDEX", source.parent / "loraiq.csv"))
-    labels = Path(os.environ.get("IQFORGE_LORAIQ_LABELS", source.parent / "loraiq_labels.csv"))
-    groups = Path(os.environ.get("IQFORGE_LORAIQ_GROUPS", source.parent / "loraiq_groups.csv"))
-    if not all(p.exists() for p in (index, labels, groups)):
-        return None
-    return source, index, labels, groups
-
-
-@pytest.mark.skipif(_loraiq_paths() is None, reason="LoRaIQ recordings are not on this machine")
+@pytest.mark.skipif(loraiq_skip_reason() is not None, reason=loraiq_skip_reason() or "")
 def test_loraiq_cell_reproduces_the_recorded_number(tmp_path: Path) -> None:
     """The Faz 2 gate: stride 1024 / split 42 / train 0, both arms.
 
@@ -269,7 +251,7 @@ def test_loraiq_cell_reproduces_the_recorded_number(tmp_path: Path) -> None:
 
     from iqforge.measurement import measure_pair
 
-    paths = _loraiq_paths()
+    paths = loraiq_paths()
     assert paths is not None
     source, index, labels, groups = paths
     prepared = tmp_path / "prepared"

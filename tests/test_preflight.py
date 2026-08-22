@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 from pathlib import Path
 
 import numpy as np
 import pytest
 from typer.testing import CliRunner
 
-from helpers import write_record
+from helpers import loraiq_paths, loraiq_skip_reason, write_record
 from iqforge.audit import WIDTH, AuditReport, Finding, RecordFeatures, Status
 from iqforge.cli import _audit_folder, app
 from iqforge.grouping import resolve_group_keys
@@ -235,24 +234,7 @@ def test_loraiq_pattern_is_not_refused_when_grouped(tmp_path: Path) -> None:
         assert "stops before training" in result.output
 
 
-def _loraiq_paths() -> tuple[Path, Path, Path] | None:
-    source = Path(os.environ["IQFORGE_LORAIQ"]) if os.environ.get("IQFORGE_LORAIQ") else None
-    if source is None:
-        fallback = Path(
-            "C:/Users/Emre/AppData/Local/Temp/claude/C--Users-Emre-Desktop-project/"
-            "0edfda65-7ea5-4ec7-85c8-a30cc5d9358b/scratchpad/scan/loraiq"
-        )
-        source = fallback if fallback.exists() else None
-    if source is None or not source.exists():
-        return None
-    labels = Path(os.environ.get("IQFORGE_LORAIQ_LABELS", source.parent / "loraiq_labels.csv"))
-    groups = Path(os.environ.get("IQFORGE_LORAIQ_GROUPS", source.parent / "loraiq_groups.csv"))
-    if not labels.exists() or not groups.exists():
-        return None
-    return source, labels, groups
-
-
-@pytest.mark.skipif(_loraiq_paths() is None, reason="LoRaIQ recordings are not on this machine")
+@pytest.mark.skipif(loraiq_skip_reason() is not None, reason=loraiq_skip_reason() or "")
 def test_loraiq_recordings_are_not_refused() -> None:
     """The dataset that carried §3 must pass preflight.
 
@@ -260,9 +242,9 @@ def test_loraiq_recordings_are_not_refused() -> None:
     `tests/test_measurement.py`, and rerunning the whole training cell here
     would make category coverage tests prohibitively slow.
     """
-    paths = _loraiq_paths()
+    paths = loraiq_paths()
     assert paths is not None
-    source, labels, groups = paths
+    source, _index, labels, groups = paths
     report = _audit_folder(
         source,
         1024,
