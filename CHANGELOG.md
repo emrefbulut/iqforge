@@ -106,10 +106,19 @@ can tell whether the format it is looking at is one it understands.
   cells through `iqforge measure-leakage --format json` instead of keeping a
   second direct measurement path. Dataset-specific preparation remains in
   scripts; pairing/training stays in the command path.
-- Migration safety gate added: published-table sample cells are compared exactly
-  (test/train accuracy and train/test window counts) before retiring duplicate
-  paths. The synthetic gate runs forced preflight intentionally because its
-  annotation labels are not visible to folder-audit's single-window probe.
+- **The migration gate now compares sample size, not only values.**
+  `scripts/parity_gate.py` (was `scripts/_phase5_sample_checks.py`) re-measures
+  three cells per published table instead of one and checks three things per
+  cell: how many runs came back, which seed pairs they came from, and every
+  run's accuracies and window counts, matched by seed rather than by position.
+  The version it replaces read one recording-level row and one window-level row
+  per table. Every assertion it made was true of a grid that had been cut from
+  15 seed pairs to 1, because the surviving pair reproduced exactly -- so the
+  gate reported a pass on the change it existed to catch. It also stopped
+  running at all when the JSON payload grew a `rows` list, since it read
+  `recording_level`/`window_level` keys that no longer exist. The synthetic
+  cells run forced preflight intentionally, because their annotation labels are
+  not visible to folder-audit's single-window probe.
 - SPEC §5.10 now describes the refuse path that shipped, not a constraint on a
   command that did not exist. The command is read-only on the user's recordings
   and will not grow a `--sweep snr` flag. Adding noise requires writing altered
