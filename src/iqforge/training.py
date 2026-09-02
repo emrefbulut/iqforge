@@ -199,8 +199,9 @@ def train_baseline(
             seed.
         learning_rate: Adam learning rate.
         on_epoch: Callback invoked at the end of every epoch.
-            device_choice: `auto`, `cpu` or `cuda`. Defaults to CPU; see
-            `DEFAULT_DEVICE` for why that is deliberate.
+        device_choice: `auto`, `cpu` or `cuda`. Defaults to CPU; see
+            `DEFAULT_DEVICE` for why that is deliberate. CUDA is never selected
+            just because a GPU is present.
 
     Returns:
         The results of the run.

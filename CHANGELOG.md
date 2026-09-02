@@ -13,6 +13,12 @@ can tell whether the format it is looking at is one it understands.
 
 ### Added
 
+- **`--device cpu|cuda` on `iqforge measure-leakage`**, defaulting to `cpu`.
+  CUDA is opt-in for new measurements and is never selected just because a GPU
+  is present; `cuda` errors when torch reports none. Published tables, the
+  parity gate, and `artifacts/*.json` stay on CPU. `TrainingResult.environment`
+  already recorded the device; the measurement path now stamps the device that
+  was actually requested.
 - `iqforge measure-leakage` now accepts `--balance-by`, so the command path can
   run the same nuisance-balancing setup that the published synthetic measurement
   tables used.

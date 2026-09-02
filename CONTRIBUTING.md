@@ -71,6 +71,7 @@ Then:
 
 ```bash
 uv run iqforge train dataset/ --device cuda
+uv run iqforge measure-leakage records/ --device cuda
 ```
 
 `--device auto` picks CUDA when it is available and CPU otherwise; `--device
@@ -80,7 +81,10 @@ prints a warning that its numbers are not bit-comparable with CPU runs, and
 `TrainingResult.environment` records the device, torch version, CUDA version,
 and the numpy / scipy / sigmf versions windowing, normalisation and reading
 depend on, so a results file can be checked later. The sweep scripts in `scripts/`
-refuse to extend a checkpoint that was measured on a different environment.
+and `scripts/parity_gate.py` do not pass `--device`, so published tables stay
+on CPU. A CUDA leakage run is a new labeled measurement, not a replacement of
+`artifacts/leakage_*.json`. The sweep scripts refuse to extend a checkpoint
+that was measured on a different environment.
 
 ## Engineering conventions
 

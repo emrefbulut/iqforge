@@ -272,13 +272,26 @@ def split_counts(dataset: Path) -> tuple[int, int]:
 
 
 def train_once(
-    dataset: Path, train_seed: int, epochs: int = EPOCHS
+    dataset: Path,
+    train_seed: int,
+    epochs: int = EPOCHS,
+    *,
+    device_choice: str | None = None,
 ) -> tuple[float, float, int, int]:
-    """Train the baseline and return accuracies and split sizes."""
-    from iqforge.training import train_baseline
+    """Train the baseline and return accuracies and split sizes.
+
+    `device_choice` is the same `cpu` / `cuda` / `auto` string `iqforge train`
+    takes. Left unset, training stays on CPU even when a GPU is present.
+    """
+    from iqforge.training import DEFAULT_DEVICE, train_baseline
 
     manifest = json.loads((dataset / "manifest.json").read_text(encoding="utf-8"))
-    result = train_baseline(dataset, epochs=epochs, seed=train_seed)
+    result = train_baseline(
+        dataset,
+        epochs=epochs,
+        seed=train_seed,
+        device_choice=DEFAULT_DEVICE if device_choice is None else device_choice,
+    )
     return (
         result.test_accuracy or 0.0,
         result.final_train_accuracy,
@@ -287,7 +300,7 @@ def train_once(
     )
 
 
-def current_environment() -> dict[str, str]:
+def current_environment(device_choice: str | None = None) -> dict[str, str]:
     """Device, torch, CUDA, and numeric-stack versions of this process.
 
     Degrades rather than raising when torch is absent. The guards that use this
@@ -295,6 +308,10 @@ def current_environment() -> dict[str, str]:
     still worth answering in a torch-free install -- `audit` and the refuse
     path both run there. Windowing and normalisation are numpy and scipy work
     regardless, so those versions are reported either way.
+
+    `device_choice` is the training device that will produce the numbers, not
+    "whatever GPU happens to be plugged in". Unset means CPU, matching
+    `iqforge train` and `iqforge measure-leakage`.
     """
     import numpy
     import scipy
@@ -309,7 +326,8 @@ def current_environment() -> dict[str, str]:
         from iqforge.training import DEFAULT_DEVICE, describe_environment, resolve_device
     except ModuleNotFoundError:
         return {"device": "none (torch not installed)", **base}
-    return describe_environment(resolve_device(DEFAULT_DEVICE))
+    choice = DEFAULT_DEVICE if device_choice is None else device_choice
+    return describe_environment(resolve_device(choice))
 
 
 def check_environment(runs_path: Path) -> None:
@@ -481,6 +499,7 @@ def run_grid(
     checkpoint: Callable[[list[Run]], None] | None = None,
     epochs: int = EPOCHS,
     verbose: bool = True,
+    device_choice: str | None = None,
 ) -> list[Run]:
     """Build both arms and train them, for every cell and seed pair.
 
@@ -492,9 +511,11 @@ def run_grid(
         train_seeds: Seeds for weight init and batch order.
         checkpoint: Called with the runs so far after every run.
         epochs: Training length. Default is the published-table value.
+        device_choice: Training device (`cpu`, `cuda`, `auto`). Defaults to
+            CPU; a GPU that happens to be present is not used unless asked.
     """
     runs: list[Run] = []
-    environment = current_environment()
+    environment = current_environment(device_choice)
     work = Path(tempfile.mkdtemp(prefix="iqforge-measure-"))
     total = len(cells) * len(split_seeds) * len(train_seeds) * 2
     done = 0
@@ -513,7 +534,7 @@ def run_grid(
                     for train_seed in train_seeds:
                         t0 = time.time()
                         acc, train_acc, n_train, n_test = train_once(
-                            dataset, train_seed, epochs=epochs
+                            dataset, train_seed, epochs=epochs, device_choice=device_choice
                         )
                         done += 1
                         run = Run(
@@ -562,6 +583,7 @@ def measure_pair(
     train_seed: int,
     epochs: int = EPOCHS,
     verbose: bool = True,
+    device_choice: str | None = None,
 ) -> tuple[Run, Run]:
     """One seed pair, both arms. The unit the LoRaIQ acceptance cell is."""
     cell = GridCell(
@@ -570,7 +592,14 @@ def measure_pair(
         stride=spec.stride,
         label=f"stride={spec.stride}" if spec.stride is not None else "",
     )
-    runs = run_grid([cell], [split_seed], [train_seed], epochs=epochs, verbose=verbose)
+    runs = run_grid(
+        [cell],
+        [split_seed],
+        [train_seed],
+        epochs=epochs,
+        verbose=verbose,
+        device_choice=device_choice,
+    )
     rec = next(r for r in runs if r.strategy == "recording-level")
     win = next(r for r in runs if r.strategy == "window-level")
     return rec, win
