@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -66,14 +67,33 @@ from iqforge.measurement import (
 ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS = ROOT / "artifacts"
 
-SCRATCH = Path(
-    "C:/Users/Emre/AppData/Local/Temp/claude/C--Users-Emre-Desktop-project/"
-    "0edfda65-7ea5-4ec7-85c8-a30cc5d9358b/scratchpad/scan"
-)
-DEFAULT_SOURCE = SCRATCH / "loraiq"
-DEFAULT_INDEX = SCRATCH / "loraiq.csv"
-DEFAULT_LABELS = SCRATCH / "loraiq_labels.csv"
-DEFAULT_GROUPS = SCRATCH / "loraiq_groups.csv"
+#: Environment variables naming the LoRaIQ inputs. Only the first is needed:
+#: the three CSVs are looked up alongside the recordings unless overridden.
+ENV_SOURCE = "IQFORGE_LORAIQ"
+ENV_INDEX = "IQFORGE_LORAIQ_INDEX"
+ENV_LABELS = "IQFORGE_LORAIQ_LABELS"
+ENV_GROUPS = "IQFORGE_LORAIQ_GROUPS"
+
+
+def _env_path(var: str) -> Path | None:
+    raw = os.environ.get(var)
+    return Path(raw) if raw else None
+
+
+#: `None` unless the variables are set; the `--source`/`--index`/`--labels`/
+#: `--groups` flags override either way.
+#:
+#: There is deliberately no fallback path. These used to point into one
+#: developer's temporary directory, which resolved on exactly one machine -- so
+#: the script "worked" there and was unrunnable everywhere else, while
+#: docs/methodology.md claimed the numbers were reproducible from this
+#: repository. A path that resolves on one machine is a machine setting, not a
+#: default, and the recordings are a public download too large to check in.
+DEFAULT_SOURCE = _env_path(ENV_SOURCE)
+_ALONGSIDE = DEFAULT_SOURCE.parent if DEFAULT_SOURCE is not None else None
+DEFAULT_INDEX = _env_path(ENV_INDEX) or (_ALONGSIDE / "loraiq.csv" if _ALONGSIDE else None)
+DEFAULT_LABELS = _env_path(ENV_LABELS) or (_ALONGSIDE / "loraiq_labels.csv" if _ALONGSIDE else None)
+DEFAULT_GROUPS = _env_path(ENV_GROUPS) or (_ALONGSIDE / "loraiq_groups.csv" if _ALONGSIDE else None)
 
 SPLIT_SEEDS = DEFAULT_SPLIT_SEEDS
 TRAIN_SEEDS = DEFAULT_TRAIN_SEEDS
@@ -201,7 +221,21 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    for path in (args.source, args.index, args.labels, args.groups):
+    named = (
+        ("--source", args.source),
+        ("--index", args.index),
+        ("--labels", args.labels),
+        ("--groups", args.groups),
+    )
+    unset = [flag for flag, path in named if path is None]
+    if unset:
+        raise SystemExit(
+            f"no LoRaIQ inputs for {', '.join(unset)}. Set {ENV_SOURCE} to the directory "
+            f"of prepared recordings -- the three CSVs are looked up alongside it, or set "
+            f"{ENV_INDEX} / {ENV_LABELS} / {ENV_GROUPS} -- or pass the flags. The dataset "
+            f"is a public download and is not in this repository."
+        )
+    for _flag, path in named:
         if not path.exists():
             raise SystemExit(f"not found: {path}")
 

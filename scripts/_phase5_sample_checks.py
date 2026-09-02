@@ -109,6 +109,8 @@ def main() -> None:
         shutil.rmtree(work, ignore_errors=True)
 
     # 3) DASH7 real stride table sample: snr=-19, stride=1024
+    if real.DEFAULT_SOURCE is None:
+        raise SystemExit(f"DASH7 source not configured: set {real.ENV_DASH7}")
     if not real.DEFAULT_SOURCE.exists():
         raise SystemExit(f"DASH7 source not found: {real.DEFAULT_SOURCE}")
     exp_rec, exp_win = _first_pair(ARTIFACTS / "leakage_real_stride_runs.json")
@@ -143,6 +145,8 @@ def main() -> None:
         loraiq.DEFAULT_LABELS,
         loraiq.DEFAULT_GROUPS,
     ):
+        if path is None:
+            raise SystemExit(f"LoRaIQ inputs not configured: set {loraiq.ENV_SOURCE}")
         if not path.exists():
             raise SystemExit(f"LoRaIQ input not found: {path}")
     exp_rec, exp_win = _first_pair(ARTIFACTS / "leakage_loraiq_runs.json")

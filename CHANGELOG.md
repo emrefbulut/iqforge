@@ -49,6 +49,22 @@ can tell whether the format it is looking at is one it understands.
 
 ### Changed
 
+- **The experiment scripts and their tests no longer carry a hardcoded path.**
+  `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`, `tests/test_preflight.py`
+  and `tests/test_measurement.py` all fell back to an absolute path inside one
+  developer's temporary directory. That path resolved on exactly one machine,
+  so the scripts ran there and were unrunnable everywhere else, and the LoRaIQ
+  tests passed there and skipped silently everywhere else -- while
+  `docs/methodology.md` opened with "everything below is reproducible from this
+  repository". The datasets are now named by `IQFORGE_DASH7` and
+  `IQFORGE_LORAIQ` (plus optional `IQFORGE_LORAIQ_INDEX` / `_LABELS` /
+  `_GROUPS`) with no fallback, every path keeps its command-line flag, and both
+  the scripts' errors and the tests' skip reasons name the variable to set
+  instead of saying "not on this machine". `docs/methodology.md` §Reproducing
+  now shows the variables. A new `tests/test_repo_hygiene.py` scans `src/`,
+  `scripts/` and `tests/` for committed machine paths so this cannot return
+  quietly; a line that only looks like one opts out with an inline
+  `not-a-machine-path` marker.
 - **`audit` reports the Vega-C pattern as RISK rather than LEAK.** The status
   was wrong about what kind of failure it names. Every other LEAK in this tool
   means the same material is on both sides of a split -- overlapping air time,
