@@ -12,7 +12,7 @@
 ### P0 (Immediate)
 
 1. **CI reliability is broken for merged main**
-   - `ruff` currently fails on `scripts/_phase5_sample_checks.py`, `scripts/leakage_loraiq.py`, `scripts/leakage_real.py`, and import order in `src/iqforge/cli.py`.
+   - `ruff` currently fails on `scripts/parity_gate.py`, `scripts/leakage_loraiq.py`, `scripts/leakage_real.py`, and import order in `src/iqforge/cli.py`.
    - Result: PR checks can be red while tests are green, reducing trust in branch protection.
 
 2. **CLI module size/complexity risk**
