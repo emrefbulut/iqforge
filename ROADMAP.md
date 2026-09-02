@@ -50,6 +50,15 @@ After Now is done — still reliability-first:
 - [ ] Hardware capture on **one** device (RTL-SDR / HackRF / Pluto) — parallel to
       public-file work, not a blocker for it. One device proves one path, not all
       integer/I/Q conventions.
+- [ ] Optional CUDA for **new** measurements only. Published tables and the
+      parity gate stay CPU; never re-measure those grids on GPU and call them
+      the same result. `iqforge train` stays CPU by default — CUDA is opt-in,
+      never a silent fallback because a GPU is present. Record `cpu` / `cuda`
+      in `TrainingResult.environment` (or equivalent) so two tables can be
+      told apart. A CUDA run is a new labeled measurement (the real-recording
+      leakage curve, when that happens), not a replacement of
+      `artifacts/leakage_*.json`. Do not claim GPU bit-equality. Do not
+      enlarge *n* after seeing results.
 - [ ] Frequency-aware labeling (SPEC §5.3 deferred item)
 - [x] **`--group-by`: keep related recordings together.** Shipped with two
       schemes, `path:<regex>` and `csv:<file>`. Recordings sharing a key become
