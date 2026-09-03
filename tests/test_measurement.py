@@ -362,3 +362,40 @@ def test_current_environment_degrades_without_torch(monkeypatch):
     assert "numpy" in env
     assert "scipy" in env
     assert "torch" not in env
+
+
+def test_train_once_forwards_the_requested_device(tmp_path, monkeypatch):
+    """measure-leakage's training path must honour --device, not ignore it."""
+    pytest.importorskip("torch")
+    from iqforge.measurement import train_once
+
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"splits": {"train": {"count": 1}, "test": {"count": 1}}}),
+        encoding="utf-8",
+    )
+    seen: dict[str, str] = {}
+
+    class _Result:
+        test_accuracy = 0.5
+        final_train_accuracy = 0.75
+        environment = {"device": "cuda"}
+
+    def fake_train_baseline(dataset, *, epochs, seed, device_choice="cpu"):
+        seen["device_choice"] = device_choice
+        return _Result()
+
+    monkeypatch.setattr("iqforge.training.train_baseline", fake_train_baseline)
+    train_once(tmp_path, train_seed=0, epochs=1, device_choice="cuda")
+    assert seen["device_choice"] == "cuda"
+
+    train_once(tmp_path, train_seed=0, epochs=1)
+    assert seen["device_choice"] == "cpu"
+
+
+def test_current_environment_stamps_an_opt_in_cuda_device(monkeypatch):
+    torch = pytest.importorskip("torch")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda *args, **kwargs: "mocked-gpu")
+    assert current_environment("cpu")["device"] == "cpu"
+    assert current_environment("cuda")["device"] == "cuda"
+    assert current_environment()["device"] == "cpu"

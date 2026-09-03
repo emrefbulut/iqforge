@@ -1159,6 +1159,9 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
     train_seeds: Annotated[
         str, typer.Option("--train-seeds", help="Comma-separated training seeds")
     ] = DEFAULT_TRAIN_SEEDS,
+    device: Annotated[
+        str, typer.Option("--device", help="auto, cpu or cuda. Default cpu, deliberately")
+    ] = "cpu",
 ) -> None:
     """Measure leakage inflation after running the refuse-path gate.
 
@@ -1175,6 +1178,9 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
     run can be made cheaper deliberately and visibly, and the count is printed
     with the result: a measurement whose sample size is not on the page cannot
     be read.
+
+    `--device` defaults to CPU, the same promise as `train`. CUDA is opt-in and
+    never selected just because a GPU is present. Published tables stay CPU.
     """
     if output_format not in ("text", "json"):
         raise _fail(IQForgeError(f"--format must be text or json, got '{output_format}'."))
@@ -1233,6 +1239,13 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         raise typer.Exit(code=1)
 
     if not _torch_available():
+        if device != "cpu":
+            raise _fail(
+                IQForgeError(
+                    f"--device {device} was requested but torch is not installed. "
+                    + TORCH_REQUIRED.format(what="`iqforge measure-leakage`")
+                )
+            )
         if sweep is not None:
             raise _fail(IQForgeError(TORCH_REQUIRED.format(what="iqforge measure-leakage --sweep")))
         return
@@ -1256,6 +1269,14 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         balance_by=balance_by,
     )
 
+    def _measured(cells: list[GridCell]) -> list[Any]:
+        try:
+            return run_grid(
+                cells, split_seed_list, train_seed_list, verbose=False, device_choice=device
+            )
+        except IQForgeError as exc:
+            raise _fail(exc) from exc
+
     if sweep == "stride":
         strides = (1024, 768, 512, 256, 128)
         cells = [
@@ -1276,7 +1297,7 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
             )
             for s in strides
         ]
-        runs = run_grid(cells, split_seed_list, train_seed_list, verbose=False)
+        runs = _measured(cells)
         pairs = len(split_seed_list) * len(train_seed_list)
         caption = (
             f"Stride sweep over {pairs} seed pair(s) "
@@ -1319,7 +1340,7 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         return
 
     cell = GridCell(records=path, spec=spec, stride=stride, label=f"stride={stride}")
-    runs = run_grid([cell], split_seed_list, train_seed_list, verbose=False)
+    runs = _measured([cell])
     pairs = len(split_seed_list) * len(train_seed_list)
     stats = cell_stats(runs)
     if stats is None:

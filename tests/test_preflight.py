@@ -332,6 +332,22 @@ def _measure_leakage_option_flags() -> set[str]:
     return flags
 
 
+def test_measure_leakage_device_defaults_to_cpu() -> None:
+    """CUDA is opt-in. A GPU being present must not change the default."""
+    from typer.main import get_group
+
+    flags = _measure_leakage_option_flags()
+    assert "--device" in flags
+    group = get_group(app)
+    param = next(
+        p for p in group.commands["measure-leakage"].params if "--device" in (p.opts or ())
+    )
+    assert param.default == "cpu"
+
+    train = next(p for p in group.commands["train"].params if "--device" in (p.opts or ()))
+    assert train.default == "cpu"
+
+
 def test_help_does_not_offer_sweep_snr() -> None:
     result = runner.invoke(
         app,

@@ -85,15 +85,87 @@ def test_device_defaults_to_cpu_and_is_recorded(tmp_path):
     assert env["sigmf"] != "absent"
 
 
-def test_an_unavailable_device_errors_rather_than_falling_back():
-    """A run that silently used another device is worse than one that stops."""
-    import torch
+def _pretend_cuda_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A GPU is present, without requiring one on this machine."""
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda *args, **kwargs: "mocked-gpu")
 
+
+def test_default_stays_cpu_even_when_cuda_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A GPU being present is not an opt-in. The default must stay CPU."""
+    from iqforge.training import DEFAULT_DEVICE, resolve_device
+
+    _pretend_cuda_is_available(monkeypatch)
+    assert DEFAULT_DEVICE == "cpu"
+    assert resolve_device().type == "cpu"
+    assert resolve_device(DEFAULT_DEVICE).type == "cpu"
+
+
+def test_opt_in_cuda_is_requested_when_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`--device cuda` is the opt-in; it must actually select CUDA."""
+    from iqforge.training import resolve_device
+
+    _pretend_cuda_is_available(monkeypatch)
+    assert resolve_device("cuda").type == "cuda"
+
+
+def test_environment_stamps_the_resolved_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """cpu vs cuda must be distinguishable later from the results file alone."""
+    from iqforge.training import describe_environment, resolve_device
+
+    _pretend_cuda_is_available(monkeypatch)
+    cpu = describe_environment(resolve_device("cpu"))
+    cuda = describe_environment(resolve_device("cuda"))
+    assert cpu["device"] == "cpu"
+    assert cuda["device"] == "cuda"
+    assert cuda["device_name"] == "mocked-gpu"
+
+
+def test_cpu_flag_must_not_silently_use_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
+    """If training started using CUDA whenever a GPU exists, this must go red.
+
+    The failure mode is not an explicit `--device cuda`. It is the default, or
+    an explicit `--device cpu`, landing on a GPU because one was present.
+
+    A full `train_baseline` step is not run: mocking `is_available` True still
+    makes `cuda.manual_seed_all` and Adam touch a real CUDA context, which GitHub
+    Actions does not have. Placement is the contract -- `resolve_device("cpu")`
+    and `Module.to` destinations -- the same path `train_baseline` uses.
+    """
+    from iqforge.training import describe_environment, resolve_device
+
+    _pretend_cuda_is_available(monkeypatch)
+
+    destinations: list[str] = []
+    original_to = torch.nn.Module.to
+
+    def tracking_to(self, *args, **kwargs):
+        target = args[0] if args else kwargs.get("device")
+        if isinstance(target, (str, torch.device)):
+            destinations.append(torch.device(target).type)
+        return original_to(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.nn.Module, "to", tracking_to)
+
+    device = resolve_device("cpu")
+    assert device.type == "cpu"
+
+    BaselineCNN(num_classes=2).to(device)
+
+    assert describe_environment(device)["device"] == "cpu"
+    assert destinations
+    assert all(kind == "cpu" for kind in destinations)
+    assert "cuda" not in destinations
+
+
+def test_an_unavailable_device_errors_rather_than_falling_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A run that silently used another device is worse than one that stops."""
     from iqforge.io import IQForgeError
     from iqforge.training import resolve_device
 
-    if torch.cuda.is_available():
-        pytest.skip("CUDA is available here, so the refusal cannot be exercised")
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
     with pytest.raises(IQForgeError, match="no CUDA device"):
         resolve_device("cuda")
 

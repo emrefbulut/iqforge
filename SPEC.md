@@ -142,7 +142,7 @@ iqforge measure-leakage <path> [--window 1024] [--stride 512]
               [--dirname-level 1] [--group-by {path:<re>,csv:<file>,collection}]
               [--balance-by <sigmf field>]
               [--split 0.6,0.2,0.2] [--force] [--format {text,json}]
-              [--sweep stride]
+              [--sweep stride] [--device {auto,cpu,cuda}]
     Runs `audit`, classifies into the six categories in methodology §6, then:
     REFUSED / INCONCLUSIVE => exit 1; WOULD MEASURE => run the paired
     measurement cell (recording-level and window-level) and report inflation.
@@ -150,6 +150,9 @@ iqforge measure-leakage <path> [--window 1024] [--stride 512]
     --force overrides a refusal and keeps the overridden category in the
     header so a pasted block cannot be mistaken for a clean run.
     --sweep supports only `stride`; no SNR-injection flag (see 5.10).
+    --device: default `cpu`, same promise as `train`. CUDA is opt-in and
+              errors rather than falling back when no CUDA device is present.
+              Published tables and the parity gate stay on CPU.
 ```
 
 ---
