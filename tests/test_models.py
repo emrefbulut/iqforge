@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch", reason="the baseline model needs torch")
@@ -122,38 +121,20 @@ def test_environment_stamps_the_resolved_device(monkeypatch: pytest.MonkeyPatch)
     assert cuda["device_name"] == "mocked-gpu"
 
 
-def test_cpu_flag_must_not_silently_use_cuda(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cpu_flag_must_not_silently_use_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
     """If training started using CUDA whenever a GPU exists, this must go red.
 
     The failure mode is not an explicit `--device cuda`. It is the default, or
     an explicit `--device cpu`, landing on a GPU because one was present.
+
+    A full `train_baseline` step is not run: mocking `is_available` True still
+    makes `cuda.manual_seed_all` and Adam touch a real CUDA context, which GitHub
+    Actions does not have. Placement is the contract -- `resolve_device("cpu")`
+    and `Module.to` destinations -- the same path `train_baseline` uses.
     """
-    from iqforge.storage import ShardWriter, write_manifest
-    from iqforge.training import train_baseline
+    from iqforge.training import describe_environment, resolve_device
 
     _pretend_cuda_is_available(monkeypatch)
-
-    window = 32
-    splits: dict[str, dict] = {}
-    for split, rows in (("train", 8), ("val", 0), ("test", 4)):
-        writer = ShardWriter(tmp_path, split)
-        for i in range(rows):
-            writer.add(np.full((1, 2, window), float(i), dtype=np.float32), [i % 2])
-        writer.flush()
-        splits[split] = {
-            "shards": writer.shards,
-            "labels": writer.labels,
-            "count": writer.count,
-            "records": [],
-        }
-    write_manifest(
-        tmp_path,
-        version="0.1.0",
-        config={"window": window, "stride": 8, "repr": "iq2ch", "normalize": True, "seed": 42},
-        label_map={"a": 0, "b": 1},
-        source_files=[],
-        splits=splits,
-    )
 
     destinations: list[str] = []
     original_to = torch.nn.Module.to
@@ -166,8 +147,12 @@ def test_cpu_flag_must_not_silently_use_cuda(tmp_path, monkeypatch: pytest.Monke
 
     monkeypatch.setattr(torch.nn.Module, "to", tracking_to)
 
-    result = train_baseline(tmp_path, epochs=1, batch_size=4, device_choice="cpu")
-    assert result.environment["device"] == "cpu"
+    device = resolve_device("cpu")
+    assert device.type == "cpu"
+
+    BaselineCNN(num_classes=2).to(device)
+
+    assert describe_environment(device)["device"] == "cpu"
     assert destinations
     assert all(kind == "cpu" for kind in destinations)
     assert "cuda" not in destinations

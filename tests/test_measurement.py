@@ -366,6 +366,7 @@ def test_current_environment_degrades_without_torch(monkeypatch):
 
 def test_train_once_forwards_the_requested_device(tmp_path, monkeypatch):
     """measure-leakage's training path must honour --device, not ignore it."""
+    pytest.importorskip("torch")
     from iqforge.measurement import train_once
 
     (tmp_path / "manifest.json").write_text(
