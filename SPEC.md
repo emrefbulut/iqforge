@@ -350,6 +350,8 @@ Overlapping air time that `--group-by` already holds together is not category 5:
 
 `--force` does not hide the category. The header becomes `iqforge leakage measurement -- FORCED PAST audit VERDICT 'ceiling'` (or `category N 'name'`), ASCII `--` not a typographic dash, so a pasted block cannot be mistaken for a clean run.
 
+**`--force` applies to categories 2, 3, 4 and 5 only.** Those are inferences: this tool deciding what a timestamp, a gap, a separable axis or an audit finding probably means, and a user who knows their own recordings can be right where the inference is wrong. Categories **1** (the reader cannot open the files) and **6** (`build` would refuse the split) are not inferences — they say no measurement can be constructed. `--force` on either is refused, the decision stays `REFUSED`, the exit code stays 1, and the report says `forced  refused. ...` with the reason. A flag that accepts a request it cannot fulfil and fails somewhere further in is worse than one that says no at the point of asking.
+
 ### 5.10.1 The parity gate, and what `PARITY_GATE_PASSED` asserts
 
 `scripts/parity_gate.py` re-measures selected cells of the published tables in

@@ -487,3 +487,78 @@ def test_short_same_class_frames_are_not_the_indoor_pattern() -> None:
     )
     decision = decide(report, seconds_per_window_epoch=None)
     assert decision.category is not Category.INDEPENDENCE
+
+
+# --------------------------------------------------------------------------
+# --force: what it can and cannot override
+# --------------------------------------------------------------------------
+
+
+def test_force_cannot_override_an_unreadable_set(tmp_path: Path) -> None:
+    """Category 1 is not a judgement, so there is nothing to overrule.
+
+    Every forcible category is this tool inferring what a pattern means, and
+    someone who knows their own recordings can be right where the inference is
+    wrong. This one says the reader could not open the files: there is nothing
+    to measure, and accepting `--force` would only move the failure further in.
+    """
+    result = _invoke(_write_airid(tmp_path), "--force")
+
+    assert result.exit_code == 1, result.output
+    assert "1  unreadable format" in result.output
+    assert "FORCED PAST" not in result.output
+    assert "cannot be overridden" in result.output
+
+
+def test_force_cannot_override_a_split_that_cannot_be_made(tmp_path: Path) -> None:
+    """Category 6: `build` would refuse, so no measurement can be constructed."""
+    folder = tmp_path / "tiny"
+    write_record(folder / "a", _samples(seed=1), name="one")
+    write_record(folder / "b", _samples(seed=2), name="two")
+    result = _invoke(folder, "--force")
+
+    assert result.exit_code == 1, result.output
+    assert "6  cannot split" in result.output
+    assert "FORCED PAST" not in result.output
+    assert "cannot be overridden" in result.output
+
+
+def test_the_json_reports_a_refused_force(tmp_path: Path) -> None:
+    result = _invoke(_write_airid(tmp_path), "--force", "--format", "json")
+    payload = json.loads(result.output)
+
+    assert payload["status"] == "REFUSED"
+    assert payload["category"] == 1
+    assert payload["forced"] is False
+    assert payload["forced_past"] is None
+    assert "cannot be overridden" in payload["force_refused"]
+
+
+def test_force_still_overrides_a_heuristic_refusal(tmp_path: Path) -> None:
+    """The forcible four must keep working, or the distinction became a ban.
+
+    Library-level rather than through the CLI: `decide` is where the split
+    lives, and going through the command would train the forced cell.
+    """
+    report = _audit_folder(_write_vega_c(tmp_path), 1024, 512, "dirname", 1)
+    decision = decide(report, force=True, seconds_per_window_epoch=None)
+
+    assert decision.category is Category.SHARED_TIMESTAMP
+    assert decision.status is DecisionStatus.WOULD_MEASURE
+    assert decision.forced is True
+    assert decision.forced_past
+    assert decision.force_refused is None
+
+
+def test_every_category_is_either_forcible_or_structural() -> None:
+    """No category may fall outside the split as new ones are added."""
+    from iqforge.preflight import STRUCTURAL_CATEGORIES
+
+    assert STRUCTURAL_CATEGORIES == {Category.UNREADABLE, Category.CANNOT_SPLIT}
+    forcible = set(Category) - set(STRUCTURAL_CATEGORIES)
+    assert forcible == {
+        Category.SHARED_TIMESTAMP,
+        Category.INDEPENDENCE,
+        Category.CEILING,
+        Category.STRUCTURAL_LEAK,
+    }
