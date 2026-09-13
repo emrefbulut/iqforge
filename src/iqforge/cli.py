@@ -1324,26 +1324,15 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
             payload = {
                 "preflight": json.loads(render_measure_json(decision)),
                 "measurement": {
+                    "measurement_schema": MEASUREMENT_SCHEMA,
                     "mode": "sweep_stride",
+                    "forced": decision.forced,
                     "split_seeds": split_seed_list,
                     "train_seeds": train_seed_list,
                     "seed_pairs": pairs,
                     "strides": list(strides),
                     "table": table,
-                    "rows": [
-                        {
-                            "stride": run.stride,
-                            "strategy": run.strategy,
-                            "split_seed": run.split_seed,
-                            "train_seed": run.train_seed,
-                            "test_accuracy": run.test_accuracy,
-                            "train_accuracy": run.train_accuracy,
-                            "train_windows": run.train_windows,
-                            "test_windows": run.test_windows,
-                            "environment": run.environment,
-                        }
-                        for run in runs
-                    ],
+                    "rows": [_run_row(run) for run in runs],
                 },
             }
             print(json.dumps(payload, indent=2, ensure_ascii=True))

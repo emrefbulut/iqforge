@@ -399,3 +399,78 @@ def test_current_environment_stamps_an_opt_in_cuda_device(monkeypatch):
     assert current_environment("cpu")["device"] == "cpu"
     assert current_environment("cuda")["device"] == "cuda"
     assert current_environment()["device"] == "cpu"
+
+
+# --------------------------------------------------------------------------
+# Both JSON payloads declare the same schema
+# --------------------------------------------------------------------------
+
+
+def _payload_keys(mode: str) -> set[str]:
+    """The keys `measure-leakage --format json` writes for one mode.
+
+    Read from the source rather than by running a measurement: producing a
+    sweep payload costs 150 training runs, and what is under test is which
+    fields the writer emits.
+    """
+    import ast
+    import inspect
+
+    from iqforge import cli
+
+    tree = ast.parse(inspect.getsource(cli.measure_leakage))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        keys = {k.value for k in node.keys if isinstance(k, ast.Constant)}
+        if keys.issuperset({"measurement_schema", "mode"}):
+            for key, value in zip(node.keys, node.values, strict=True):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "mode"
+                    and isinstance(value, ast.Constant)
+                    and value.value == mode
+                ):
+                    return keys
+    return set()
+
+
+def test_both_measurement_payloads_declare_the_schema() -> None:
+    """A sweep payload written today must not look like a pre-schema one.
+
+    `runs_from_payload` treats a missing `measurement_schema` as "unversioned,
+    assume compatible", which is right for payloads written before the field
+    existed. The sweep writer omitted it, so its output was indistinguishable
+    from those -- and would be the one that cannot be told apart when schema 2
+    arrives.
+    """
+    single = _payload_keys("single")
+    sweep = _payload_keys("sweep_stride")
+
+    assert single, "could not find the single-cell payload"
+    assert sweep, "could not find the sweep payload"
+    assert "measurement_schema" in single
+    assert "measurement_schema" in sweep
+
+
+def test_the_sweep_payload_carries_what_a_reader_needs() -> None:
+    """Both payloads share the fields `runs_from_payload` and a reader use."""
+    shared = {"measurement_schema", "mode", "forced", "split_seeds", "train_seeds", "rows"}
+    assert shared <= _payload_keys("single")
+    assert shared <= _payload_keys("sweep_stride")
+
+
+def test_the_row_serialiser_is_not_duplicated() -> None:
+    """One `_run_row`, not two hand-written copies.
+
+    Three near-identical copies of a measurement call are how the seed lists
+    were dropped from one of them. The same shape of duplication in the row
+    writer would silently give the two payloads different fields.
+    """
+    import inspect
+
+    from iqforge import cli
+
+    source = inspect.getsource(cli.measure_leakage)
+    assert source.count("_run_row(run) for run in runs") == 2
+    assert '"train_windows": run.train_windows' not in source
