@@ -231,8 +231,14 @@ def test_loraiq_pattern_is_not_refused_when_grouped(tmp_path: Path) -> None:
     assert "REFUSED" not in result.output
     if _torch_installed():
         assert "MEASUREMENT" in result.output
+        assert "started       yes." in result.output
     else:
-        assert "stops before training" in result.output
+        # The report names the obstacle rather than asserting a policy. This
+        # branch is unreachable on a machine with torch, which is why the old
+        # sentence survived here after the code stopped printing it.
+        assert "started       no. torch is not installed" in result.output
+        assert "MEASUREMENT" not in result.output
+    assert "stops before training" not in result.output
 
 
 @pytest.mark.skipif(loraiq_skip_reason() is not None, reason=loraiq_skip_reason() or "")
