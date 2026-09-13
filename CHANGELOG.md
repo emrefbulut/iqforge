@@ -40,16 +40,23 @@ can tell whether the format it is looking at is one it understands.
   still a placeholder (`examples/` does not false-positive).
 - `iqforge.measurement` is the paired leakage-measurement core: one `BuildSpec`,
   recording-level build, window-level re-deal, paired training, paired
-  statistics. No training CLI yet. The three experiment scripts now call it;
+  statistics. Reached from the CLI by `measure-leakage`, which trains the
+  paired cell after its refuse-path classification. The three experiment
+  scripts now call it;
   dataset-specific `prepare` stays in `scripts/`. The LoRaIQ bit-exact cell
   (stride 1024 / split 42 / train 0) is the acceptance gate and is skipped in
   CI when the recordings are not present; published tables are reproduced from
   the recorded run files.
 - `iqforge measure-leakage` is the refuse path: it runs `audit`, classifies the
   result into six categories (methodology §6.1–§6.4 plus remaining leaks and
-  unsplittable sets), estimates the work a paired cell would do, and stops.
-  This version does not train. `--force` overrides a refusal and puts the
-  overridden category in the header (`FORCED PAST audit VERDICT 'ceiling'`).
+  unsplittable sets), estimates the work a paired cell would do, and — when
+  nothing fired — trains it. The report's `started` line says which of those
+  happened rather than asserting one: `yes` when the measurement follows, `no`
+  with the reason when it does not (no torch, or a built dataset rather than a
+  folder). `--force` overrides a refusal and puts the overridden category in
+  the header (`FORCED PAST audit VERDICT 'ceiling'`); it does not apply to
+  categories 1 and 6, which say no measurement can be built rather than
+  inferring what the recordings mean.
   LoRaIQ-like simultaneous receptions are not refused when `--group-by` holds
   them together.
 

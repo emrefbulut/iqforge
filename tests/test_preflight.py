@@ -562,3 +562,87 @@ def test_every_category_is_either_forcible_or_structural() -> None:
         Category.CEILING,
         Category.STRUCTURAL_LEAK,
     }
+
+
+# --------------------------------------------------------------------------
+# The report must describe the run it is actually making
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not _torch_installed(), reason="training must be possible to contradict it")
+def test_a_run_that_trains_does_not_say_it_stops_before_training(tmp_path: Path) -> None:
+    """The block used to announce the opposite of what happened next.
+
+    `started  no. This version of the command stops before training` was
+    printed unconditionally on the WOULD MEASURE path, and the measurement it
+    denied followed four lines later. A refuse path whose report cannot be
+    trusted about its own behaviour has no standing to be trusted about the
+    recordings.
+    """
+    result = _invoke(
+        _write_ceiling(tmp_path), "--force", "--split-seeds", "42", "--train-seeds", "0"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "stops before training" not in result.output
+    started = next(line for line in result.output.splitlines() if line.startswith("started"))
+    assert "yes" in started, started
+    assert "MEASUREMENT" in result.output
+
+
+def test_the_started_line_reports_each_outcome(tmp_path: Path) -> None:
+    """All three branches, at library level so no environment is required."""
+    report = _audit_folder(_write_loraiq_pattern(tmp_path), 1024, 512, "dirname", 2)
+    keys = resolve_group_keys(
+        [f.record_id for f in report.features],
+        r"path:([^/]+/tx\d+)",
+        collections={f.record_id: f.collection for f in report.features},
+    )
+
+    trains = decide(report, group_keys=keys, seconds_per_window_epoch=None)
+    assert trains.status is DecisionStatus.WOULD_MEASURE
+    assert "started       yes." in render_text(trains)
+
+    held = decide(
+        report,
+        group_keys=keys,
+        seconds_per_window_epoch=None,
+        no_train_reason="torch is not installed, so this run ends at the classification above",
+    )
+    text = render_text(held)
+    assert "started       no. torch is not installed" in text
+    assert "stops before training" not in text
+
+    refused = decide(_report_for_category_4(tmp_path), seconds_per_window_epoch=None)
+    assert refused.status is DecisionStatus.REFUSED
+    assert "nothing was built and nothing was trained" in render_text(refused)
+
+
+def _report_for_category_4(tmp_path: Path):
+    return _audit_folder(_write_ceiling(tmp_path / "ceil"), 1024, 512, "dirname", 1)
+
+
+def test_a_run_that_cannot_train_says_why(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The torch-free branch, forced open on a machine that has torch.
+
+    Without this the branch is unreachable here and a CLI that stopped passing
+    the reason would still look correct: every local run trains, so "yes" is
+    right by accident. The assertion is that the report names the obstacle,
+    not merely that it avoids the old wrong sentence.
+    """
+    monkeypatch.setattr("iqforge.cli._torch_available", lambda: False)
+    result = _invoke(
+        _write_loraiq_pattern(tmp_path),
+        "--dirname-level",
+        "2",
+        "--group-by",
+        r"path:([^/]+/tx\d+)",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "WOULD MEASURE" in result.output
+    started = next(line for line in result.output.splitlines() if line.startswith("started"))
+    assert "no." in started, started
+    assert "torch is not installed" in result.output
+    assert "stops before training" not in result.output
+    assert "MEASUREMENT" not in result.output

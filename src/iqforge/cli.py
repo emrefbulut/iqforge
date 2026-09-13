@@ -1218,6 +1218,18 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         except IQForgeError as exc:
             raise _fail(exc) from exc
 
+    # Decided before the block is rendered, because the block states it. The
+    # report used to say "stops before training" and then train, which is the
+    # one thing a refuse path must never do: describe a run it is not making.
+    if not _torch_available():
+        no_train_reason = "torch is not installed, so this run ends at the classification above"
+    elif not path.is_dir():
+        no_train_reason = (
+            "a built dataset is classified only; measuring needs a folder of recordings"
+        )
+    else:
+        no_train_reason = None
+
     decision = decide(
         report,
         force=force,
@@ -1226,6 +1238,7 @@ def measure_leakage(  # noqa: PLR0913 — flags match `audit` plus --force / --g
         stride=stride,
         group_keys=group_keys,
         unreadable_error=unreadable_error,
+        no_train_reason=no_train_reason,
     )
     printed = (
         render_measure_json(decision) if output_format == "json" else render_measure_text(decision)
