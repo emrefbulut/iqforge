@@ -19,6 +19,12 @@ can tell whether the format it is looking at is one it understands.
   parity gate, and `artifacts/*.json` stay on CPU. `TrainingResult.environment`
   already recorded the device; the measurement path now stamps the device that
   was actually requested.
+- **`measurement_schema` in the `measure-leakage --format json` payload**, and
+  `runs_from_payload` as the single reader of it. A reader that guesses at a
+  shape it does not recognise produces a plausible wrong answer, which is why
+  `read_manifest` already refuses a `manifest_schema` newer than it
+  understands; measurement payloads now get the same treatment. Both the
+  single-cell and the stride-sweep payloads declare it.
 - `iqforge measure-leakage` now accepts `--balance-by`, so the command path can
   run the same nuisance-balancing setup that the published synthetic measurement
   tables used.
@@ -62,6 +68,29 @@ can tell whether the format it is looking at is one it understands.
 
 ### Changed
 
+- **The published grids are measured at 15 seed pairs again, and cannot
+  silently shrink.** The Phase 5 migration hardcoded `[42]` and `[0]` into the
+  command's measurement path, cutting every grid from 15 seed pairs to 1. The
+  reduced grid reproduces the first pair exactly, so nothing that compared
+  values noticed; it was found by reading the code, not by reading a result. A
+  table built that way reports a standard error of zero and calls it a
+  measurement.
+  `measure-leakage` now takes `--split-seeds` and `--train-seeds`, defaulting to
+  the five split seeds and three training seeds every published table used.
+  They are flags rather than constants so a cheaper run is a visible choice,
+  and the count is printed with the result: a measurement whose sample size is
+  not on the page cannot be read. The three experiment scripts pass the same
+  lists, and `guard_artifact_rows` refuses, before anything is trained, to
+  overwrite a file under `artifacts/` with fewer runs than it already holds.
+  `check_environment` was part of the same failure: it returned quietly when a
+  checkpoint recorded no environment at all, which is the state every published
+  grid is in, so the guard had never protected one. It now refuses that case
+  instead of waving it through.
+- **`docs/release-notes/v0.5.0.md` says it is an unpublished draft.** The file
+  read as a shipped release while `__version__`, `CITATION.cff` and the newest
+  released CHANGELOG section all said `0.4.0` and no `v0.5.0` tag existed. It
+  now names that state at the top and points at `[Unreleased]`, so the four
+  places that carry a version agree about which one is real.
 - **The experiment scripts and their tests no longer carry a hardcoded path.**
   `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`, `tests/test_preflight.py`
   and `tests/test_measurement.py` all fell back to an absolute path inside one
