@@ -409,6 +409,37 @@ per class — enough that a recording-level split has something to split — a
 format the reader can be trusted on, and a task that is neither trivial nor
 impossible. Format turned out to be the easy one.
 
+### How these cases map to the refuse categories
+
+`iqforge measure-leakage` refuses a dataset by **category number**, and cites
+this section: `category 4  ceiling  (methodology 6.4)`. The numbering was taken
+from the cases below so the command could point at a paragraph. It matches for
+the four eliminated datasets and **does not extend past them**, which is worth
+stating here rather than leaving a reader to discover it:
+
+| command category | name | case here | what it cites |
+|---|---|---|---|
+| 1 | unreadable format | §6.1 AirID | this section |
+| 2 | shared timestamp | §6.2 Vega-C | this section |
+| 3 | physical independence | §6.3 DASH7 `ds_indoor` | this section |
+| 4 | ceiling | §6.4 DASH7 `ds_indoor_cabled` | this section |
+| 5 | structural leak | — | the `audit` LEAK finding that fired |
+| 6 | cannot split | — | SPEC §5.6 |
+| — | *(not refused)* | §6.5 LoRaIQ | — |
+
+**`category 5` and `§6.5` are not the same thing, and they point in opposite
+directions.** Category 5 is a refusal: an `audit` LEAK that `--group-by` does
+not already hold together. §6.5 is LoRaIQ — the dataset that passed, the one
+case in this section that was *not* eliminated. There is deliberately no
+category for it. Category 6 likewise has no case here; it is a split `build`
+would refuse, and it cites SPEC §5.6.
+
+Categories 1 and 6 cannot be overridden with `--force`; 2 through 5 can. The
+line is whether the category is an inference about what the recordings mean —
+those are judgements a user may know better than the tool — or a statement
+that no measurement can be constructed. SPEC §5.10 carries the full table and
+the trigger for each.
+
 ### 6.1 Case 1 — AirID
 
 **AirID** (GENESYS Lab, 4 UAV transmitters with deliberately distinct IQ

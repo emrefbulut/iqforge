@@ -671,8 +671,7 @@ def render_text(decision: Decision) -> str:
             out.extend(
                 _field_lines(
                     "estimate",
-                    "not timed on this machine (torch missing, or the dummy-batch "
-                    "probe failed)",
+                    "not timed on this machine (torch missing, or the dummy-batch probe failed)",
                 )
             )
         else:

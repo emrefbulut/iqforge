@@ -20,6 +20,7 @@ from iqforge.audit import WIDTH, AuditReport, Finding, RecordFeatures, Status
 from iqforge.cli import _audit_folder, app
 from iqforge.grouping import resolve_group_keys
 from iqforge.preflight import (
+    CATEGORY_META,
     Category,
     DecisionStatus,
     decide,
@@ -646,3 +647,33 @@ def test_a_run_that_cannot_train_says_why(tmp_path: Path, monkeypatch: pytest.Mo
     assert "torch is not installed" in result.output
     assert "stops before training" not in result.output
     assert "MEASUREMENT" not in result.output
+
+
+def test_the_three_documents_agree_on_the_category_numbers() -> None:
+    """Code, SPEC and methodology must not drift apart on what `category N` means.
+
+    The command prints a number and a citation; a reader follows it into
+    methodology §6. Nothing kept those in step, and §6 did not mention
+    categories at all -- so `category 5` and `§6.5` looked like the same thing
+    while meaning opposite ones: a refusal, and the dataset that passed.
+    """
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    spec = (root / "SPEC.md").read_text(encoding="utf-8")
+    methodology = (root / "docs" / "methodology.md").read_text(encoding="utf-8")
+
+    for category in Category:
+        name = CATEGORY_META[category][0]
+        row = rf"\|\s*{int(category)}\s*\|\s*{re.escape(name)}\s*\|"
+        assert re.search(row, spec), f"SPEC has no row for category {int(category)} '{name}'"
+        assert re.search(row, methodology), (
+            f"methodology has no row for category {int(category)} '{name}'"
+        )
+
+    # The collision the table exists to head off. Compared with whitespace
+    # removed: these documents are hard-wrapped, so a phrase that fits on one
+    # line today can straddle two after an unrelated edit.
+    squeezed = "".join(methodology.split())
+    assert "".join("`category 5` and `§6.5` are not the same thing".split()) in squeezed
+    assert "".join("There is deliberately no category for it.".split()) in squeezed
