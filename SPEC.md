@@ -350,6 +350,43 @@ Overlapping air time that `--group-by` already holds together is not category 5:
 
 `--force` does not hide the category. The header becomes `iqforge leakage measurement -- FORCED PAST audit VERDICT 'ceiling'` (or `category N 'name'`), ASCII `--` not a typographic dash, so a pasted block cannot be mistaken for a clean run.
 
+### 5.10.1 The parity gate, and what `PARITY_GATE_PASSED` asserts
+
+`scripts/parity_gate.py` re-measures selected cells of the published tables in
+`artifacts/` and compares them against what is on disk. It is a deliberate,
+hours-long run, not a test, and it is not part of any command's contract.
+
+It compares three things per cell, and a pass needs all three:
+
+| | compared | why |
+|---|---|---|
+| run count | number of rows for the cell | a grid cut from 15 seed pairs to 1 reproduces the first pair exactly and is a different measurement |
+| seed pairs | the set of `(strategy, split seed, train seed)` | fifteen runs from the wrong fifteen seeds is the same count and a different grid |
+| results | `test_accuracy`, `train_accuracy`, `train_windows`, `test_windows`, **exact equality, per row**, matched by the key above rather than by position | this is the numerical comparison; a difference of 1e-12 in one accuracy fails the cell |
+
+So `PARITY_GATE_PASSED` asserts **the numbers, not merely the configuration**:
+every compared row is bit-identical to the recorded one, and there are exactly
+as many of them, from exactly the same seeds.
+
+What it deliberately does **not** compare, so that the claim is not read wider
+than it is:
+
+- **`environment`** — device, torch / numpy / scipy / sigmf versions. The
+  published artifacts predate environment stamping and carry `null`, so there is
+  nothing to compare against. This is a feature of the check rather than a gap:
+  it is what lets the gate demonstrate that a result survives a library upgrade
+  (methodology §8).
+- **`stride`, `noise_sigma`, `snr_db`** — these select the cell rather than
+  being measured by it. A wrong stride changes the window counts, which *are*
+  compared.
+
+The seed lists are not passed on the command line. The published grids were
+measured at the command's defaults, so the defaults are part of what is under
+test; passing them would make the run-count check a tautology.
+
+A partial run is not a pass. `--tables` exists because an hours-long run gets
+interrupted, and the verdict line names the tables a run actually covered.
+
 **The command is read-only.** It consumes a folder of recordings (or a built dataset) and writes a report. It does not write modified recordings. Every other user-facing command in §4 is already read-only with respect to the user's captures; measurement is not an exception.
 
 **There is no `--sweep snr`.** Adding noise to a user's recordings requires writing altered copies, and doing it correctly is dataset-specific. On DASH7 the carrier is on air 6.8% of the time and about 26 dB of processing gain sits between a wideband SNR figure and the SNR the task sees (methodology §6.4). The pilot that motivated this tool produced a silently useless grid by getting those wrong. An opt-in flag does not fix that — it would be the one place the command touches the user's data, and the one place it can fail silently.

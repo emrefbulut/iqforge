@@ -945,6 +945,46 @@ and inspects it; any warning from `build` aborts the run. This exists because th
 first version discarded that output and consequently measured a confounded split
 for an entire grid. A warning that no one reads is equivalent to no warning.
 
+**Re-measuring the published tables, and saying exactly what that proves.**
+`scripts/parity_gate.py` re-runs selected cells of the tables in `artifacts/`
+through the shipped command and compares them against the recorded runs. It
+compares the run count, the set of `(strategy, split seed, train seed)` pairs,
+and — row by row, matched by that key rather than by position — `test_accuracy`,
+`train_accuracy`, `train_windows` and `test_windows`, by exact equality.
+
+`PARITY_GATE_PASSED` therefore claims the **numbers**, not merely that the run
+used the same configuration. Demonstrated against the real rows of
+`artifacts/leakage_real_stride_runs.json` (stride 1024, 30 runs): changing one
+`test_accuracy` by 1e-12 fails the cell, as does changing one `train_windows` by
+one, cutting the grid to its first seed pair while keeping every value exact, or
+keeping the count and shifting the seeds.
+
+It does **not** compare the `environment` block, and that is deliberate rather
+than an oversight — see the following note, which depends on it.
+
+**A library upgrade that did not move the numbers.**
+`artifacts/leakage_real_stride_runs.json` was produced on 2026-08-11. The
+version tripwire in `tests/test_io.py` records each sigmf release as it is first
+encountered, and it did not record `1.12.0` until 2026-08-19 — eight days later,
+when that release interrupted release preparation. The run therefore used
+**sigmf 1.11.1**. That is an inference from the project's own record of which
+versions it had seen, not a measurement: the artifact itself carries
+`environment: null`, which is precisely the gap that prompted environment
+stamping (§7).
+
+Re-measured on 2026-09-13 under **sigmf 1.13.0** — with `torch 2.13.0+cpu`,
+`numpy 2.5.1` and `scipy 1.18.0`, none of which match the original stack either
+— three cells of that table (stride 1024, 768, 512; 30 runs each) came back
+**bit-identical** on all four compared fields. Since the gate does not compare
+environments, the upgrade is a genuine difference between the two runs and the
+equality is the result: the sigmf 1.11.1 → 1.13.0 transition, including the
+`SigMFFile` deep-copy change that `sigmf-python#160` introduced, did not move
+this measurement.
+
+This is narrower than "library versions do not matter". It is one table, three
+cells, one direction of upgrade, on CPU. It is evidence that the reader change
+did not reach the numbers, not that no numeric-stack change could.
+
 **Measuring rather than reasoning.** Where a claim could be checked by running
 something, it was — including claims that turned out to be wrong. The initial
 diagnosis of a "uniform spectrogram bug" on the cellular recording was incorrect:
