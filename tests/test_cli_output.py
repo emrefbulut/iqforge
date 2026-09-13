@@ -286,3 +286,93 @@ def test_a_single_pair_reports_that_it_estimated_nothing() -> None:
 
 def test_a_measured_grid_reports_its_standard_error_and_sample_size() -> None:
     assert _uncertainty(_stats(stderr=0.019, n=15)) == "+/- 1.9 (standard error, n=15)"
+
+
+# --------------------------------------------------------------------------
+# The CUDA comparability warning
+# --------------------------------------------------------------------------
+
+
+def _squeezed(text: str) -> str:
+    """All whitespace removed, so an assertion cannot depend on where rich wrapped.
+
+    `_flat` drops newlines but rich strips the space it wrapped on, which turns
+    "Do not mix" into "Do notmix" -- measured, not assumed. Removing every
+    space makes the comparison independent of the console width this test has
+    no way to set.
+    """
+    return "".join(text.split())
+
+
+def _cuda_result(monkeypatch: pytest.MonkeyPatch, device: str):
+    """A `TrainingResult` stamped for `device`, with no CUDA context touched.
+
+    `torch.cuda.is_available` is pinned True so `resolve_device` and
+    `describe_environment` run for real and produce a genuine `cuda` stamp. The
+    training call itself is replaced: mocking availability is not the same as
+    having a GPU, and `manual_seed_all` and Adam would reach for a context this
+    machine does not have.
+    """
+    torch = pytest.importorskip("torch")
+    from iqforge.training import TrainingResult, describe_environment, resolve_device
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "get_device_name", lambda *a, **k: "mocked-gpu")
+
+    environment = describe_environment(resolve_device(device))
+    seen: dict[str, object] = {}
+
+    def fake_train_baseline(dataset, **kwargs):
+        seen["device_choice"] = kwargs.get("device_choice")
+        return TrainingResult(
+            parameters=13_490,
+            test_accuracy=0.5,
+            test_per_class={"a": 0.5, "b": 0.5},
+            classes=["a", "b"],
+            environment=environment,
+        )
+
+    monkeypatch.setattr("iqforge.training.train_baseline", fake_train_baseline)
+    return environment, seen
+
+
+def test_a_cuda_run_warns_that_its_numbers_are_not_comparable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The warning line existed but had never been executed by any test.
+
+    It is the only thing that tells a CUDA user their numbers cannot be put
+    next to a CPU table, and `README`/`CONTRIBUTING` both promise it is
+    printed. A promise nothing exercises is a promise nobody has checked.
+    """
+    environment, seen = _cuda_result(monkeypatch, "cuda")
+    assert environment["device"] == "cuda"
+
+    result = runner.invoke(app, ["train", str(tmp_path), "--device", "cuda"])
+
+    assert result.exit_code == 0, result.output
+    assert seen["device_choice"] == "cuda"
+    squeezed = _squeezed(result.output)
+    assert _squeezed("trained on CUDA") in squeezed
+    assert _squeezed("these numbers are NOT bit-comparable with CPU runs") in squeezed
+    assert _squeezed("Do not mix devices inside one paired experiment") in squeezed
+
+
+def test_a_cpu_run_prints_no_comparability_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other half of the branch: a GPU being present must not trigger it.
+
+    Without this, a warning printed unconditionally would satisfy the test
+    above while telling every CPU user their numbers are not comparable.
+    """
+    environment, seen = _cuda_result(monkeypatch, "cpu")
+    assert environment["device"] == "cpu"
+
+    result = runner.invoke(app, ["train", str(tmp_path)])
+
+    assert result.exit_code == 0, result.output
+    assert seen["device_choice"] == "cpu"
+    squeezed = _squeezed(result.output)
+    assert _squeezed("trained on CUDA") not in squeezed
+    assert "bit-comparable" not in squeezed
