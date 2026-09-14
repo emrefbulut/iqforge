@@ -11,12 +11,20 @@ Three outcomes, and no silent fourth:
 - `REFUSED` — a category fired; measuring would report the wrong thing.
 - `INCONCLUSIVE` — the sources the categories need are missing, so neither
   refusing nor measuring would be honest.
-- `WOULD MEASURE` — nothing in the list fired. This version still does not
-  train; it says so and reports the work a later version would do.
+- `WOULD MEASURE` — nothing in the list fired. The command trains the paired
+  cell after this block, unless the caller says it will not; the report's
+  `started` line says which happened rather than asserting one of them.
 
 `--force` does not hide the category. It changes the header so a pasted block
 cannot be mistaken for a clean run, and it changes the decision to
 `WOULD MEASURE`. The reason that was overridden stays in the body.
+
+It does not apply to every category. Categories 1 and 6 -- the files cannot be
+read, and `build` would refuse the split -- are not judgements this tool made
+about what the recordings mean; they are statements that no measurement can be
+constructed. `--force` on those is refused and said so in the report, because a
+flag that accepts a request it cannot fulfil and fails somewhere further in is
+worse than one that says no at the point of asking. See `STRUCTURAL_CATEGORIES`.
 """
 
 from __future__ import annotations
@@ -92,6 +100,24 @@ class Category(IntEnum):
     CANNOT_SPLIT = 6
 
 
+#: Categories `--force` cannot override, because they are not judgements.
+#:
+#: The other four are inferences from metadata. A shared timestamp, a pair of
+#: captures two minutes apart, a separable axis, an audit LEAK -- each is this
+#: tool deciding what a pattern probably means, and someone who knows their own
+#: recordings can be right where the inference is wrong. `--force` exists for
+#: them, and puts the overridden category in the header so the result cannot be
+#: pasted as a clean one.
+#:
+#: These two are not inferences. Category 1 means the reader could not open the
+#: files: there is nothing to measure, and forcing produces a crash rather than
+#: a questionable number. Category 6 means `build` would refuse the split, so
+#: the measurement cannot be constructed at all. Overriding either asks for a
+#: run that cannot exist, and a flag that accepts the request and then fails
+#: somewhere further in is worse than one that says no here.
+STRUCTURAL_CATEGORIES = frozenset({Category.UNREADABLE, Category.CANNOT_SPLIT})
+
+
 #: Short name and the citation a reader can follow. Category 5 cites the
 #: audit finding, not §6.5 — that section is the dataset that passed.
 CATEGORY_META: dict[Category, tuple[str, str]] = {
@@ -106,7 +132,7 @@ CATEGORY_META: dict[Category, tuple[str, str]] = {
 
 @dataclass(frozen=True)
 class WorkEstimate:
-    """What a default paired cell would train, if this command trained.
+    """What the default paired cell trains.
 
     Attributes:
         train_windows: Predicted training-split size from recording lengths.
@@ -135,6 +161,15 @@ class Decision:
     category: Category | None = None
     forced: bool = False
     forced_past: str | None = None
+    #: Why `--force` was given and not honoured. None when it was not given, or
+    #: when it was honoured.
+    force_refused: str | None = None
+    #: Why the caller will not train despite `WOULD MEASURE` -- no torch, or a
+    #: built dataset rather than a folder. None means training follows, and the
+    #: report says so. This is passed in rather than inferred: the decision does
+    #: not know whether its caller intends to train, and printing "stops before
+    #: training" above a measurement is how the report came to contradict itself.
+    no_train_reason: str | None = None
     work: WorkEstimate | None = None
     audit: AuditReport | None = None
     findings: list[Finding] = field(default_factory=list)
@@ -432,6 +467,7 @@ def decide(
     group_keys: dict[str, str] | None = None,
     unreadable_error: str | None = None,
     seconds_per_window_epoch: float | None | object = ...,
+    no_train_reason: str | None = None,
 ) -> Decision:
     """Classify an audit into a refuse category, or say it would measure.
 
@@ -447,6 +483,8 @@ def decide(
         unreadable_error: The error from a fully unreadable folder.
         seconds_per_window_epoch: Injected probe rate. Omit to run the probe;
             pass None to skip it.
+        no_train_reason: Why the caller will not train even on `WOULD MEASURE`.
+            Omit when training follows.
     """
     features = list(report.features) if report is not None else []
     # Window counts are cheap and always useful. The dummy-batch probe is
@@ -456,9 +494,8 @@ def decide(
     category: Category | None = None
     status = DecisionStatus.WOULD_MEASURE
     reason = (
-        "audit did not fire a refuse category. This command does not train; "
-        "a later version would run the paired experiment at the default "
-        "operating point"
+        "audit did not fire a refuse category. The paired experiment runs at "
+        "the default operating point"
     )
 
     unreadable = _is_unreadable(report, unreadable_error)
@@ -510,14 +547,25 @@ def decide(
         reason = unreadable_error or "audit produced no report"
 
     forced_past = None
+    force_refused = None
     if force and status is not DecisionStatus.WOULD_MEASURE:
-        if category is Category.CEILING:
-            forced_past = f"audit VERDICT '{_verdict_token(report)}'"
-        elif category is not None:
-            forced_past = f"category {int(category)} '{CATEGORY_META[category][0]}'"
+        if category in STRUCTURAL_CATEGORIES:
+            assert category is not None
+            force_refused = (
+                f"category {int(category)} '{CATEGORY_META[category][0]}' cannot be "
+                f"overridden. It is not a judgement about what the recordings mean; "
+                f"it is that the measurement cannot be built at all. --force is for "
+                f"the categories where you may know something this tool inferred "
+                f"wrongly, and there is nothing here to be right about."
+            )
         else:
-            forced_past = "an INCONCLUSIVE audit"
-        status = DecisionStatus.WOULD_MEASURE
+            if category is Category.CEILING:
+                forced_past = f"audit VERDICT '{_verdict_token(report)}'"
+            elif category is not None:
+                forced_past = f"category {int(category)} '{CATEGORY_META[category][0]}'"
+            else:
+                forced_past = "an INCONCLUSIVE audit"
+            status = DecisionStatus.WOULD_MEASURE
 
     if status is DecisionStatus.WOULD_MEASURE and seconds_per_window_epoch is not None:
         work = estimate_work(
@@ -530,6 +578,8 @@ def decide(
         category=category,
         forced=bool(forced_past),
         forced_past=forced_past,
+        force_refused=force_refused,
+        no_train_reason=no_train_reason,
         work=work,
         audit=report,
         findings=list(report.findings) if report is not None else [],
@@ -596,6 +646,8 @@ def render_text(decision: Decision) -> str:
                 "yes. The category above still stands; this run is not a clean measurement",
             )
         )
+    elif decision.force_refused:
+        out.extend(_field_lines("forced", f"refused. {decision.force_refused}"))
 
     out += ["", "WORK", thin]
     work = decision.work
@@ -603,7 +655,7 @@ def render_text(decision: Decision) -> str:
         out.extend(
             _field_lines(
                 "estimate",
-                "no window count from these recordings; this command does not train",
+                "no window count from these recordings",
             )
         )
     else:
@@ -619,8 +671,7 @@ def render_text(decision: Decision) -> str:
             out.extend(
                 _field_lines(
                     "estimate",
-                    "not timed on this machine (torch missing, or the dummy-batch "
-                    "probe failed). This command does not train",
+                    "not timed on this machine (torch missing, or the dummy-batch probe failed)",
                 )
             )
         else:
@@ -632,17 +683,17 @@ def render_text(decision: Decision) -> str:
                     f"measurement of the recordings)",
                 )
             )
-        if decision.status is DecisionStatus.REFUSED and not decision.forced:
-            out.extend(_field_lines("started", "no"))
-        elif decision.status is DecisionStatus.WOULD_MEASURE:
-            out.extend(
-                _field_lines(
-                    "started",
-                    "no. This version of the command stops before training",
-                )
+        if decision.status is DecisionStatus.WOULD_MEASURE:
+            started = (
+                f"no. {decision.no_train_reason}"
+                if decision.no_train_reason
+                else "yes. Both arms train after this block and the result follows below"
             )
+        elif decision.status is DecisionStatus.REFUSED:
+            started = "no. Refused above; nothing was built and nothing was trained"
         else:
-            out.extend(_field_lines("started", "no"))
+            started = "no. The audit was inconclusive; nothing was built and nothing was trained"
+        out.extend(_field_lines("started", started))
     out.append(rule)
     # Audit findings this command quotes still carry U+00A7. Translate them
     # so the pasted block stays ASCII, which is the contract inherited from
@@ -665,6 +716,9 @@ def render_json(decision: Decision) -> str:
         "reason": decision.reason,
         "forced": decision.forced,
         "forced_past": decision.forced_past,
+        "force_refused": decision.force_refused,
+        "trains": decision.status is DecisionStatus.WOULD_MEASURE and not decision.no_train_reason,
+        "no_train_reason": decision.no_train_reason,
         "work": None
         if work is None
         else {

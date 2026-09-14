@@ -19,6 +19,12 @@ can tell whether the format it is looking at is one it understands.
   parity gate, and `artifacts/*.json` stay on CPU. `TrainingResult.environment`
   already recorded the device; the measurement path now stamps the device that
   was actually requested.
+- **`measurement_schema` in the `measure-leakage --format json` payload**, and
+  `runs_from_payload` as the single reader of it. A reader that guesses at a
+  shape it does not recognise produces a plausible wrong answer, which is why
+  `read_manifest` already refuses a `manifest_schema` newer than it
+  understands; measurement payloads now get the same treatment. Both the
+  single-cell and the stride-sweep payloads declare it.
 - `iqforge measure-leakage` now accepts `--balance-by`, so the command path can
   run the same nuisance-balancing setup that the published synthetic measurement
   tables used.
@@ -40,21 +46,51 @@ can tell whether the format it is looking at is one it understands.
   still a placeholder (`examples/` does not false-positive).
 - `iqforge.measurement` is the paired leakage-measurement core: one `BuildSpec`,
   recording-level build, window-level re-deal, paired training, paired
-  statistics. No training CLI yet. The three experiment scripts now call it;
+  statistics. Reached from the CLI by `measure-leakage`, which trains the
+  paired cell after its refuse-path classification. The three experiment
+  scripts now call it;
   dataset-specific `prepare` stays in `scripts/`. The LoRaIQ bit-exact cell
   (stride 1024 / split 42 / train 0) is the acceptance gate and is skipped in
   CI when the recordings are not present; published tables are reproduced from
   the recorded run files.
 - `iqforge measure-leakage` is the refuse path: it runs `audit`, classifies the
   result into six categories (methodology §6.1–§6.4 plus remaining leaks and
-  unsplittable sets), estimates the work a paired cell would do, and stops.
-  This version does not train. `--force` overrides a refusal and puts the
-  overridden category in the header (`FORCED PAST audit VERDICT 'ceiling'`).
+  unsplittable sets), estimates the work a paired cell would do, and — when
+  nothing fired — trains it. The report's `started` line says which of those
+  happened rather than asserting one: `yes` when the measurement follows, `no`
+  with the reason when it does not (no torch, or a built dataset rather than a
+  folder). `--force` overrides a refusal and puts the overridden category in
+  the header (`FORCED PAST audit VERDICT 'ceiling'`); it does not apply to
+  categories 1 and 6, which say no measurement can be built rather than
+  inferring what the recordings mean.
   LoRaIQ-like simultaneous receptions are not refused when `--group-by` holds
   them together.
 
 ### Changed
 
+- **The published grids are measured at 15 seed pairs again, and cannot
+  silently shrink.** The Phase 5 migration hardcoded `[42]` and `[0]` into the
+  command's measurement path, cutting every grid from 15 seed pairs to 1. The
+  reduced grid reproduces the first pair exactly, so nothing that compared
+  values noticed; it was found by reading the code, not by reading a result. A
+  table built that way reports a standard error of zero and calls it a
+  measurement.
+  `measure-leakage` now takes `--split-seeds` and `--train-seeds`, defaulting to
+  the five split seeds and three training seeds every published table used.
+  They are flags rather than constants so a cheaper run is a visible choice,
+  and the count is printed with the result: a measurement whose sample size is
+  not on the page cannot be read. The three experiment scripts pass the same
+  lists, and `guard_artifact_rows` refuses, before anything is trained, to
+  overwrite a file under `artifacts/` with fewer runs than it already holds.
+  `check_environment` was part of the same failure: it returned quietly when a
+  checkpoint recorded no environment at all, which is the state every published
+  grid is in, so the guard had never protected one. It now refuses that case
+  instead of waving it through.
+- **`docs/release-notes/v0.5.0.md` says it is an unpublished draft.** The file
+  read as a shipped release while `__version__`, `CITATION.cff` and the newest
+  released CHANGELOG section all said `0.4.0` and no `v0.5.0` tag existed. It
+  now names that state at the top and points at `[Unreleased]`, so the four
+  places that carry a version agree about which one is real.
 - **The experiment scripts and their tests no longer carry a hardcoded path.**
   `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`, `tests/test_preflight.py`
   and `tests/test_measurement.py` all fell back to an absolute path inside one

@@ -20,6 +20,7 @@ from iqforge.audit import WIDTH, AuditReport, Finding, RecordFeatures, Status
 from iqforge.cli import _audit_folder, app
 from iqforge.grouping import resolve_group_keys
 from iqforge.preflight import (
+    CATEGORY_META,
     Category,
     DecisionStatus,
     decide,
@@ -230,8 +231,14 @@ def test_loraiq_pattern_is_not_refused_when_grouped(tmp_path: Path) -> None:
     assert "REFUSED" not in result.output
     if _torch_installed():
         assert "MEASUREMENT" in result.output
+        assert "started       yes." in result.output
     else:
-        assert "stops before training" in result.output
+        # The report names the obstacle rather than asserting a policy. This
+        # branch is unreachable on a machine with torch, which is why the old
+        # sentence survived here after the code stopped printing it.
+        assert "started       no. torch is not installed" in result.output
+        assert "MEASUREMENT" not in result.output
+    assert "stops before training" not in result.output
 
 
 @pytest.mark.skipif(loraiq_skip_reason() is not None, reason=loraiq_skip_reason() or "")
@@ -536,3 +543,192 @@ def test_short_same_class_frames_are_not_the_indoor_pattern() -> None:
     )
     decision = decide(report, seconds_per_window_epoch=None)
     assert decision.category is not Category.INDEPENDENCE
+
+
+# --------------------------------------------------------------------------
+# --force: what it can and cannot override
+# --------------------------------------------------------------------------
+
+
+def test_force_cannot_override_an_unreadable_set(tmp_path: Path) -> None:
+    """Category 1 is not a judgement, so there is nothing to overrule.
+
+    Every forcible category is this tool inferring what a pattern means, and
+    someone who knows their own recordings can be right where the inference is
+    wrong. This one says the reader could not open the files: there is nothing
+    to measure, and accepting `--force` would only move the failure further in.
+    """
+    result = _invoke(_write_airid(tmp_path), "--force")
+
+    assert result.exit_code == 1, result.output
+    assert "1  unreadable format" in result.output
+    assert "FORCED PAST" not in result.output
+    assert "cannot be overridden" in result.output
+
+
+def test_force_cannot_override_a_split_that_cannot_be_made(tmp_path: Path) -> None:
+    """Category 6: `build` would refuse, so no measurement can be constructed."""
+    folder = tmp_path / "tiny"
+    write_record(folder / "a", _samples(seed=1), name="one")
+    write_record(folder / "b", _samples(seed=2), name="two")
+    result = _invoke(folder, "--force")
+
+    assert result.exit_code == 1, result.output
+    assert "6  cannot split" in result.output
+    assert "FORCED PAST" not in result.output
+    assert "cannot be overridden" in result.output
+
+
+def test_the_json_reports_a_refused_force(tmp_path: Path) -> None:
+    result = _invoke(_write_airid(tmp_path), "--force", "--format", "json")
+    payload = json.loads(result.output)
+
+    assert payload["status"] == "REFUSED"
+    assert payload["category"] == 1
+    assert payload["forced"] is False
+    assert payload["forced_past"] is None
+    assert "cannot be overridden" in payload["force_refused"]
+
+
+def test_force_still_overrides_a_heuristic_refusal(tmp_path: Path) -> None:
+    """The forcible four must keep working, or the distinction became a ban.
+
+    Library-level rather than through the CLI: `decide` is where the split
+    lives, and going through the command would train the forced cell.
+    """
+    report = _audit_folder(_write_vega_c(tmp_path), 1024, 512, "dirname", 1)
+    decision = decide(report, force=True, seconds_per_window_epoch=None)
+
+    assert decision.category is Category.SHARED_TIMESTAMP
+    assert decision.status is DecisionStatus.WOULD_MEASURE
+    assert decision.forced is True
+    assert decision.forced_past
+    assert decision.force_refused is None
+
+
+def test_every_category_is_either_forcible_or_structural() -> None:
+    """No category may fall outside the split as new ones are added."""
+    from iqforge.preflight import STRUCTURAL_CATEGORIES
+
+    assert STRUCTURAL_CATEGORIES == {Category.UNREADABLE, Category.CANNOT_SPLIT}
+    forcible = set(Category) - set(STRUCTURAL_CATEGORIES)
+    assert forcible == {
+        Category.SHARED_TIMESTAMP,
+        Category.INDEPENDENCE,
+        Category.CEILING,
+        Category.STRUCTURAL_LEAK,
+    }
+
+
+# --------------------------------------------------------------------------
+# The report must describe the run it is actually making
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not _torch_installed(), reason="training must be possible to contradict it")
+def test_a_run_that_trains_does_not_say_it_stops_before_training(tmp_path: Path) -> None:
+    """The block used to announce the opposite of what happened next.
+
+    `started  no. This version of the command stops before training` was
+    printed unconditionally on the WOULD MEASURE path, and the measurement it
+    denied followed four lines later. A refuse path whose report cannot be
+    trusted about its own behaviour has no standing to be trusted about the
+    recordings.
+    """
+    result = _invoke(
+        _write_ceiling(tmp_path), "--force", "--split-seeds", "42", "--train-seeds", "0"
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "stops before training" not in result.output
+    started = next(line for line in result.output.splitlines() if line.startswith("started"))
+    assert "yes" in started, started
+    assert "MEASUREMENT" in result.output
+
+
+def test_the_started_line_reports_each_outcome(tmp_path: Path) -> None:
+    """All three branches, at library level so no environment is required."""
+    report = _audit_folder(_write_loraiq_pattern(tmp_path), 1024, 512, "dirname", 2)
+    keys = resolve_group_keys(
+        [f.record_id for f in report.features],
+        r"path:([^/]+/tx\d+)",
+        collections={f.record_id: f.collection for f in report.features},
+    )
+
+    trains = decide(report, group_keys=keys, seconds_per_window_epoch=None)
+    assert trains.status is DecisionStatus.WOULD_MEASURE
+    assert "started       yes." in render_text(trains)
+
+    held = decide(
+        report,
+        group_keys=keys,
+        seconds_per_window_epoch=None,
+        no_train_reason="torch is not installed, so this run ends at the classification above",
+    )
+    text = render_text(held)
+    assert "started       no. torch is not installed" in text
+    assert "stops before training" not in text
+
+    refused = decide(_report_for_category_4(tmp_path), seconds_per_window_epoch=None)
+    assert refused.status is DecisionStatus.REFUSED
+    assert "nothing was built and nothing was trained" in render_text(refused)
+
+
+def _report_for_category_4(tmp_path: Path):
+    return _audit_folder(_write_ceiling(tmp_path / "ceil"), 1024, 512, "dirname", 1)
+
+
+def test_a_run_that_cannot_train_says_why(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The torch-free branch, forced open on a machine that has torch.
+
+    Without this the branch is unreachable here and a CLI that stopped passing
+    the reason would still look correct: every local run trains, so "yes" is
+    right by accident. The assertion is that the report names the obstacle,
+    not merely that it avoids the old wrong sentence.
+    """
+    monkeypatch.setattr("iqforge.cli._torch_available", lambda: False)
+    result = _invoke(
+        _write_loraiq_pattern(tmp_path),
+        "--dirname-level",
+        "2",
+        "--group-by",
+        r"path:([^/]+/tx\d+)",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "WOULD MEASURE" in result.output
+    started = next(line for line in result.output.splitlines() if line.startswith("started"))
+    assert "no." in started, started
+    assert "torch is not installed" in result.output
+    assert "stops before training" not in result.output
+    assert "MEASUREMENT" not in result.output
+
+
+def test_the_three_documents_agree_on_the_category_numbers() -> None:
+    """Code, SPEC and methodology must not drift apart on what `category N` means.
+
+    The command prints a number and a citation; a reader follows it into
+    methodology §6. Nothing kept those in step, and §6 did not mention
+    categories at all -- so `category 5` and `§6.5` looked like the same thing
+    while meaning opposite ones: a refusal, and the dataset that passed.
+    """
+    import re
+
+    root = Path(__file__).resolve().parent.parent
+    spec = (root / "SPEC.md").read_text(encoding="utf-8")
+    methodology = (root / "docs" / "methodology.md").read_text(encoding="utf-8")
+
+    for category in Category:
+        name = CATEGORY_META[category][0]
+        row = rf"\|\s*{int(category)}\s*\|\s*{re.escape(name)}\s*\|"
+        assert re.search(row, spec), f"SPEC has no row for category {int(category)} '{name}'"
+        assert re.search(row, methodology), (
+            f"methodology has no row for category {int(category)} '{name}'"
+        )
+
+    # The collision the table exists to head off. Compared with whitespace
+    # removed: these documents are hard-wrapped, so a phrase that fits on one
+    # line today can straddle two after an unrelated edit.
+    squeezed = "".join(methodology.split())
+    assert "".join("`category 5` and `§6.5` are not the same thing".split()) in squeezed
+    assert "".join("There is deliberately no category for it.".split()) in squeezed

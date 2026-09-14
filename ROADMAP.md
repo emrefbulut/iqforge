@@ -72,7 +72,13 @@ After Now is done — still reliability-first:
       burst are slices of one continuous capture. See
       [docs/methodology.md](docs/methodology.md) §6.
 
-- [ ] **`--group-by` by SigMF field.** Deliberately not in the first release.
+- [x] **`--group-by collection`: group by the SigMF field.** Shipped as the
+      third scheme alongside `path:` and `csv:`. It reads `core:collection`
+      from the Global Object; a recording that declares none stays its own
+      unit. The note below is the reasoning that produced it, and the item
+      after it is the half that is still open.
+
+      Deliberately not in the first release, for a reason worth keeping.
 
       The obvious third scheme would read a metadata key, the way
       `--balance-by` does. It was left out because it would have solved none of
@@ -113,10 +119,10 @@ After Now is done — still reliability-first:
       An extension proposal is therefore about a *qualifier* on existing
       grouping, not a new grouping mechanism.
 
-      **`--group-by collection` is now shipped**, so the first half of that is
-      done. What is not done is the part that decides whether a proposal is
-      worth writing: using it on a public dataset and recording what it could
-      not express.
+- [ ] **Measure what `core:collection` cannot express, then decide whether to
+      propose an extension.** The scheme is shipped; this is the part that
+      decides whether a proposal is worth writing — using it on a public
+      dataset and recording, with evidence, what it could not say.
 
       **The precedent says do not propose before that.** SigMF accepted an ML
       extension and then took it back. `rfml.sigmf-ext.md` was contributed by

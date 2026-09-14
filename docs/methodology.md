@@ -409,6 +409,37 @@ per class — enough that a recording-level split has something to split — a
 format the reader can be trusted on, and a task that is neither trivial nor
 impossible. Format turned out to be the easy one.
 
+### How these cases map to the refuse categories
+
+`iqforge measure-leakage` refuses a dataset by **category number**, and cites
+this section: `category 4  ceiling  (methodology 6.4)`. The numbering was taken
+from the cases below so the command could point at a paragraph. It matches for
+the four eliminated datasets and **does not extend past them**, which is worth
+stating here rather than leaving a reader to discover it:
+
+| command category | name | case here | what it cites |
+|---|---|---|---|
+| 1 | unreadable format | §6.1 AirID | this section |
+| 2 | shared timestamp | §6.2 Vega-C | this section |
+| 3 | physical independence | §6.3 DASH7 `ds_indoor` | this section |
+| 4 | ceiling | §6.4 DASH7 `ds_indoor_cabled` | this section |
+| 5 | structural leak | — | the `audit` LEAK finding that fired |
+| 6 | cannot split | — | SPEC §5.6 |
+| — | *(not refused)* | §6.5 LoRaIQ | — |
+
+**`category 5` and `§6.5` are not the same thing, and they point in opposite
+directions.** Category 5 is a refusal: an `audit` LEAK that `--group-by` does
+not already hold together. §6.5 is LoRaIQ — the dataset that passed, the one
+case in this section that was *not* eliminated. There is deliberately no
+category for it. Category 6 likewise has no case here; it is a split `build`
+would refuse, and it cites SPEC §5.6.
+
+Categories 1 and 6 cannot be overridden with `--force`; 2 through 5 can. The
+line is whether the category is an inference about what the recordings mean —
+those are judgements a user may know better than the tool — or a statement
+that no measurement can be constructed. SPEC §5.10 carries the full table and
+the trigger for each.
+
 ### 6.1 Case 1 — AirID
 
 **AirID** (GENESYS Lab, 4 UAV transmitters with deliberately distinct IQ
@@ -944,6 +975,46 @@ set, which points straight at the joint distribution rather than at the model.
 and inspects it; any warning from `build` aborts the run. This exists because the
 first version discarded that output and consequently measured a confounded split
 for an entire grid. A warning that no one reads is equivalent to no warning.
+
+**Re-measuring the published tables, and saying exactly what that proves.**
+`scripts/parity_gate.py` re-runs selected cells of the tables in `artifacts/`
+through the shipped command and compares them against the recorded runs. It
+compares the run count, the set of `(strategy, split seed, train seed)` pairs,
+and — row by row, matched by that key rather than by position — `test_accuracy`,
+`train_accuracy`, `train_windows` and `test_windows`, by exact equality.
+
+`PARITY_GATE_PASSED` therefore claims the **numbers**, not merely that the run
+used the same configuration. Demonstrated against the real rows of
+`artifacts/leakage_real_stride_runs.json` (stride 1024, 30 runs): changing one
+`test_accuracy` by 1e-12 fails the cell, as does changing one `train_windows` by
+one, cutting the grid to its first seed pair while keeping every value exact, or
+keeping the count and shifting the seeds.
+
+It does **not** compare the `environment` block, and that is deliberate rather
+than an oversight — see the following note, which depends on it.
+
+**A library upgrade that did not move the numbers.**
+`artifacts/leakage_real_stride_runs.json` was produced on 2026-08-11. The
+version tripwire in `tests/test_io.py` records each sigmf release as it is first
+encountered, and it did not record `1.12.0` until 2026-08-19 — eight days later,
+when that release interrupted release preparation. The run therefore used
+**sigmf 1.11.1**. That is an inference from the project's own record of which
+versions it had seen, not a measurement: the artifact itself carries
+`environment: null`, which is precisely the gap that prompted environment
+stamping (§7).
+
+Re-measured on 2026-09-13 under **sigmf 1.13.0** — with `torch 2.13.0+cpu`,
+`numpy 2.5.1` and `scipy 1.18.0`, none of which match the original stack either
+— three cells of that table (stride 1024, 768, 512; 30 runs each) came back
+**bit-identical** on all four compared fields. Since the gate does not compare
+environments, the upgrade is a genuine difference between the two runs and the
+equality is the result: the sigmf 1.11.1 → 1.13.0 transition, including the
+`SigMFFile` deep-copy change that `sigmf-python#160` introduced, did not move
+this measurement.
+
+This is narrower than "library versions do not matter". It is one table, three
+cells, one direction of upgrade, on CPU. It is evidence that the reader change
+did not reach the numbers, not that no numeric-stack change could.
 
 **Measuring rather than reasoning.** Where a claim could be checked by running
 something, it was — including claims that turned out to be wrong. The initial
