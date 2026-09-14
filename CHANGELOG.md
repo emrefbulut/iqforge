@@ -111,11 +111,13 @@ Nothing yet.
   42 and train seed 0" — the regression above, described as the design — and
   omitted `--force`'s limits and `iqforge train`. methodology gained a
   question-to-section guide; it is 1100 lines with no contents.
-- **`docs/release-notes/v0.5.0.md` says it is an unpublished draft.** The file
-  read as a shipped release while `__version__`, `CITATION.cff` and the newest
-  released CHANGELOG section all said `0.4.0` and no `v0.5.0` tag existed. It
-  now names that state at the top and points at `[Unreleased]`, so the four
-  places that carry a version agree about which one is real.
+- **The four places that carry a version agree again.** `docs/release-notes/
+  v0.5.0.md` had read as a shipped release while `__version__`, `CITATION.cff`
+  and the newest released CHANGELOG section all said `0.4.0` and no `v0.5.0`
+  tag existed; it was labelled an unpublished draft for as long as that was
+  true. With this release it is the release notes for `0.5.0`, and
+  `__version__`, `CITATION.cff`, the CHANGELOG heading and the built wheel's
+  METADATA all report the same number.
 - **The experiment scripts and their tests no longer carry a hardcoded path.**
   `scripts/leakage_real.py`, `scripts/leakage_loraiq.py`, `tests/test_preflight.py`
   and `tests/test_measurement.py` all fell back to an absolute path inside one
@@ -429,7 +431,8 @@ First release.
   `info`, `inspect`, `build` and `stats` work without it.
 - 16 example recordings, so the whole pipeline runs without hardware.
 
-[Unreleased]: https://github.com/emrefbulut/iqforge/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/emrefbulut/iqforge/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/emrefbulut/iqforge/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/emrefbulut/iqforge/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/emrefbulut/iqforge/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/emrefbulut/iqforge/compare/v0.1.0...v0.2.0
