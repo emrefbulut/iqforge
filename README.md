@@ -14,10 +14,14 @@
 
 ---
 
-> **Status: `0.4.0`.** On PyPI, tagged, CI green. The capture → dataset pipeline
-> works end to end and is covered by tests. Interfaces may still change within
-> `0.x` — see the [Roadmap](#roadmap) for what is planned and what is
-> deliberately out of scope.
+> **Status: latest release `0.4.0`.** On PyPI, tagged, CI green. The capture →
+> dataset pipeline works end to end and is covered by tests. Interfaces may
+> still change within `0.x` — see the [Roadmap](#roadmap) for what is planned
+> and what is deliberately out of scope.
+>
+> `main` carries unreleased work on top of that release, listed under
+> `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). This README describes `main`,
+> so a few things below are ahead of what `pip install iqforge` gives you.
 
 > [!IMPORTANT]
 > **If you built a dataset with `--labels csv` or `--group-by csv:` over a
@@ -79,6 +83,7 @@ iqforge inspect examples/bpsk_01.sigmf-meta   # look at it, in your terminal
 iqforge build   examples/ -o dataset/ --balance-by core:freq_lower_edge
 iqforge stats   dataset/                      # what did I just build?
 iqforge audit   dataset/                      # what could be wrong with it?
+iqforge train   dataset/                      # is it actually trainable?
 iqforge measure-leakage recordings/           # preflight + paired measurement (if allowed)
 ```
 
@@ -317,12 +322,19 @@ unaltered; `--format json` gives the same content, `did_not_check` included.
 categories that eliminated four public datasets and let a fifth through
 ([methodology §6](docs/methodology.md)), then:
 - `REFUSED` exits non-zero
-- `WOULD MEASURE` runs the paired cell (recording-level vs window-level) at
-  split seed 42 and train seed 0
+- `WOULD MEASURE` runs the paired cell (recording-level vs window-level) over
+  **15 seed pairs** — five split seeds by three training seeds, the same grid
+  every published table used. `--split-seeds` and `--train-seeds` make a
+  cheaper run a visible choice rather than a silent one, and the pair count is
+  printed with the result.
 
 `--force` overrides a refusal and keeps the overridden category in the header
-so a pasted block cannot be mistaken for a clean run. `--sweep stride` runs the
-fixed overlap ladder; there is intentionally no `--sweep snr`.
+so a pasted block cannot be mistaken for a clean run. It applies to categories
+2–5, which are inferences about what the recordings mean; categories 1 and 6 —
+the reader cannot open the files, and `build` would refuse the split — say no
+measurement can be constructed at all, and are refused with a reason instead.
+`--sweep stride` runs the fixed overlap ladder; there is intentionally no
+`--sweep snr`.
 
 ## Known limitations
 
@@ -376,6 +388,9 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] Real SigMF verification with public captures
 - [x] `iqforge audit` — leakage risk and measurability, without training
 - [x] `iqforge measure-leakage` — preflight + paired measurement (`--sweep stride` only)
+- [x] `--group-by` — hold related recordings together (`path:`, `csv:`, `collection`)
+- [x] Opt-in CUDA for new measurements; CPU stays the default and the published tables stay on it
+- [ ] Frequency-aware labelling (the fix for the first known limitation below)
 - [ ] Verification with own hardware capture
 
 **Not planned for 0.x** — out of scope rather than pending:
