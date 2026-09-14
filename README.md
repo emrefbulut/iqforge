@@ -14,14 +14,15 @@
 
 ---
 
-> **Status: latest release `0.4.0`.** On PyPI, tagged, CI green. The capture →
-> dataset pipeline works end to end and is covered by tests. Interfaces may
-> still change within `0.x` — see the [Roadmap](#roadmap) for what is planned
-> and what is deliberately out of scope.
+> **Status: `0.5.0`.** On PyPI, CI green. The capture → dataset pipeline works
+> end to end and is covered by tests. Interfaces may still change within `0.x`
+> — see the [Roadmap](#roadmap) for what is planned and what is deliberately
+> out of scope.
 >
-> `main` carries unreleased work on top of that release, listed under
-> `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md). This README describes `main`,
-> so a few things below are ahead of what `pip install iqforge` gives you.
+> `0.5.0` corrects a measurement bug: between the Phase 5 migration and this
+> release, `measure-leakage` ran a single seed pair instead of fifteen, so any
+> leakage figure it produced carried `± 0.0`. See
+> [the release notes](docs/release-notes/v0.5.0.md).
 
 > [!IMPORTANT]
 > **If you built a dataset with `--labels csv` or `--group-by csv:` over a
@@ -382,7 +383,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] Windowing, labelling, recording-level splitting, sharded storage
 - [x] `torch.utils.data.Dataset` + baseline classifier
 - [x] Packaging (wheel + sdist), GitHub Actions CI
-- [x] PyPI releases (`0.1.0`, `0.2.0`, `0.3.0`, `0.4.0`)
+- [x] PyPI releases (`0.1.0`, `0.2.0`, `0.3.0`, `0.4.0`, `0.5.0`)
 - [x] Leakage measurement (recording-level vs window-level), synthetic and on a
       real capture
 - [x] Real SigMF verification with public captures

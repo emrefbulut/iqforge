@@ -215,10 +215,11 @@ After Now is done — still reliability-first:
       Missing users is a product gap; more features will not close it.
 - [ ] Docs site (CLI + Python API reference) when the surface stops thrashing
 
-Versioning: `0.4.0` is the latest release. Cut the next one when useful, on a
-schedule if needed — not “only when hardware is done.” Unreleased work sits
-under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md); `docs/release-notes/`
-carries a draft for the next version, marked as a draft until it is tagged.
+Versioning: `0.5.0` is the latest release. Cut the next one when useful, on a
+schedule if needed — not “only when hardware is done.” Work that has landed but
+not shipped sits under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md), and a
+release-notes file under `docs/release-notes/` is marked an unpublished draft
+until its tag exists.
 
 ---
 
