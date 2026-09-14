@@ -78,7 +78,7 @@ iqforge inspect <path> [--start N] [--samples N] [--nfft 1024]
     --start: which sample to start from
     --samples: how many samples to show (default 262144)
 
-iqforge build <input> -o <output_dir>
+iqforge build <input> -o|--output <output_dir>
               [--window 1024] [--stride 512]
               [--labels {annotations,dirname,csv}] [--label-file <path>]
               [--exclude-label <label>] [--split 0.7,0.15,0.15] [--seed 42]
@@ -143,10 +143,16 @@ iqforge measure-leakage <path> [--window 1024] [--stride 512]
               [--balance-by <sigmf field>]
               [--split 0.6,0.2,0.2] [--force] [--format {text,json}]
               [--sweep stride] [--device {auto,cpu,cuda}]
+              [--split-seeds 42,7,1234,2026,99] [--train-seeds 0,1,2]
     Runs `audit`, classifies into the six categories in methodology §6, then:
     REFUSED / INCONCLUSIVE => exit 1; WOULD MEASURE => run the paired
     measurement cell (recording-level and window-level) and report inflation.
-    Default operating point is split_seed=42 and train_seed=0.
+    The default grid is 5 split seeds x 3 training seeds = **15 seed pairs**,
+    the grid every published table used. --split-seeds and --train-seeds make
+    a cheaper run a stated choice rather than a silent one, and the pair count
+    is printed with the result: a measurement whose sample size is not on the
+    page cannot be read. A single pair reports no interval at all rather than
+    `+/- 0.0` (see 5.10.1).
     --force overrides a refusal and keeps the overridden category in the
     header so a pasted block cannot be mistaken for a clean run.
     --sweep supports only `stride`; no SNR-injection flag (see 5.10).
