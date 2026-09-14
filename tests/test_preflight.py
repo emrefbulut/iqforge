@@ -302,17 +302,66 @@ def test_too_few_recordings_is_category_6(tmp_path: Path) -> None:
 
 
 def test_the_report_is_78_columns_of_ascii(tmp_path: Path) -> None:
+    """Every line of the output, not only the part before the measurement.
+
+    This used to stop at the line ending in `MEASUREMENT` and check only what
+    came before it, which made its coverage depend on the environment without
+    saying so. With torch installed the forced measurement block exists and the
+    `break` skipped it; without torch the block does not exist at all. Either
+    way the output `--force` uniquely produces had never been width- or
+    ASCII-checked in any environment, and the test reported a pass in both.
+
+    The exit-code and length assertions are here for the same reason: without
+    them a run that produced no output would satisfy every loop below by
+    iterating zero times.
+    """
     result = _invoke(_write_ceiling(tmp_path), "--force")
-    text = result.output
+
+    assert result.exit_code == 0, result.output
     assert WIDTH == 78
-    block_lines: list[str] = []
-    for line in text.splitlines():
-        if line.strip().endswith("MEASUREMENT"):
-            break
-        block_lines.append(line)
-    for line in block_lines:
-        assert len(line) <= WIDTH, line
-    "\n".join(block_lines).encode("ascii")
+    lines = result.output.splitlines()
+    assert len(lines) > 10, f"only {len(lines)} line(s) of output; nothing was checked"
+
+    for number, line in enumerate(lines, start=1):
+        assert len(line) <= WIDTH, f"line {number} is {len(line)} columns: {line!r}"
+    result.output.encode("ascii")
+
+
+@pytest.mark.skipif(
+    not _torch_installed(),
+    reason=(
+        "the forced MEASUREMENT block only exists once training can run; "
+        "install the torch extra to exercise it"
+    ),
+)
+def test_the_forced_measurement_block_stays_inside_the_contract(tmp_path: Path) -> None:
+    """`--force` must not emit a block that escapes the 78-column contract.
+
+    Explicitly skipped rather than quietly narrowed when torch is absent, so a
+    CI job that cannot run this reports `skipped` rather than `passed`. The
+    test above checks whatever output exists; this one additionally requires
+    the forced measurement block to *be there*, which is the assertion that
+    cannot hold in a torch-free environment.
+
+    One seed pair on purpose: this checks the report's shape, not the
+    measurement, and the default 15 pairs would cost 30 training runs to read
+    line lengths.
+    """
+    result = _invoke(
+        _write_ceiling(tmp_path), "--force", "--split-seeds", "42", "--train-seeds", "0"
+    )
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip().endswith("MEASUREMENT")), None)
+    assert start is not None, "--force produced no MEASUREMENT block:\n" + result.output
+
+    block = lines[start:]
+    assert "FORCED" in block[0], block[0]
+    assert len(block) > 3, f"measurement block is only {len(block)} line(s): {block}"
+    for offset, line in enumerate(block):
+        assert len(line) <= WIDTH, f"line {start + offset + 1} is {len(line)} columns: {line!r}"
+    "\n".join(block).encode("ascii")
 
 
 def test_json_carries_the_same_category(tmp_path: Path) -> None:
