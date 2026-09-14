@@ -18,7 +18,11 @@ this file.
   deep-copies the metadata in `__init__` *and* preserves the declared value.
   It also removes the errant `self.version` attribute in favour of reading it
   from the metadata, and closes #159 explicitly.
-- Two maintainers approved it, and it shipped in **v1.13.0**.
+- One maintainer approved it — `777arc`, 2026-08-17T21:52:30Z, nine minutes
+  after the pull request was opened — and it shipped in **v1.13.0**. A second
+  maintainer, `Teque5`, drove the discussion and wrote the PR; that is
+  participation rather than a second review, and this line previously said
+  "two maintainers approved" on the strength of it.
 
 **Verified on the released version, not on the pull request.** CI resolves
 dependencies fresh (`uv.lock` is not committed), so 1.13.0 reached CI before it
@@ -33,18 +37,29 @@ then measured against an installed 1.13.0:
 | declared value recoverable from the handle | no | **yes, `handle.declared_version`** |
 | `handle.get_global_info()["core:version"]` | `1.2.6` | `1.2.6` (unchanged) |
 
-Two details worth recording, because both differ from what the pull request
-description suggested:
+One detail worth recording, because it is the half of the fix that did *not*
+change what a reader sees:
 
-1. The accessor shipped as a public **`declared_version`** property (backed by
-   `_declared_version`), not as `__original_version`. Reading the diff would
-   have given the wrong name; measuring the release gave the right one.
-2. `get_global_info()` **still returns the library's spec version**. The
-   deepcopy moved the normalisation into the handle's own copy rather than
-   removing it. This was predicted from a stand-in before 1.13.0 existed and is
-   now confirmed against the real thing — so `iqforge info` continues to print
-   `1.0.0 (file); 1.2.6 (reader)`, and that display is correct rather than a
-   leftover.
+`get_global_info()` **still returns the library's spec version**. The deepcopy
+moved the normalisation into the handle's own copy rather than removing it,
+which is Option B in the maintainer's own framing. This was predicted from a
+stand-in before 1.13.0 existed and is now confirmed against the real thing — so
+`iqforge info` continues to print `1.0.0 (file); 1.2.6 (reader)`, and that
+display is correct rather than a leftover.
+
+**Where the name came from.** The maintainer's 2026-08-17 comment closed with
+three candidates — `.declared_version`, `.file_version`, `.original_version` —
+and asked which. The reply from here on 2026-08-19 was that "`declared_version`
+reads better to me than `original_version`, but that's a detail". The pull
+request had already used `self._declared_version` internally since it was
+opened on 2026-08-17, and the released property is public `declared_version`.
+
+So the shortlist was upstream's and the pick was endorsed from here; neither
+side invented it alone. An earlier version of this section claimed the pull
+request had called the attribute `__original_version` and that reading the diff
+would therefore have given the wrong name. That was wrong on both counts:
+`__original_version` appears nowhere upstream in that spelling, and the PR body
+named `_declared_version` from the day it was opened.
 
 **Checked against the three real captures this report cites.** Their metadata
 was re-fetched and read under 1.13.0; all three declare `core:version: 1.0.0`,
