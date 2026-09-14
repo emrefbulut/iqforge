@@ -8,6 +8,29 @@ came from a run whose output is in [`artifacts/`](../artifacts/); where a
 statement has no number behind it, it is described as a design decision rather
 than a finding.
 
+## Which section answers which question
+
+This document is long because the failures are the point. Start from the
+question you have rather than from the top.
+
+| If you want to know | Read |
+|---|---|
+| Why splitting at the window level is a problem at all | [§1 The problem](#1-the-problem) |
+| How much accuracy a leaky split invents, and at which SNR | [§2 Measurement 1 — inflation against SNR](#2-measurement-1--accuracy-inflation-against-snr) |
+| Why overlap is the mechanism, and what happens at zero overlap | [§3 Measurement 2 — inflation against overlap](#3-measurement-2--accuracy-inflation-against-overlap) |
+| Why the comparison is paired, and what is held fixed between the two arms | [§4 Experimental design](#4-experimental-design) |
+| Whether the reader can be trusted on real captures — byte-level checks | [§5 Validation against real recordings](#5-validation-against-real-recordings) |
+| Why four public datasets could not carry the measurement, and what the command's `category N` numbers mean | [§6 What it took to find a dataset](#6-what-it-took-to-find-a-dataset-that-could-carry-the-measurement) |
+| What went wrong here and was only caught later | [§7 Silent failures found along the way](#7-silent-failures-found-along-the-way) |
+| How claims were checked — mutation testing, controls, re-measuring published tables | [§8 Methods](#8-methods) |
+| What none of this establishes | [§9 Limits](#9-limits) |
+| The commands that regenerate every number above | [Reproducing](#reproducing) |
+
+Two sections are worth reading even if nothing here applies to your data. **§7**
+is the list of mistakes this project made and shipped, including one that
+published a wrong result; **§9** is what the numbers do not support, which is
+more than they do.
+
 ---
 
 ## 1. The problem

@@ -32,11 +32,30 @@ Done recently (keep green):
       31.8 dB above unannotated ones. Limits found on real data are in the
       README.
 
+- [x] **The leakage measurement, repeated on real captures — the overlap half.**
+      The stride sweep ran on two public datasets. At zero overlap the
+      inflation is indistinguishable from zero three times over (+0.2 pp
+      synthetic, −3.7 pp DASH7, +1.5 pp LoRaIQ), and LoRaIQ at 7/8 overlap
+      reaches **+9.6 pp ± 2.7 (t = 3.5)** — the first individually significant
+      real-data result here. Tables in `artifacts/leakage_real_stride_table.md`
+      and `artifacts/leakage_loraiq_table.md`, reasoning in
+      [docs/methodology.md](docs/methodology.md) §3. What the intermediate
+      overlaps do is still not resolved: 15 seed pairs per point settle only
+      the largest effect.
+
+- [x] **The published grids re-measured through the shipped command.**
+      `scripts/parity_gate.py` re-ran three cells of each of the four tables
+      and compared run counts, seed pairs and every row's accuracies and window
+      counts against the recorded runs. All four passed. See SPEC §5.10.1 for
+      what that does and does not assert.
+
 Do next, in this order:
 
-1. **Repeat the leakage measurement on a real recording.** The current number is
-   synthetic BPSK/QPSK; the same curve on a real capture is what turns it from
-   an illustration into a result worth publishing.
+1. **The SNR half of the real-capture measurement.** The overlap half is done
+   (above); the accuracy-against-SNR curve on a real capture is not. The plan
+   is locked in [docs/leakage-real-snr.md](docs/leakage-real-snr.md) — seed
+   count, SNR list and stem fixed before any run, so the result cannot choose
+   its own stopping rule.
 2. **Verification with an own hardware capture.** One device end to end. Public
    files validated the reader; they cannot validate against the conventions of a
    radio nobody here has run.
@@ -196,8 +215,11 @@ After Now is done — still reliability-first:
       Missing users is a product gap; more features will not close it.
 - [ ] Docs site (CLI + Python API reference) when the surface stops thrashing
 
-Versioning: cut `0.3.x` / `0.4.0` when useful, on a schedule if needed — not
-“only when hardware is done.”
+Versioning: `0.5.0` is the latest release. Cut the next one when useful, on a
+schedule if needed — not “only when hardware is done.” Work that has landed but
+not shipped sits under `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md), and a
+release-notes file under `docs/release-notes/` is marked an unpublished draft
+until its tag exists.
 
 ---
 

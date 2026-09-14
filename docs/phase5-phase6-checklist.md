@@ -5,6 +5,20 @@ Purpose: prep-only planning artifact for upcoming Phase 5 migration work and Pha
 Date checked: 2026-08-19  
 Branch checked: `cursor/phase-1-independent-gaps-38eb`
 
+> **Superseded — kept as a record, not as a to-do.** This is a snapshot of what
+> was true on the date above. Phase 5 has since been executed and re-verified:
+> the migration runs through `iqforge measure-leakage`, and
+> `scripts/parity_gate.py` has re-measured three cells of each of the four
+> published tables against their recorded runs.
+>
+> Individual readiness lines below have expired and are deliberately left as
+> they were written. The one most likely to mislead: the release-note item says
+> no next-version draft exists. `docs/release-notes/v0.5.0.md` has since been
+> written and is now the release notes for `0.5.0`.
+>
+> For current state read [CHANGELOG.md](../CHANGELOG.md) `[Unreleased]` and
+> [ROADMAP.md](../ROADMAP.md).
+
 ---
 
 ## Scope guardrails
