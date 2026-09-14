@@ -11,6 +11,10 @@ can tell whether the format it is looking at is one it understands.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.5.0] — 2026-09-14
+
 ### Added
 
 - **`--device cpu|cuda` on `iqforge measure-leakage`**, defaulting to `cpu`.
@@ -86,6 +90,27 @@ can tell whether the format it is looking at is one it understands.
   checkpoint recorded no environment at all, which is the state every published
   grid is in, so the guard had never protected one. It now refuses that case
   instead of waving it through.
+- **The refuse categories are documented with the same numbers everywhere.**
+  `measure-leakage` prints `category 4  ceiling  (methodology 6.4)` and a
+  reader follows that citation into `docs/methodology.md` §6, which did not
+  contain the word "category" at all. The numbering matches §6.1–§6.4 by
+  construction and does not extend past it — `category 5` is a refusal while
+  `§6.5` is LoRaIQ, the one dataset that section did *not* eliminate. §6 now
+  opens with a cross-reference table covering all six categories, names the two
+  that cite something other than §6, and states that collision outright. A test
+  pins the code, SPEC and methodology together so they cannot drift apart again.
+- **`PARITY_GATE_PASSED` says what it asserts.** `scripts/parity_gate.py` was
+  documented in two lines that did not say what it checks, so a reader could
+  not tell "ran with the same configuration" from "produced the same numbers".
+  It is the second one: run count, seed-pair set, and `test_accuracy`,
+  `train_accuracy`, `train_windows`, `test_windows` compared by exact equality
+  row by row. SPEC §5.10.1 and methodology §8 now say so, along with what it
+  deliberately does not compare.
+- **README, ROADMAP and `docs/methodology.md` brought back in line with what
+  shipped.** The README documented `measure-leakage` as running "at split seed
+  42 and train seed 0" — the regression above, described as the design — and
+  omitted `--force`'s limits and `iqforge train`. methodology gained a
+  question-to-section guide; it is 1100 lines with no contents.
 - **`docs/release-notes/v0.5.0.md` says it is an unpublished draft.** The file
   read as a shipped release while `__version__`, `CITATION.cff` and the newest
   released CHANGELOG section all said `0.4.0` and no `v0.5.0` tag existed. It
