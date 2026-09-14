@@ -166,9 +166,10 @@ After Now is done — still reliability-first:
       ([sigmf-python#159](https://github.com/sigmf/sigmf-python/issues/159))
       went from filed to code in **seven days**: it was discussed at SigMF's
       monthly call, [#160](https://github.com/sigmf/sigmf-python/pull/160) was
-      opened against it, two maintainers approved, and **both** suggested fixes
-      were taken rather than just the preferred one — deepcopy in `__init__`
-      *and* an `__original_version` preserving the declared value.
+      opened against it, a maintainer approved it nine minutes later, and
+      **both** suggested fixes were taken rather than just the preferred one —
+      deepcopy in `__init__` *and* a `declared_version` property preserving the
+      value the file declared.
 
       So #233 is not evidence that maintainers are hostile to outside proposals.
       It is evidence about what a proposal has to carry. #159 shipped a runnable

@@ -319,10 +319,11 @@ MUTATING_SIGMF_VERSIONS = frozenset({"1.11.1", "1.12.0"})
 
 #: sigmf releases verified NOT to mutate it. The fix is sigmf-python#160,
 #: released in 1.13.0: `__init__` deep-copies the metadata, and the value the
-#: file declared is kept on a public `declared_version` property. The pull
-#: request called that attribute `__original_version`; it shipped under a
-#: different name, which is why membership here is earned by measuring an
-#: installed release rather than by reading an upstream diff.
+#: file declared is kept on a public `declared_version` property. Membership
+#: here is earned by measuring an installed release rather than by reading an
+#: upstream diff -- not because the diff was misleading, but because the half
+#: of the fix that matters downstream is invisible in it: `get_global_info()`
+#: still returns the library's spec version, which no changelog line said.
 FIXED_SIGMF_VERSIONS: frozenset[str] = frozenset({"1.13.0"})
 
 
