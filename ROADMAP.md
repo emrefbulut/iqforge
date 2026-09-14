@@ -66,9 +66,10 @@ Do next, in this order:
 
 After Now is done — still reliability-first:
 
-- [ ] Hardware capture on **one** device (RTL-SDR / HackRF / Pluto) — parallel to
-      public-file work, not a blocker for it. One device proves one path, not all
-      integer/I/Q conventions.
+- [ ] Hardware capture on **one** device (RTL-SDR / HackRF / Pluto). This is
+      the same work as Now item 2, listed here because it is parallel to the
+      public-file track rather than blocked by it. One device proves one path,
+      not all integer/I/Q conventions.
 - [x] Optional CUDA for **new** measurements only. Published tables and the
       parity gate stay CPU; never re-measure those grids on GPU and call them
       the same result. `iqforge train` and `iqforge measure-leakage` stay CPU
