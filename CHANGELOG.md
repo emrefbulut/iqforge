@@ -161,9 +161,10 @@ Nothing yet.
   by [#160](https://github.com/sigmf/sigmf-python/pull/160)): constructing a
   `SigMFFile` no longer rewrites the caller's metadata dict. The tripwire in
   `tests/test_io.py` fired on the release and now records 1.13.0 as verified
-  non-mutating, measured rather than assumed -- the accessor the fix added is
-  called `declared_version`, not the `__original_version` the pull request
-  described. Nothing in `iqforge` changes: `load()` reads `core:version` out of
+  non-mutating, measured rather than assumed. The accessor the fix added is a
+  public `declared_version` property; the name came from a three-candidate
+  shortlist the maintainer put in the issue thread, and was picked from here.
+  Nothing in `iqforge` changes: `load()` reads `core:version` out of
   the parsed JSON before handing the dict over, which is correct under both
   behaviours, so the workaround became redundant rather than wrong. The
   `sigmf>=1.11.1` floor deliberately stays where it is. `iqforge info` still
