@@ -339,9 +339,9 @@ measurement can be constructed at all, and are refused with a reason instead.
 
 ## Known limitations
 
-Both of these are measured, and both are consequences of decisions made on
-purpose. They are here so you can tell before you start whether `iqforge` fits
-your recording.
+These are measured, and each is a consequence of a decision made on purpose.
+They are here so you can tell before you start whether `iqforge` fits your
+recording.
 
 **Labelling is time-based, so busy recordings yield few windows.** A window is
 labelled by the annotation whose sample range contains it. When several signals
@@ -374,6 +374,42 @@ silent, and because at least one published dataset ships this way and documents
 it only in prose on its download page. If a recording loads with a plausible
 duration but the spectrogram is noise, suspect the datatype first.
 
+**`audit` cannot tell you whether a leakage measurement is possible — only
+that it is impossible.** It reads metadata and a sample of windows; it trains
+nothing. It can therefore rule out the trivial case, where one measurable axis
+already classifies the recordings and a model would saturate:
+
+```
+VERDICT       ceiling - carrier offset alone classifies 100% of recordings
+```
+
+It cannot locate the opposite end — the SNR band where a model is *partly*
+right, which is the only band where inflation is visible at all
+([methodology §2](docs/methodology.md)). The report says so rather than
+implying coverage:
+
+```
+NOT CHECKED  task difficulty   requires a probe run; audit rules out
+                               the trivial case only
+```
+
+`iqforge measure-leakage` is the command that trains, and the `WORK` block in
+its report estimates what a cell would cost before it starts.
+
+**Physical independence is outside what any of these checks can reach.** Two
+recordings can share no samples, no air time and no timestamp and still be
+near-duplicates: a static indoor path does not change between two recorder
+runs seconds apart. That is not an index-arithmetic question, so no check here
+can answer it.
+
+This is the limit that eliminated a public dataset which passed every
+count-based test — DASH7 `ds_indoor`, two 8-second captures **43 seconds
+apart**, same antenna, same position, same channel, separate recorder
+invocations and therefore two independent recordings by any structural
+definition ([methodology §6.3](docs/methodology.md)). `--group-by` is the tool
+for it, and it needs you to know which recordings belong together;
+`audit` will not discover them for you.
+
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
@@ -391,7 +427,7 @@ See [ROADMAP.md](ROADMAP.md) (Now / Next / Later). Short status:
 - [x] `iqforge measure-leakage` — preflight + paired measurement (`--sweep stride` only)
 - [x] `--group-by` — hold related recordings together (`path:`, `csv:`, `collection`)
 - [x] Opt-in CUDA for new measurements; CPU stays the default and the published tables stay on it
-- [ ] Frequency-aware labelling (the fix for the first known limitation below)
+- [ ] Frequency-aware labelling (the fix for the first known limitation above)
 - [ ] Verification with own hardware capture
 
 **Not planned for 0.x** — out of scope rather than pending:

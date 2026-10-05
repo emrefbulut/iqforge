@@ -151,6 +151,26 @@ published number has to be runnable by someone who is not you; point it at data
 through an environment variable or a flag and skip with a stated reason when the
 data is absent.
 
+**9. A claim repeated is not a claim checked.** When you restate something in a
+second file, go back to the source, not to the first file. Copying is how one
+error becomes five, and the copies make it look corroborated: five files
+agreeing is evidence of one edit, not of one fact.
+
+This project shipped exactly that. A note said upstream had named an attribute
+`__original_version` and that it shipped under a different name — so measuring
+the release beat reading the diff. It was written once and restated in
+`CHANGELOG.md`, `docs/release-notes/v0.5.0.md`, `ROADMAP.md` and a comment in
+`tests/test_io.py`. One API call settled it: the string appears nowhere
+upstream, and the pull request had named `_declared_version` since the day it
+opened. The lesson each copy was carrying was also wrong, and a second claim in
+the same paragraph — "two maintainers approved it" — was one maintainer.
+
+Sources are cheap here. `gh api repos/<owner>/<repo>/pulls/<n>` settles what a
+pull request says; `artifacts/*.md` settles what a number is; `git log -S`
+settles when a line appeared. Prefer a quotation with a date over a paraphrase
+from memory, and when you correct something, say what the old version claimed
+rather than quietly overwriting it — the correction is the useful part.
+
 ## The most useful bug report
 
 **If `iqforge` misreads a recording from your hardware, that is the single most
