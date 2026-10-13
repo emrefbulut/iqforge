@@ -171,6 +171,22 @@ settles when a line appeared. Prefer a quotation with a date over a paraphrase
 from memory, and when you correct something, say what the old version claimed
 rather than quietly overwriting it — the correction is the useful part.
 
+**10. A measurement is committed the moment it exists.** A result sitting in a
+working directory is not a result. Working directories get cleaned, and what
+survives is a repository indistinguishable from one where the run never
+happened — no error, no partial file, nothing to notice. Write the run file and
+the table into `artifacts/` and commit them in the same step that produces
+them, before reading them.
+
+This matters most for a pre-registered plan, where the loss is not repairable.
+The DASH7 SNR grid in [docs/leakage-real-snr.md](docs/leakage-real-snr.md) was
+run once and never committed, and `docs/methodology.md` §7 has the entry. Its
+*n*, SNR list and stem were fixed before the run so the result could not choose
+its own stopping rule; a repeat by whoever read the result no longer has that
+property (convention 5), so the question is now closed to them and open only to
+someone else. **An uncommitted result is worse than one that was never
+produced, because the work is believed to have been done.**
+
 ## The most useful bug report
 
 **If `iqforge` misreads a recording from your hardware, that is the single most
