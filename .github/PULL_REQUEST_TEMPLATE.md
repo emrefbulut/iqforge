@@ -33,3 +33,4 @@
 - [ ] 7 Ask before changing scope
 - [ ] 8 Nothing session- or machine-specific is committed
 - [ ] 9 A claim repeated is not a claim checked
+- [ ] 10 A measurement is committed the moment it exists

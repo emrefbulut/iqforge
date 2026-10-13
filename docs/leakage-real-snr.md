@@ -1,9 +1,29 @@
 # DASH7 leakage SNR curve — locked plan, not a result
 
-This file is the experiment ROADMAP Now item 1 still needs. It has **not** been
-run. There is no `artifacts/leakage_real_runs.json` and no
-`artifacts/leakage_real_table.md`. Do not quote this document as a measured
-curve.
+This file is the experiment ROADMAP Now item 1 still needs. There is no
+`artifacts/leakage_real_runs.json` and no `artifacts/leakage_real_table.md`. Do
+not quote this document as a measured curve.
+
+**Status: run once, and the result is unusable.** The grid below was run to
+completion in a scratch working tree outside this repository, and its output was
+never committed. That tree was cleaned up afterwards. The three files are in no
+commit on any branch (`git log --all -- artifacts/leakage_real_runs.json`
+returns nothing), in no other worktree, in no stash, and in no reachable object.
+Nothing of the run survives: not the table, not the per-run JSON, not the log,
+and so not the environment stamp, the seed pairs or the run count that would
+make it auditable. The figures that were on screen at the time are deliberately
+not written down here. A number whose source file does not exist is not
+reproducible from this repository, and the first line of
+[methodology](methodology.md) says everything in it is.
+
+What that costs is more than the compute. The plan below is pre-registered: its
+whole point is that *n*, the SNR list and the stem are fixed before anyone sees
+a result, so the result cannot choose its own stopping rule. Having seen one
+removes that property from the person who saw it — a re-run by them is no longer
+the pre-registered run this plan describes, however exactly it repeats the
+command. So the grid is **not** re-run here. It stays open, for someone who has
+not read the lost table, and the loss is recorded as a process failure in
+[methodology §7](methodology.md#7-silent-failures-found-along-the-way).
 
 The published +13.6 pp table is synthetic BPSK/QPSK
 (`scripts/leakage_experiment.py` → `artifacts/leakage_runs.json`). DASH7 already

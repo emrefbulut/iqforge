@@ -835,7 +835,9 @@ the grouping key and the label are written down side by side.
 
 ## 7. Silent failures found along the way
 
-Each of these produced plausible output. None was found by reading code.
+Each of these produced plausible output. None was found by reading code. The
+last entry is a different kind — a failure of process rather than a defect in
+code — and is kept under its own heading for that reason.
 
 **Class bandwidth inequality.** The synthetic generator initially used
 `BPSK_SYMBOL_RATE = 64_000` and `QPSK_SYMBOL_RATE = 128_000`. The two classes
@@ -962,6 +964,48 @@ detected by looking at the result.** A dataset assembled by a sampling procedure
 carries that procedure's structure whether or not anyone wrote it down, which is
 §6's argument arriving from the other direction — there about published data,
 here about data we gathered ourselves.
+
+### Not a code defect: a result produced and then lost
+
+Everything above is a defect in code. This one is a defect in process, and it
+belongs in this section because the outcome has the same shape: work that looked
+done, with nothing behind it.
+
+The DASH7 SNR grid — the half of the real-capture measurement ROADMAP still
+lists as open, planned in [`docs/leakage-real-snr.md`](leakage-real-snr.md) —
+was run to completion. It ran in a scratch working tree, wrote its output where
+the script was told to write it, and that output was never committed. The tree
+was cleaned up afterwards. The files are in no commit on any branch, no other
+worktree, no stash and no reachable object.
+
+*Why it was silent:* nothing failed. The run finished and printed its table.
+`guard_artifact_rows` exists to stop a published file losing runs and has
+nothing to say about a file that was never published. No partial checkpoint was
+left behind, because `leakage_real_runs.partial.json` is removed on a clean
+finish. Nothing logged that anything was lost, and the repository — the only
+thing another person can check — looked identical before and after: exactly like
+a repository where the grid had not been run. The risk was even written down in
+advance; the recipe lists those three output names as files that do not yet
+exist, and nothing in the workflow committed them at the moment they did.
+
+*How it was found:* by being asked to evaluate the result, and finding nothing
+to evaluate.
+
+*What it cost:* more than the compute. The plan is pre-registered — *n*, the SNR
+list and the stem are fixed before any run, so the result cannot choose its own
+stopping rule (CONTRIBUTING convention 5). Having seen a result removes that
+property from the person who saw it: a second run by them is not the
+pre-registered run the plan describes, however exactly it repeats the command.
+So the grid is not re-run. It stays open, for someone who has not read the lost
+table, and the sweep is on record as run once and unusable rather than as
+pending.
+
+The lesson is sharper than *commit your work*. **An uncommitted result is worse
+than a result that was never produced, because the work is believed to have been
+done.** The effort is spent, the question feels answered, and a measurement that
+exists only in a working directory or a terminal scrollback is
+indistinguishable — to every later reader, its author included — from a
+measurement that was imagined.
 
 ---
 
