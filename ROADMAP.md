@@ -55,7 +55,11 @@ Do next, in this order:
    (above); the accuracy-against-SNR curve on a real capture is not. The plan
    is locked in [docs/leakage-real-snr.md](docs/leakage-real-snr.md) — seed
    count, SNR list and stem fixed before any run, so the result cannot choose
-   its own stopping rule.
+   its own stopping rule. It was **run once and the result was lost**: the
+   output was never committed and the working tree was cleaned, so nothing is
+   left to audit ([docs/methodology.md](docs/methodology.md) §7). The item is
+   open rather than pending, and it is open to someone who has not read that
+   table — a repeat by whoever did is no longer the pre-registered run.
 2. **Verification with an own hardware capture.** One device end to end. Public
    files validated the reader; they cannot validate against the conventions of a
    radio nobody here has run.
